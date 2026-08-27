@@ -1,9 +1,11 @@
 import { execFile } from "node:child_process";
-import { access, copyFile, mkdir, readdir, unlink } from "node:fs/promises";
+import { access, copyFile, mkdir, readdir, unlink, readFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { createHash } from "node:crypto";
 import { seoStem } from "@/lib/seo";
+import { isMarketingFilename } from "@/lib/safe-path";
 
 const exec = promisify(execFile);
 const FFMPEG = process.env.FFMPEG || "/usr/local/bin/ffmpeg";
@@ -34,19 +36,8 @@ export function grantFilePath(grantUrl: string) {
   return underDir(grantsDir(), full) ? full : null;
 }
 
-const MARKETING = new Set([
-  "hero.jpg",
-  "portrait.jpg",
-  "cover-reveal.jpg",
-  "cover-curve.jpg",
-  "cover-pedestal.jpg",
-]);
-
 export function isMarketingName(filename: string) {
-  const base = filename.split("/").pop() || filename;
-  if (MARKETING.has(base)) return true;
-  if (/-cover\./i.test(base)) return true;
-  return false;
+  return isMarketingFilename(filename);
 }
 
 function publicPath(url: string) {
@@ -152,6 +143,61 @@ export async function vaultShotMedia(opts: {
   }
 
   return { grantUrl, teaserUrl: (await exists(teaserPath)) ? teaserUrl : "/media/portrait.jpg" };
+}
+
+async function sha256File(path: string) {
+  const buf = await readFile(path);
+  return createHash("sha256").update(buf).digest("hex");
+}
+
+/** If a public file is byte-identical to a paid grant, replace the public copy with a teaser. */
+export async function isolatePaidFromPublic() {
+  const root = grantsDir();
+  let grantNames: string[] = [];
+  try {
+    grantNames = await readdir(root);
+  } catch {
+    return;
+  }
+  const hashToGrant = new Map<string, string>();
+  for (const name of grantNames) {
+    const p = join(root, name);
+    if (!underDir(root, p)) continue;
+    try {
+      hashToGrant.set(await sha256File(p), p);
+    } catch {
+      /* skip */
+    }
+  }
+  const pub = join(process.cwd(), "public", "media");
+  let names: string[] = [];
+  try {
+    names = await readdir(pub);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (/-tease\./i.test(name)) continue;
+    const p = join(pub, name);
+    if (!underDir(pub, p)) continue;
+    let hash: string;
+    try {
+      hash = await sha256File(p);
+    } catch {
+      continue;
+    }
+    const grant = hashToGrant.get(hash);
+    if (!grant) continue;
+    const video = /\.(mp4|webm|mov)$/i.test(name);
+    const ok = await makeTeaser(grant, p, video);
+    if (!ok && !isMarketingName(name)) {
+      try {
+        await unlink(p);
+      } catch {
+        /* keep */
+      }
+    }
+  }
 }
 
 export async function sweepPublicGrants(keepUrls: string[]) {

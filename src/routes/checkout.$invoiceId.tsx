@@ -265,8 +265,9 @@ function CheckoutPage() {
       ) : null}
       <p className="mt-4 text-center text-xs leading-relaxed text-subtle">
         Sending a transaction or signing a message does not unlock. The grant
-        waits for NOWPayments IPN (HMAC) or an operator grant. Configure
-        NOWPAYMENTS_IPN_SECRET before taking public payment.
+        waits for NOWPayments status <span className="text-fg">finished</span>{" "}
+        (HMAC + amount/currency match) or an operator grant. Public checkout
+        requires API key, IPN secret, and IPN URL.
       </p>
     </div>
   );

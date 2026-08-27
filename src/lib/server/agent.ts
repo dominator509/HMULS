@@ -264,23 +264,22 @@ async function dispatch(sql: Sql, op: string, p: Params): Promise<unknown> {
       return { ...lad[0], shots };
     }
     case "get_analytics": {
-      const unlockAgg = await sql<{ revenue: string | number; unlocks: number }>`
-        select coalesce(sum(amount_cents), 0) as revenue, count(*)::int as unlocks from unlocks
+      const paidAgg = await sql<{ revenue: string | number; invoices: number }>`
+        select coalesce(sum(amount_cents), 0) as revenue, count(*)::int as invoices
+        from invoices where status = 'paid'
       `;
-      const invoices = await sql<{ c: number }>`select count(*)::int as c from invoices where status = 'paid'`;
+      const unlocks = await sql<{ c: number }>`select count(*)::int as c from unlocks`;
       const views = await sql<{ c: number }>`select count(*)::int as c from events where kind = 'view'`;
       const by = await sql<{ ladder_id: string; title: string; revenue: string | number; unlocks: number }>`
         select l.id as ladder_id, l.title,
-               coalesce(sum(u.amount_cents), 0) as revenue,
-               count(u.id)::int as unlocks
+               coalesce((select sum(i.amount_cents) from invoices i where i.ladder_id = l.id and i.status = 'paid'), 0) as revenue,
+               (select count(*)::int from unlocks u where u.ladder_id = l.id) as unlocks
         from ladders l
-        left join unlocks u on u.ladder_id = l.id
-        group by l.id, l.title
       `;
       return {
-        revenueCents: Number(unlockAgg[0]?.revenue ?? 0),
-        unlockCount: unlockAgg[0]?.unlocks ?? 0,
-        invoiceCount: invoices[0]?.c ?? 0,
+        revenueCents: Number(paidAgg[0]?.revenue ?? 0),
+        unlockCount: unlocks[0]?.c ?? 0,
+        invoiceCount: paidAgg[0]?.invoices ?? 0,
         views: views[0]?.c ?? 0,
         byLadder: by.map((r) => ({
           ladderId: r.ladder_id,

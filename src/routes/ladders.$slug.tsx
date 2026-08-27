@@ -762,7 +762,7 @@ function LadderPage() {
               {busy ? "Opening invoice…" : PAY_SHEET.pay(asset)}
             </Button>
             <p className="mt-3 text-center text-xs text-subtle">
-              Wallet checkout next — vault wallet, MetaMask, Rainbow, Trust, or Phantom.
+              Wallet checkout next — send from MetaMask, Rainbow, Trust, or Phantom.
             </p>
           </div>
         </Overlay>

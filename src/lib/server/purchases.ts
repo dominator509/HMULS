@@ -5,9 +5,10 @@ import { ensureCatalog, ensureProfile } from "./catalog";
 import { loadDials } from "./transporter";
 import { continueHours, invoiceMinutes, priceBumpPct } from "@/lib/psychology";
 import { CRYPTO_ASSETS, giftCode, invoiceId } from "@/lib/crypto";
-import { quoteCrypto, resolvePayAddress } from "./payments";
+import { createNowpaymentsPayment, paymentsLive } from "./payments";
 import { entityComplete } from "@/lib/legal-types";
 import { ensureLegal, loadEntity } from "./legal";
+import { grantVaultReady } from "./catalog";
 import type { CryptoAsset, InvoiceKind, InvoiceView, VaultItem } from "@/lib/types";
 
 let payColsReady = false;
@@ -16,6 +17,12 @@ async function ensurePayCols(sql: Sql) {
   await sql`alter table invoices add column if not exists pay_method text`;
   await sql`alter table invoices add column if not exists wallet_address text`;
   await sql`alter table invoices add column if not exists tx_hash text`;
+  await sql`alter table invoices add column if not exists provider text`;
+  await sql`alter table invoices add column if not exists provider_payment_id text`;
+  await sql`alter table invoices add column if not exists pay_currency text`;
+  await sql`alter table invoices add column if not exists price_amount text`;
+  await sql`alter table invoices add column if not exists provider_expires_at timestamptz`;
+  await sql`alter table gifts add column if not exists reserved_climax boolean not null default false`;
   payColsReady = true;
 }
 
@@ -124,6 +131,12 @@ export const createInvoice = createServerFn({ method: "POST" })
     if (!entityComplete(entity) && role !== "admin") {
       throw new Error("This vault is not open for payment until the operator completes Ops → Legal.");
     }
+    if (!grantVaultReady && role !== "admin") {
+      throw new Error("Paid media vault is not ready.");
+    }
+    if (!paymentsLive() && role !== "admin") {
+      throw new Error("Checkout is closed until NOWPayments is fully configured.");
+    }
 
     const shots = await resolvePayableShots(
       sql,
@@ -152,26 +165,44 @@ export const createInvoice = createServerFn({ method: "POST" })
       amount = Math.round(amount * (1 + bump / 100));
     }
     const id = invoiceId();
-    const cryptoAmount = await quoteCrypto(amount, data.asset);
-    const pay = await resolvePayAddress({
-      invoiceId: id,
-      asset: data.asset,
-      cryptoAmount,
-      amountCents: amount,
-    });
-    const address = pay.address;
+    let address = "";
+    let cryptoAmount = "0";
+    let provider: string | null = null;
+    let providerPaymentId: string | null = null;
+    let payCurrency: string | null = null;
+    let priceAmount: string | null = null;
+    let providerExpires: string | null = null;
+    if (paymentsLive()) {
+      const pay = await createNowpaymentsPayment({
+        invoiceId: id,
+        asset: data.asset,
+        amountCents: amount,
+      });
+      address = pay.address;
+      cryptoAmount = pay.payAmount;
+      provider = pay.provider;
+      providerPaymentId = pay.paymentId;
+      payCurrency = pay.payCurrency;
+      priceAmount = String(pay.priceAmount);
+      providerExpires = pay.expiresAt;
+    } else if (role !== "admin") {
+      throw new Error("Checkout is closed until NOWPayments is fully configured.");
+    }
     const gift = Boolean(data.isGift);
     const code = gift ? giftCode(id) : null;
-    const expiresAt = new Date(Date.now() + invoiceMinutes(dials) * 60_000);
+    const marketingExpires = new Date(Date.now() + invoiceMinutes(dials) * 60_000);
+    const expiresAt = providerExpires ? new Date(providerExpires) : marketingExpires;
 
     await sql`
       insert into invoices (
         id, user_id, ladder_id, kind, shot_ids, amount_cents, asset,
-        pay_address, crypto_amount, status, is_gift, gift_code, expires_at
+        pay_address, crypto_amount, status, is_gift, gift_code, expires_at,
+        provider, provider_payment_id, pay_currency, price_amount, provider_expires_at
       ) values (
         ${id}, ${context.userId}, ${data.ladderId}, ${data.kind},
         ${JSON.stringify(shots.map((s) => s.id))}, ${amount}, ${data.asset},
-        ${address}, ${cryptoAmount}, 'pending', ${gift}, ${code}, ${expiresAt.toISOString()}
+        ${address}, ${cryptoAmount}, 'pending', ${gift}, ${code}, ${expiresAt.toISOString()},
+        ${provider}, ${providerPaymentId}, ${payCurrency}, ${priceAmount}, ${providerExpires}
       )
     `;
     await sql`
@@ -198,7 +229,7 @@ export const createInvoice = createServerFn({ method: "POST" })
       giftCode: code,
       createdAt: new Date().toISOString(),
       expiresAt: expiresAt.toISOString(),
-      paymentReady: Boolean(address),
+      paymentReady: Boolean(address && providerPaymentId),
     };
     return view;
   });
@@ -260,7 +291,7 @@ export const getInvoice = createServerFn({ method: "GET" })
       giftCode: inv.gift_code,
       createdAt: new Date(inv.created_at).toISOString(),
       expiresAt: inv.expires_at ? new Date(inv.expires_at).toISOString() : null,
-      paymentReady: Boolean(inv.pay_address),
+      paymentReady: Boolean(inv.pay_address && (inv as { provider_payment_id?: string | null }).provider_payment_id),
     };
     return view;
   });
@@ -273,6 +304,8 @@ async function grantShots(
     invoiceId: string;
     ids: string[];
     gifted: boolean;
+    skipClimaxReserve?: boolean;
+    invoiceAmountCents?: number;
   },
 ) {
   const shots = await sql<ShotRow>`
@@ -280,7 +313,7 @@ async function grantShots(
   `;
   const byId = new Map(shots.map((s) => [s.id, s]));
   const hasClimax = opts.ids.some((id) => byId.get(id)?.is_climax);
-  if (hasClimax) {
+  if (hasClimax && !opts.skipClimaxReserve) {
     const cap = await sql<{ id: string }>`
       update ladders
       set climax_collectors = climax_collectors + 1
@@ -294,14 +327,23 @@ async function grantShots(
     select count(*)::int as c from unlocks
     where user_id = ${opts.userId} and ladder_id = ${opts.ladderId}
   `;
+  const listSum = opts.ids.reduce((a, id) => a + (byId.get(id)?.price_cents ?? 0), 0);
   for (const shotId of opts.ids) {
     const shot = byId.get(shotId);
     if (!shot) continue;
+    let cents = 0;
+    if (!opts.gifted) {
+      if (opts.invoiceAmountCents != null && listSum > 0) {
+        cents = Math.round((shot.price_cents / listSum) * opts.invoiceAmountCents);
+      } else {
+        cents = shot.price_cents;
+      }
+    }
     await sql`
       insert into unlocks (user_id, shot_id, ladder_id, invoice_id, amount_cents, gifted)
       values (
         ${opts.userId}, ${shot.id}, ${opts.ladderId}, ${opts.invoiceId},
-        ${opts.gifted ? 0 : shot.price_cents}, ${opts.gifted}
+        ${cents}, ${opts.gifted}
       )
       on conflict (user_id, shot_id) do nothing
     `;
@@ -323,7 +365,12 @@ async function grantShots(
   return { ids: opts.ids, byId };
 }
 
-async function settleInvoice(sql: Sql, invoiceId: string, userId: string) {
+async function settleInvoice(
+  sql: Sql,
+  invoiceId: string,
+  userId: string,
+  opts?: { allowExpired?: boolean },
+) {
   return withTransaction(async (tx) => {
     const claimed = await tx<{
       id: string;
@@ -343,7 +390,11 @@ async function settleInvoice(sql: Sql, invoiceId: string, userId: string) {
       where id = ${invoiceId}
         and user_id = ${userId}
         and status in ('pending', 'confirming')
-        and (expires_at is null or expires_at > now())
+        and (
+          ${Boolean(opts?.allowExpired)}
+          or expires_at is null
+          or expires_at > now()
+        )
       returning *
     `;
     const inv = claimed[0];
@@ -360,9 +411,22 @@ async function settleInvoice(sql: Sql, invoiceId: string, userId: string) {
 
     const ids = parseIds(inv.shot_ids);
     if (inv.is_gift && inv.gift_code) {
+      const shots = await tx<ShotRow>`select * from shots where ladder_id = ${inv.ladder_id}`;
+      const byId = new Map(shots.map((s) => [s.id, s]));
+      const hasClimax = ids.some((id) => byId.get(id)?.is_climax);
+      if (hasClimax) {
+        const cap = await tx<{ id: string }>`
+          update ladders
+          set climax_collectors = climax_collectors + 1
+          where id = ${inv.ladder_id}
+            and climax_collectors < climax_cap
+          returning id
+        `;
+        if (!cap[0]) throw new Error("Climax grants for this set are closed.");
+      }
       await tx`
-        insert into gifts (code, from_user_id, ladder_id, shot_ids, invoice_id)
-        values (${inv.gift_code}, ${userId}, ${inv.ladder_id}, ${inv.shot_ids}, ${inv.id})
+        insert into gifts (code, from_user_id, ladder_id, shot_ids, invoice_id, reserved_climax)
+        values (${inv.gift_code}, ${userId}, ${inv.ladder_id}, ${inv.shot_ids}, ${inv.id}, ${hasClimax})
         on conflict (code) do nothing
       `;
     } else {
@@ -372,6 +436,7 @@ async function settleInvoice(sql: Sql, invoiceId: string, userId: string) {
         invoiceId: inv.id,
         ids,
         gifted: false,
+        invoiceAmountCents: inv.amount_cents,
       });
     }
 
@@ -394,10 +459,11 @@ async function settleInvoice(sql: Sql, invoiceId: string, userId: string) {
 }
 
 export async function settleVerifiedInvoice(sql: Sql, invoiceId: string) {
+  await ensurePayCols(sql);
   const rows = await sql<{ user_id: string }>`select user_id from invoices where id = ${invoiceId}`;
   const owner = rows[0];
   if (!owner) throw new Error("Invoice not found.");
-  return settleInvoice(sql, invoiceId, owner.user_id);
+  return settleInvoice(sql, invoiceId, owner.user_id, { allowExpired: true });
 }
 
 export const confirmInvoice = createServerFn({ method: "POST" })
@@ -534,6 +600,7 @@ export const redeemGift = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const sql = await getSql();
     await ensureProfile(sql, context.userId);
+    await ensurePayCols(sql);
     const code = data.code.trim().toUpperCase();
     return withTransaction(async (tx) => {
       const claimed = await tx<{
@@ -542,13 +609,14 @@ export const redeemGift = createServerFn({ method: "POST" })
         ladder_id: string;
         shot_ids: string;
         invoice_id: string;
+        reserved_climax: boolean;
       }>`
         update gifts
         set redeemed_by = ${context.userId}, redeemed_at = now()
         where code = ${code}
           and redeemed_by is null
           and from_user_id <> ${context.userId}
-        returning code, from_user_id, ladder_id, shot_ids, invoice_id
+        returning code, from_user_id, ladder_id, shot_ids, invoice_id, reserved_climax
       `;
       const gift = claimed[0];
       if (!gift) {
@@ -568,6 +636,7 @@ export const redeemGift = createServerFn({ method: "POST" })
         invoiceId: gift.invoice_id,
         ids,
         gifted: true,
+        skipClimaxReserve: Boolean(gift.reserved_climax),
       });
       const { stampUnlocks } = await import("./stamps");
       await stampUnlocks(tx, context.userId, ids, gift.invoice_id, null);

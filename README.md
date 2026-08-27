@@ -16,16 +16,11 @@ cp .env.example .env
 npm run dev
 ```
 
-Operator: first signed-in account is admin (atomic bootstrap). Studio and Theme live under Ops.
+Owner: set `INITIAL_ADMIN_EMAIL` or claim with `BOOTSTRAP_SECRET`. Preview without Postgres may elect the first signed-in operator. Production never does.
 
 ## Payments
 
-The browser cannot grant access. A buyer invoice stays `confirming` until:
-
-- NOWPayments IPN verifies `x-nowpayments-sig` (HMAC-SHA512), or
-- an operator grants the invoice from checkout (preview / exception)
-
-Set `NOWPAYMENTS_IPN_SECRET` before taking public payment. Complete Ops → Legal (entity, address, contact) or only the operator can open invoices.
+Public checkout requires `NOWPAYMENTS_API_KEY`, `NOWPAYMENTS_IPN_SECRET`, and `NOWPAYMENTS_IPN_URL`. The browser cannot grant. Settlement requires HMAC plus finished status, amount, currency, and payment id match. Operator grant is explicit and labeled.
 
 ## Do not commit
 

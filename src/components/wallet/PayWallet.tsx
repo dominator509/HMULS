@@ -1,25 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Overlay, OverlayClose, Panel } from "@/components/ui/chrome";
 import type { InvoiceView } from "@/lib/types";
 import {
   WALLET_OPTIONS,
-  authorizeMessage,
   connectInjected,
-  createVaultWallet,
   detectInjected,
-  ensureVaultWallet,
-  loadVaultWallet,
   paymentUri,
+  sendInjectedEth,
   shortAddr,
-  signInjected,
   walletDeepLink,
-  type VaultWallet,
 } from "@/lib/wallet";
-import { Check, Copy, ExternalLink, Loader2, Wallet } from "lucide-react";
+import { Copy, ExternalLink, Loader2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 
-type Phase = "idle" | "connect" | "confirm" | "signing" | "broadcast" | "mined";
+type Phase = "idle" | "confirm" | "signing" | "broadcast";
 
 export function PayWallet({
   inv,
@@ -32,32 +27,17 @@ export function PayWallet({
 }) {
   const injected = useMemo(() => detectInjected(), []);
   const [open, setOpen] = useState(false);
-  const [vault, setVault] = useState<VaultWallet | null>(null);
   const [account, setAccount] = useState<string | null>(null);
-  const [method, setMethod] = useState<string>("vault");
+  const [method, setMethod] = useState<string>("injected");
   const [phase, setPhase] = useState<Phase>("idle");
 
-  useEffect(() => {
-    setVault(loadVaultWallet());
-  }, []);
-
   const uri = paymentUri(inv.asset, inv.payAddress, inv.cryptoAmount);
-  const connected = account || (method === "vault" ? vault?.eth : null);
 
   async function pick(id: string) {
     const opt = WALLET_OPTIONS.find((w) => w.id === id);
     if (!opt) return;
     setMethod(id);
     try {
-      if (id === "vault") {
-        const w = ensureVaultWallet();
-        setVault(w);
-        setAccount(w.eth);
-        setOpen(false);
-        setPhase("confirm");
-        toast.success("Vault wallet connected.");
-        return;
-      }
       if (id === "injected") {
         const addr = await connectInjected();
         setAccount(addr);
@@ -69,53 +49,35 @@ export function PayWallet({
       const link = walletDeepLink(id, inv.asset, inv.payAddress, inv.cryptoAmount);
       window.open(link, "_blank", "noopener,noreferrer");
       setOpen(false);
-      toast.message(`Opened ${opt.name}. Send, then confirm below.`);
+      toast.message(`Opened ${opt.name}. Send to the invoice address, then mark sent.`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not connect.");
     }
   }
 
-  async function createVault() {
-    const w = createVaultWallet();
-    setVault(w);
-    setAccount(w.eth);
-    setMethod("vault");
-    setOpen(false);
-    setPhase("confirm");
-    toast.success("Vault wallet created.");
-  }
-
   async function pay() {
     if (disabled) return;
-    if (!inv.payAddress) {
-      toast.error("Payment address is not configured. Operator must set NOWPayments or a deposit address.");
-      return;
-    }
-    const from = account || vault?.eth;
-    if (!from) {
-      setOpen(true);
+    if (!inv.payAddress || !inv.paymentReady) {
+      toast.error("Payment address is not configured.");
       return;
     }
     setPhase("signing");
     try {
-      if (method === "injected" && account) {
-        await signInjected(
-          account,
-          authorizeMessage(inv.id, inv.cryptoAmount, inv.asset, inv.payAddress),
-        );
+      let hash = "";
+      if (method === "injected" && account && inv.asset === "ETH") {
+        hash = await sendInjectedEth(account, inv.payAddress, inv.cryptoAmount);
       }
       setPhase("broadcast");
-      await onSubmitted({ method, wallet: from, txHash: "" });
-      setPhase("mined");
+      await onSubmitted({ method, wallet: account || "", txHash: hash });
     } catch (err) {
       setPhase("confirm");
-      toast.error(err instanceof Error ? err.message : "Could not record payment.");
+      toast.error(err instanceof Error ? err.message : "Could not send payment.");
     }
   }
 
   const options = WALLET_OPTIONS.filter((w) => {
-    if (w.id === "injected") return Boolean(injected);
-    return w.assets.includes(inv.asset) || w.id === "vault";
+    if (w.id === "injected") return Boolean(injected) && inv.asset === "ETH";
+    return w.assets.includes(inv.asset);
   });
 
   return (
@@ -123,65 +85,75 @@ export function PayWallet({
       <Panel>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="kicker kicker-accent">Wallet</p>
+            <p className="kicker kicker-accent">Send</p>
             <p className="mt-1 font-display text-2xl text-fg">
               {inv.cryptoAmount} {inv.asset}
             </p>
-            <p className="text-sm text-muted">Send to the invoice address. Access grants after verification.</p>
+            <p className="text-sm text-muted">
+              Send exactly this amount to the invoice address. Access grants after NOWPayments confirms finished.
+            </p>
           </div>
           <Wallet className="size-5 text-gold" />
         </div>
 
-        {connected ? (
+        {inv.payAddress ? (
           <div className="mt-4 rounded-lg border border-border bg-raised px-3 py-3">
-            <p className="text-xs text-subtle">
-              {method === "vault" ? "Vault wallet" : method === "injected" ? injected?.name ?? "Browser wallet" : "Connected"}
-            </p>
-            <p className="mt-0.5 font-mono text-sm text-fg">{shortAddr(connected)}</p>
+            <p className="text-xs text-subtle">Invoice address</p>
+            <p className="mt-0.5 break-all font-mono text-sm text-fg">{inv.payAddress}</p>
+            <button
+              type="button"
+              className="mt-2 inline-flex items-center gap-1 text-xs text-gold"
+              onClick={() => {
+                void navigator.clipboard.writeText(inv.payAddress);
+                toast.success("Address copied.");
+              }}
+            >
+              <Copy className="size-3" /> Copy
+            </button>
           </div>
         ) : (
           <p className="mt-4 text-sm text-muted">
-            Connect a vault wallet (always works here) or a browser wallet. Mobile wallets open with the invoice filled in.
+            No live payment address. Operator can grant this invoice from Ops.
           </p>
         )}
 
-        {phase === "signing" || phase === "broadcast" || phase === "mined" ? (
-          <div className="mt-5 space-y-2 text-sm">
-            <Step done={phase !== "signing"} label={phase === "signing" ? "Authorizing…" : "Recorded"} />
-            <Step done={phase === "mined" || phase === "broadcast"} label="Waiting for chain verification" />
-          </div>
+        {account ? (
+          <p className="mt-3 text-xs text-subtle">Connected {shortAddr(account)}</p>
+        ) : null}
+
+        {phase === "signing" || phase === "broadcast" ? (
+          <p className="mt-4 text-sm text-gold">
+            {phase === "signing" ? "Confirm the transfer in your wallet…" : "Waiting for chain verification…"}
+          </p>
         ) : null}
 
         <div className="mt-5 flex flex-col gap-2">
-          {!connected ? (
-            <Button size="xl" disabled={disabled} onClick={() => setOpen(true)}>
-              Connect wallet
-            </Button>
-          ) : (
+          {inv.asset === "ETH" && injected ? (
             <Button
               size="xl"
-              disabled={disabled || phase === "signing" || phase === "broadcast"}
-              onClick={() => void pay()}
+              disabled={disabled || !inv.paymentReady || phase === "signing" || phase === "broadcast"}
+              onClick={() => {
+                if (!account) {
+                  void pick("injected");
+                  return;
+                }
+                void pay();
+              }}
             >
               {phase === "signing" || phase === "broadcast" ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : null}
-              {phase === "signing"
-                ? "Confirm in wallet…"
-                : phase === "broadcast"
-                  ? "Waiting on chain…"
-                  : `Send ${inv.cryptoAmount} ${inv.asset}`}
+              {account ? `Send ${inv.cryptoAmount} ETH` : "Connect wallet and send"}
             </Button>
-          )}
-          {connected ? (
-            <button
-              type="button"
-              className="min-h-11 text-sm text-muted hover:text-fg"
-              onClick={() => setOpen(true)}
-            >
-              Switch wallet
-            </button>
           ) : null}
+          <Button
+            size={inv.asset === "ETH" && injected ? "lg" : "xl"}
+            variant={inv.asset === "ETH" && injected ? "outline" : "gold"}
+            disabled={disabled || !inv.payAddress}
+            onClick={() => setOpen(true)}
+          >
+            Open a mobile wallet
+          </Button>
         </div>
       </Panel>
 
@@ -189,12 +161,13 @@ export function PayWallet({
         <Overlay onClose={() => setOpen(false)} labelledBy="wallet-title">
           <div className="relative p-6">
             <OverlayClose onClick={() => setOpen(false)} />
-            <p className="kicker">Connect</p>
+            <p className="kicker">Pay</p>
             <h3 id="wallet-title" className="mt-1 font-display text-2xl text-fg">
-              Choose how you pay
+              Open a wallet with this invoice
             </h3>
             <p className="mt-2 text-sm text-muted">
-              Vault wallet is the guaranteed path in this preview. Browser and mobile wallets use the same invoice.
+              Deeplinks fill the address and amount. A signature is not payment. The grant waits for NOWPayments
+              status finished.
             </p>
             <ul className="mt-5 space-y-2">
               {options.map((w) => (
@@ -210,81 +183,17 @@ export function PayWallet({
                       </span>
                       <span className="text-xs text-subtle">{w.hint}</span>
                     </span>
-                    {w.id === "vault" ? (
-                      <span className="text-xs tracking-[0.14em] text-gold uppercase">Easiest</span>
-                    ) : (
-                      <ExternalLink className="size-4 text-subtle" />
-                    )}
+                    <ExternalLink className="size-4 text-subtle" />
                   </button>
                 </li>
               ))}
             </ul>
-            {!vault ? (
-              <Button className="mt-4" variant="gold" size="xl" onClick={createVault}>
-                Create a vault wallet
-              </Button>
+            {uri ? (
+              <p className="mt-4 break-all font-mono text-[11px] text-subtle">{uri}</p>
             ) : null}
-            <p className="mt-4 text-xs text-subtle">
-              A wallet signature is not payment. The grant waits for a verified
-              on-chain payment (NOWPayments IPN) or an operator grant.
-            </p>
           </div>
         </Overlay>
       ) : null}
-
-      <details className="mt-4 rounded-xl border border-border bg-surface p-4">
-        <summary className="cursor-pointer text-sm text-muted hover:text-fg">
-          Send from another wallet
-        </summary>
-        <div className="mt-4 space-y-3">
-          <p className="break-all font-mono text-xs text-fg">{inv.payAddress}</p>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                void navigator.clipboard.writeText(inv.payAddress);
-                toast.success("Address copied.");
-              }}
-            >
-              <Copy className="size-3" /> Address
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                void navigator.clipboard.writeText(`${inv.cryptoAmount} ${inv.asset}`);
-                toast.success("Amount copied.");
-              }}
-            >
-              <Copy className="size-3" /> Amount
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                void navigator.clipboard.writeText(uri);
-                toast.success("Pay link copied.");
-              }}
-            >
-              <Copy className="size-3" /> Pay link
-            </Button>
-          </div>
-          <p className="text-xs text-subtle">
-            Open MetaMask, Trust, Phantom, or any wallet and send exactly {inv.cryptoAmount} {inv.asset}.
-            Then confirm below if you paid outside this screen.
-          </p>
-        </div>
-      </details>
     </div>
-  );
-}
-
-function Step({ done, label }: { done: boolean; label: string }) {
-  return (
-    <p className={`flex items-center gap-2 ${done ? "text-gold" : "text-muted"}`}>
-      {done ? <Check className="size-3.5" /> : <Loader2 className="size-3.5 animate-spin" />}
-      {label}
-    </p>
   );
 }

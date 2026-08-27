@@ -9,7 +9,7 @@ import {
   updateShotPrice,
 } from "@/lib/server/admin";
 import { runSurfaceTransporter, runTransporter, autoWriteFromMedia, saveDials, clearSurfaces, getPsychology } from "@/lib/server/transporter";
-import { getMyRole } from "@/lib/server/catalog";
+import { getMyRole, claimOwner } from "@/lib/server/catalog";
 import type { AnalyticsSnapshot } from "@/lib/types";
 import { DIAL_META, DEFAULT_DIALS, dialEffects, type Dials, type Surfaces, fallbackSurfaces } from "@/lib/psychology";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -46,6 +46,7 @@ function AdminPage() {
   const [role, setRole] = useState<string | null>(null);
   const [stats, setStats] = useState<AnalyticsSnapshot | null>(null);
   const [ladders, setLadders] = useState<AdminLadder[]>([]);
+  const [bootstrap, setBootstrap] = useState("");
   const [tab, setTab] = useState<
     "stats" | "studio" | "muses" | "ladders" | "dials" | "theme" | "stamps" | "legal" | "connectors"
   >("stats");
@@ -73,8 +74,34 @@ function AdminPage() {
   if (!user) return <RedirectToSignIn />;
   if (role && role !== "admin") {
     return (
-      <div className="px-5 py-24 text-center text-muted">
-        Operator access only. First collector to sign in becomes operator in this vault.
+      <div className="mx-auto max-w-md px-5 py-24 text-center">
+        <p className="text-muted">
+          Operator access only. Ownership is not granted to the first signup.
+          Set INITIAL_ADMIN_EMAIL or claim with the one-time bootstrap secret.
+        </p>
+        <label className="mt-6 block text-left text-xs text-subtle">
+          Bootstrap secret
+          <input
+            type="password"
+            value={bootstrap}
+            onChange={(e) => setBootstrap(e.target.value)}
+            className="field-input mt-1"
+          />
+        </label>
+        <Button
+          className="mt-4"
+          size="xl"
+          onClick={() => {
+            claimOwner({ data: { secret: bootstrap } })
+              .then(() => {
+                setRole("admin");
+                toast.success("Vault claimed.");
+              })
+              .catch((err) => toast.error(err instanceof Error ? err.message : "Claim failed."));
+          }}
+        >
+          Claim owner
+        </Button>
       </div>
     );
   }
@@ -143,7 +170,7 @@ function Stats({ stats }: { stats: AnalyticsSnapshot | null }) {
     { l: "Revenue", v: formatUsd(stats.revenueCents) },
     { l: "Unlocks", v: String(stats.unlockCount) },
     { l: "Paid invoices", v: String(stats.invoiceCount) },
-    { l: "View → unlock", v: `${stats.conversionPct}%` },
+    { l: "View → paid invoice", v: `${stats.conversionPct}%` },
   ];
   return (
     <div className="mt-8 space-y-8">

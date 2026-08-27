@@ -1,7 +1,24 @@
-import { access, copyFile, mkdir } from "node:fs/promises";
+import { access, copyFile, mkdir, realpath } from "node:fs/promises";
 import { constants } from "node:fs";
-import { dirname, extname, join } from "node:path";
+import { dirname, extname, resolve } from "node:path";
 import { seoStem } from "@/lib/seo";
+import { containedPublicPath, isInside } from "@/lib/safe-path";
+
+async function realContained(userPath: string) {
+  const candidate = containedPublicPath(userPath);
+  const mediaRoot = resolve(process.cwd(), "public", "media");
+  const uploadsRoot = resolve(process.cwd(), "public", "uploads");
+  try {
+    const real = await realpath(candidate);
+    if (!isInside(mediaRoot, real) && !isInside(uploadsRoot, real)) {
+      throw new Error("Rejected path.");
+    }
+    return real;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return candidate;
+    throw err;
+  }
+}
 
 export async function persistSeoMedia(opts: {
   srcUrl: string;
@@ -23,8 +40,14 @@ export async function persistSeoMedia(opts: {
   if (!stem) return opts.srcUrl;
   const destUrl = `/media/${stem}${ext}`;
   if (destUrl === opts.srcUrl) return opts.srcUrl;
-  const src = join(process.cwd(), "public", opts.srcUrl.replace(/^\/+/, ""));
-  const dest = join(process.cwd(), "public", destUrl.replace(/^\/+/, ""));
+  let src: string;
+  let dest: string;
+  try {
+    src = await realContained(opts.srcUrl);
+    dest = containedPublicPath(destUrl);
+  } catch {
+    return opts.srcUrl;
+  }
   try {
     await mkdir(dirname(dest), { recursive: true });
     try {

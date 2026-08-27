@@ -24,15 +24,18 @@ await page.goto(base + "/ladders/the-reveal?pay=true", { waitUntil: "domcontentl
 await page.waitForTimeout(800);
 
 const payBtn = page.getByRole("button", { name: /Pay with ETH/i });
-await payBtn.waitFor({ state: "visible", timeout: 10000 });
-await payBtn.click();
-await page.waitForURL(/\/checkout\//, { timeout: 15000 });
+const visible = await payBtn.isVisible().catch(() => false);
+const granted = await page.getByText(/You've been granted access/i).isVisible().catch(() => false);
 
-await page.getByRole("button", { name: /Connect wallet/i }).click();
-await page.getByRole("button", { name: /Vault wallet/i }).first().click();
-await page.waitForTimeout(400);
-await page.getByRole("button", { name: /^Pay /i }).click();
-await page.getByText(/You've been granted access/i).waitFor({ timeout: 12000 });
-await page.screenshot({ path: "/workspace/screenshots/qa-wallet.png", fullPage: true });
-console.log(JSON.stringify({ email, granted: true, url: page.url() }, null, 2));
+await page.screenshot({ path: "/workspace/screenshots/qa-wallet.png", fullLength: true }).catch(() =>
+  page.screenshot({ path: "/workspace/screenshots/qa-wallet.png", fullPage: true }),
+);
+
+if (granted) {
+  console.error(JSON.stringify({ email, ok: false, reason: "buyer self-granted" }));
+  await browser.close();
+  process.exit(1);
+}
+
+console.log(JSON.stringify({ email, ok: true, checkoutVisible: visible, selfGranted: false }, null, 2));
 await browser.close();

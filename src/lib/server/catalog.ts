@@ -5,6 +5,13 @@ import { SEED_LADDERS } from "@/lib/catalog-seed";
 import { LIORA, photosetOf, type MuseBible } from "@/lib/muses";
 import { loadMuseBibles } from "./muse-lookup";
 import type { LadderPublic, ProgressState, ShotPublic } from "@/lib/types";
+import {
+  bootstrapSecretFromEnv,
+  emailMatchesOwner,
+  firstUserAdminAllowed,
+  userIdMatchesOwner,
+} from "@/lib/owner";
+import { timingSafeEqual } from "node:crypto";
 
 type LadderRow = {
   id: string;
@@ -48,6 +55,7 @@ let seedPromise: Promise<void> | null = null;
 let copySynced = false;
 let voiceColsReady = false;
 let grantVaultSynced = false;
+export let grantVaultReady = false;
 
 async function ensureVoiceColumns(sql: Sql) {
   if (voiceColsReady) return;
@@ -139,8 +147,10 @@ export async function ensureCatalog(sql: Sql) {
     try {
       await authorizePublicAndGrants(sql);
       grantVaultSynced = true;
+      grantVaultReady = true;
     } catch (err) {
       console.error("[grants] vault pass failed", err);
+      grantVaultReady = false;
     }
   }
   await syncLiveCounts(sql);
@@ -173,6 +183,11 @@ export async function ensureProfile(sql: Sql, userId: string) {
       claimed_at timestamptz not null default now()
     )
   `;
+  const emailRows = await sql<{ email: string }>`
+    select email from "user" where id = ${userId}
+  `;
+  const email = emailRows[0]?.email ?? "";
+  const designated = userIdMatchesOwner(userId) || emailMatchesOwner(email);
   const admins = await sql<{ user_id: string }>`
     select user_id from profiles where role = 'admin' order by created_at asc limit 1
   `;
@@ -189,20 +204,36 @@ export async function ensureProfile(sql: Sql, userId: string) {
     const saved = await sql<{ role: string }>`select role from profiles where user_id = ${userId}`;
     return saved[0]?.role ?? "buyer";
   }
-  const claimed = await sql<{ user_id: string }>`
-    insert into vault_bootstrap (slot, user_id)
-    values ('admin_zero', ${userId})
-    on conflict (slot) do nothing
-    returning user_id
-  `;
+
   let role = "buyer";
-  if (claimed[0]?.user_id === userId) {
-    role = "admin";
-  } else {
-    const slot = await sql<{ user_id: string }>`
-      select user_id from vault_bootstrap where slot = 'admin_zero'
+  if (designated || firstUserAdminAllowed()) {
+    const claimed = await sql<{ user_id: string }>`
+      insert into vault_bootstrap (slot, user_id)
+      values ('admin_zero', ${userId})
+      on conflict (slot) do nothing
+      returning user_id
     `;
-    if (slot[0]?.user_id === userId) role = "admin";
+    if (claimed[0]?.user_id === userId) role = "admin";
+    else {
+      const slot = await sql<{ user_id: string }>`
+        select user_id from vault_bootstrap where slot = 'admin_zero'
+      `;
+      if (slot[0]?.user_id === userId) role = "admin";
+    }
+    if (!designated && !firstUserAdminAllowed()) role = "buyer";
+    if (!claimed[0] && designated) role = "buyer";
+  }
+  if (designated && role !== "admin") {
+    const slot = await sql<{ user_id: string }>`select user_id from vault_bootstrap where slot = 'admin_zero'`;
+    if (!slot[0]) {
+      const claimed = await sql<{ user_id: string }>`
+        insert into vault_bootstrap (slot, user_id)
+        values ('admin_zero', ${userId})
+        on conflict (slot) do nothing
+        returning user_id
+      `;
+      if (claimed[0]?.user_id === userId) role = "admin";
+    }
   }
   await sql`
     insert into profiles (user_id, role) values (${userId}, ${role})
@@ -211,6 +242,42 @@ export async function ensureProfile(sql: Sql, userId: string) {
   const saved = await sql<{ role: string }>`select role from profiles where user_id = ${userId}`;
   return saved[0]?.role ?? role;
 }
+
+function secretsEqual(a: string, b: string) {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}
+
+export const claimOwner = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { secret: string }) => d)
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    const want = bootstrapSecretFromEnv();
+    if (!want) throw new Error("No bootstrap secret is configured.");
+    if (!secretsEqual(data.secret.trim(), want)) throw new Error("Invalid bootstrap secret.");
+    await sql`
+      create table if not exists vault_bootstrap (
+        slot text primary key,
+        user_id text not null,
+        claimed_at timestamptz not null default now()
+      )
+    `;
+    const claimed = await sql<{ user_id: string }>`
+      insert into vault_bootstrap (slot, user_id)
+      values ('admin_zero', ${context.userId})
+      on conflict (slot) do nothing
+      returning user_id
+    `;
+    if (!claimed[0]) throw new Error("This vault already has an owner.");
+    await sql`
+      insert into profiles (user_id, role) values (${context.userId}, 'admin')
+      on conflict (user_id) do update set role = 'admin'
+    `;
+    return { ok: true as const, role: "admin" as const };
+  });
 
 function discountNum(v: string | number) {
   return typeof v === "number" ? v : Number(v);
@@ -322,7 +389,7 @@ export async function loadPublishedCatalog(sql: Sql): Promise<LadderPublic[]> {
 
 async function authorizePublicAndGrants(sql: Sql) {
   const { persistSeoMedia } = await import("./seo-media.server");
-  const { vaultShotMedia, sweepPublicGrants } = await import("./grant-media.server");
+  const { vaultShotMedia, sweepPublicGrants, isolatePaidFromPublic } = await import("./grant-media.server");
   const muses = await loadMuseBibles(sql);
   const lads = await sql<{
     id: string;
@@ -388,6 +455,7 @@ async function authorizePublicAndGrants(sql: Sql) {
     }
     keep.add(packed.teaserUrl);
   }
+  await isolatePaidFromPublic();
   await sweepPublicGrants([...keep]);
 }
 

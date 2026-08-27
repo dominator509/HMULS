@@ -140,8 +140,21 @@ export function walletDeepLink(
   }
 }
 
-export function demoTxHash(invoiceId: string, wallet: string) {
-  return `0x${randomHex(32).slice(0, 8)}${invoiceId.replace(/[^a-f0-9]/gi, "").slice(0, 24).padEnd(24, "0")}${wallet.replace(/[^a-f0-9]/gi, "").slice(0, 32).padEnd(32, "a")}`.slice(0, 66);
+export async function sendInjectedEth(from: string, to: string, amountEth: string): Promise<string> {
+  const eth = (window as unknown as { ethereum?: { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> } }).ethereum;
+  if (!eth) throw new Error("No browser wallet found.");
+  const hash = (await eth.request({
+    method: "eth_sendTransaction",
+    params: [
+      {
+        from,
+        to,
+        value: "0x" + ethToWei(amountEth).toString(16),
+      },
+    ],
+  })) as string;
+  if (!hash) throw new Error("Wallet did not broadcast a transaction.");
+  return hash;
 }
 
 export function authorizeMessage(invoiceId: string, amount: string, asset: string, address: string) {
@@ -150,18 +163,11 @@ export function authorizeMessage(invoiceId: string, amount: string, asset: strin
 
 export const WALLET_OPTIONS: WalletOption[] = [
   {
-    id: "vault",
-    name: "Vault wallet",
-    hint: "Created here. One tap. Works in this preview.",
-    kind: "vault",
-    assets: ["ETH", "USDT", "BTC", "SOL"],
-  },
-  {
     id: "injected",
     name: "Browser wallet",
-    hint: "MetaMask, Rainbow, Rabby, Coinbase extension.",
+    hint: "MetaMask, Rainbow, Rabby, Coinbase extension. Broadcasts the payment.",
     kind: "injected",
-    assets: ["ETH", "USDT"],
+    assets: ["ETH"],
   },
   {
     id: "metamask",

@@ -29,7 +29,8 @@ export const getAnalytics = createServerFn({ method: "GET" })
       select ladder_id,
              coalesce(sum(amount_cents), 0) as revenue,
              count(*)::int as unlocks
-      from unlocks
+      from invoices
+      where status = 'paid'
       group by ladder_id
     `;
     const views = await sql<{ ladder_id: string; c: number }>`
@@ -47,7 +48,14 @@ export const getAnalytics = createServerFn({ method: "GET" })
       unlocks: number;
     }>`
       select coalesce(sum(amount_cents), 0) as revenue, count(*)::int as unlocks
-      from unlocks
+      from invoices
+      where status = 'paid'
+    `;
+    const grantCount = await sql<{ unlocks: number }>`
+      select count(*)::int as unlocks from unlocks
+    `;
+    const unlockByRows = await sql<{ ladder_id: string; c: number }>`
+      select ladder_id, count(*)::int as c from unlocks group by ladder_id
     `;
     const invoiceAgg = await sql<{ invoices: number }>`
       select count(*)::int as invoices from invoices where status = 'paid'
@@ -69,20 +77,22 @@ export const getAnalytics = createServerFn({ method: "GET" })
     const payBy = new Map(paid.map((p) => [p.ladder_id, p]));
     const viewBy = new Map(views.map((v) => [v.ladder_id, v.c]));
     const climaxBy = new Map(climaxes.map((c) => [c.ladder_id, c.c]));
+    const unlockBy = new Map(unlockByRows.map((u) => [u.ladder_id, u.c]));
     const revenueCents = Number(unlockAgg[0]?.revenue ?? 0);
-    const unlockCount = unlockAgg[0]?.unlocks ?? 0;
+    const paidCount = unlockAgg[0]?.unlocks ?? 0;
+    const unlockCount = grantCount[0]?.unlocks ?? 0;
     const viewsN = viewTotal[0]?.c ?? 0;
 
     const snapshot: AnalyticsSnapshot = {
       revenueCents,
       unlockCount,
       invoiceCount: invoiceAgg[0]?.invoices ?? 0,
-      conversionPct: viewsN === 0 ? 0 : Math.round((unlockCount / viewsN) * 1000) / 10,
+      conversionPct: viewsN === 0 ? 0 : Math.round((paidCount / viewsN) * 1000) / 10,
       byLadder: ladders.map((l) => ({
         ladderId: l.id,
         title: l.title,
         revenueCents: Number(payBy.get(l.id)?.revenue ?? 0),
-        unlocks: payBy.get(l.id)?.unlocks ?? 0,
+        unlocks: unlockBy.get(l.id) ?? 0,
         views: viewBy.get(l.id) ?? 0,
         climaxUnlocks: climaxBy.get(l.id) ?? 0,
       })),
