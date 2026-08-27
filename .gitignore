@@ -1,0 +1,57 @@
+# dependencies
+node_modules/
+.node_modules.lock
+
+# build / tooling
+dist/
+.output/
+.nitro/
+.vercel/
+.tanstack/
+.turbo/
+*.tsbuildinfo
+vite.config.ts.timestamp-*
+
+# env & secrets — never commit keys
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+credentials.json
+
+# local vault data (paid grants, originals, forensic stamps, pglite)
+data/grants/
+data/originals/
+data/stamps/
+data/*.db
+data/*.sqlite
+data/pglite*
+*.pglite
+
+# sandbox / App Builder internals
+.grok/
+.project_id
+AGENTS.md
+AGENTS.project.md
+startup.sh
+artifacts/
+screenshots/
+!screenshots/.gitkeep
+public/__grok/
+
+# logs, OS, editors
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# coverage / test dumps
+coverage/
+playwright-report/
+test-results/
