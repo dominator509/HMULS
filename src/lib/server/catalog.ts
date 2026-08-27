@@ -141,9 +141,24 @@ export async function ensureCatalog(sql: Sql) {
       grantVaultSynced = true;
     } catch (err) {
       console.error("[grants] vault pass failed", err);
-      grantVaultSynced = true;
     }
   }
+  await syncLiveCounts(sql);
+}
+
+async function syncLiveCounts(sql: Sql) {
+  await sql`
+    update ladders l set
+      collectors_count = (
+        select count(distinct u.user_id)::int from unlocks u where u.ladder_id = l.id
+      ),
+      climax_collectors = (
+        select count(distinct u.user_id)::int
+        from unlocks u
+        join shots s on s.id = u.shot_id
+        where u.ladder_id = l.id and s.is_climax
+      )
+  `;
 }
 
 export async function ensureProfile(sql: Sql, userId: string) {
@@ -151,15 +166,50 @@ export async function ensureProfile(sql: Sql, userId: string) {
     select role from profiles where user_id = ${userId}
   `;
   if (existing[0]) return existing[0].role;
-  const admins = await sql<{ c: number }>`
-    select count(*)::int as c from profiles where role = 'admin'
+  await sql`
+    create table if not exists vault_bootstrap (
+      slot text primary key,
+      user_id text not null,
+      claimed_at timestamptz not null default now()
+    )
   `;
-  const role = (admins[0]?.c ?? 0) === 0 ? "admin" : "buyer";
+  const admins = await sql<{ user_id: string }>`
+    select user_id from profiles where role = 'admin' order by created_at asc limit 1
+  `;
+  if (admins[0]) {
+    await sql`
+      insert into vault_bootstrap (slot, user_id)
+      values ('admin_zero', ${admins[0].user_id})
+      on conflict (slot) do nothing
+    `;
+    await sql`
+      insert into profiles (user_id, role) values (${userId}, 'buyer')
+      on conflict (user_id) do nothing
+    `;
+    const saved = await sql<{ role: string }>`select role from profiles where user_id = ${userId}`;
+    return saved[0]?.role ?? "buyer";
+  }
+  const claimed = await sql<{ user_id: string }>`
+    insert into vault_bootstrap (slot, user_id)
+    values ('admin_zero', ${userId})
+    on conflict (slot) do nothing
+    returning user_id
+  `;
+  let role = "buyer";
+  if (claimed[0]?.user_id === userId) {
+    role = "admin";
+  } else {
+    const slot = await sql<{ user_id: string }>`
+      select user_id from vault_bootstrap where slot = 'admin_zero'
+    `;
+    if (slot[0]?.user_id === userId) role = "admin";
+  }
   await sql`
     insert into profiles (user_id, role) values (${userId}, ${role})
     on conflict (user_id) do nothing
   `;
-  return role;
+  const saved = await sql<{ role: string }>`select role from profiles where user_id = ${userId}`;
+  return saved[0]?.role ?? role;
 }
 
 function discountNum(v: string | number) {

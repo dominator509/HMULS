@@ -71,6 +71,7 @@ export type InvoiceView = {
   payMethod?: string | null;
   walletAddress?: string | null;
   txHash?: string | null;
+  paymentReady?: boolean;
 };
 
 export type VaultItem = {

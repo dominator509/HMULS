@@ -141,14 +141,15 @@ export function addictionCta(d: Dials, remaining: number) {
   return "Request the next permission";
 }
 
-export function dropLine(step: number, d: Dials, stored?: string) {
-  if (stored) return stored;
-  const pct = dropOffPct(step);
-  if (d.socialProof < 4 || pct < 30) return "";
-  if (d.fetishHeat >= 7) {
-    return `${pct}% of men leave before this shot. That's why she priced it to sting.`;
+export function dropLine(_step: number, d: Dials, stored?: string) {
+  if (d.socialProof < 4) return "";
+  const raw = (stored || "").trim();
+  if (!raw) return "";
+  if (/^\d+\s*%/.test(raw)) {
+    const rest = raw.replace(/^[^.]*\.\s*/, "").trim();
+    return rest;
   }
-  return `${pct}% of collectors never see this frame.`;
+  return raw;
 }
 
 export function waitingLine(expired: boolean, d: Dials) {
@@ -159,13 +160,13 @@ export function waitingLine(expired: boolean, d: Dials) {
   return "She's waiting on your next yes.";
 }
 
-export function rivalLine(d: Dials, step: number, collectors: number) {
-  if (d.socialProof < 5) return "";
-  const n = Math.max(1, Math.round(collectors * 0.018));
+/** `requestedToday` must be a real event count, not a formula on collectors. */
+export function rivalLine(d: Dials, step: number, requestedToday: number) {
+  if (d.socialProof < 5 || requestedToday < 3) return "";
   if (d.fetishHeat >= 7) {
-    return `${n} other men requested shot ${step} today. She noticed who paused.`;
+    return `${requestedToday} other men requested shot ${step} today. She noticed who paused.`;
   }
-  return `${n} collectors took a shot on this ladder today.`;
+  return `${requestedToday} collectors took a shot on this ladder today.`;
 }
 
 export function endowmentLine(unlocked: number, d: Dials) {

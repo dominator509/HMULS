@@ -107,8 +107,8 @@ export const VAULT_COPY = {
 export const CHECKOUT_COPY = {
   kicker: "Wallet settlement",
   title: "Pay the yes.",
-  sent: "I sent it from another wallet",
-  waiting: "Waiting for confirmations…",
+  sent: "I sent payment — waiting for verification",
+  waiting: "Waiting for chain verification…",
   doneKicker: "Access granted",
   doneTitle: "You've been granted access.",
   giftTitle: "The grant is ready.",

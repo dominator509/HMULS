@@ -56,8 +56,8 @@ export const SEED_LADDERS: SeedLadder[] = [
       "Nine frontal permissions. Gaze, robe, lace, then the private set. She undresses in order because men who rush never see the last close — and she knows that's what you came for.",
     cover: "/media/cover-reveal.jpg",
     sort: 1,
-    collectors: 214,
-    climax: 37,
+    collectors: 0,
+    climax: 0,
     discount: 0.32,
     shots: [
       {
@@ -208,8 +208,8 @@ export const SEED_LADDERS: SeedLadder[] = [
       "Ass worship, sequenced. The look over the shoulder, the drape, then the close studies men replay. She faces away because she can — and because that's the hunger she priced.",
     cover: "/media/cover-curve.jpg",
     sort: 2,
-    collectors: 181,
-    climax: 29,
+    collectors: 0,
+    climax: 0,
     discount: 0.32,
     shots: [
       {
@@ -360,8 +360,8 @@ export const SEED_LADDERS: SeedLadder[] = [
       "Feet, sequenced like a ritual. Heels first, then the extend, then soles. Built for men who already know this is not a side dish — and who will pay to be kept on the floor.",
     cover: "/media/cover-pedestal.jpg",
     sort: 3,
-    collectors: 156,
-    climax: 22,
+    collectors: 0,
+    climax: 0,
     discount: 0.3,
     shots: [
       {

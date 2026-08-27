@@ -7,7 +7,6 @@ import {
   authorizeMessage,
   connectInjected,
   createVaultWallet,
-  demoTxHash,
   detectInjected,
   ensureVaultWallet,
   loadVaultWallet,
@@ -25,11 +24,11 @@ type Phase = "idle" | "connect" | "confirm" | "signing" | "broadcast" | "mined";
 export function PayWallet({
   inv,
   disabled,
-  onPaid,
+  onSubmitted,
 }: {
   inv: InvoiceView;
   disabled?: boolean;
-  onPaid: (info: { method: string; wallet: string; txHash: string }) => Promise<void>;
+  onSubmitted: (info: { method: string; wallet: string; txHash: string }) => Promise<void>;
 }) {
   const injected = useMemo(() => detectInjected(), []);
   const [open, setOpen] = useState(false);
@@ -37,8 +36,6 @@ export function PayWallet({
   const [account, setAccount] = useState<string | null>(null);
   const [method, setMethod] = useState<string>("vault");
   const [phase, setPhase] = useState<Phase>("idle");
-  const [txHash, setTxHash] = useState<string | null>(null);
-  const [confirms, setConfirms] = useState(0);
 
   useEffect(() => {
     setVault(loadVaultWallet());
@@ -90,6 +87,10 @@ export function PayWallet({
 
   async function pay() {
     if (disabled) return;
+    if (!inv.payAddress) {
+      toast.error("Payment address is not configured. Operator must set NOWPayments or a deposit address.");
+      return;
+    }
     const from = account || vault?.eth;
     if (!from) {
       setOpen(true);
@@ -102,22 +103,13 @@ export function PayWallet({
           account,
           authorizeMessage(inv.id, inv.cryptoAmount, inv.asset, inv.payAddress),
         );
-      } else {
-        await new Promise((r) => setTimeout(r, 700));
       }
-      const hash = demoTxHash(inv.id, from);
-      setTxHash(hash);
       setPhase("broadcast");
-      setConfirms(0);
-      await new Promise((r) => setTimeout(r, 450));
-      setConfirms(1);
-      await new Promise((r) => setTimeout(r, 450));
-      setConfirms(2);
+      await onSubmitted({ method, wallet: from, txHash: "" });
       setPhase("mined");
-      await onPaid({ method, wallet: from, txHash: hash });
     } catch (err) {
       setPhase("confirm");
-      toast.error(err instanceof Error ? err.message : "Signature rejected.");
+      toast.error(err instanceof Error ? err.message : "Could not record payment.");
     }
   }
 
@@ -135,7 +127,7 @@ export function PayWallet({
             <p className="mt-1 font-display text-2xl text-fg">
               {inv.cryptoAmount} {inv.asset}
             </p>
-            <p className="text-sm text-muted">One tap from a connected wallet.</p>
+            <p className="text-sm text-muted">Send to the invoice address. Access grants after verification.</p>
           </div>
           <Wallet className="size-5 text-gold" />
         </div>
@@ -155,12 +147,8 @@ export function PayWallet({
 
         {phase === "signing" || phase === "broadcast" || phase === "mined" ? (
           <div className="mt-5 space-y-2 text-sm">
-            <Step done={phase !== "signing"} label={phase === "signing" ? "Waiting on signature…" : "Signed"} />
-            <Step done={confirms >= 1} label={confirms >= 1 ? "Broadcast" : "Broadcasting…"} />
-            <Step done={confirms >= 2} label={confirms >= 2 ? "2 confirmations" : `${confirms}/2 confirmations`} />
-            {txHash ? (
-              <p className="break-all font-mono text-xs text-subtle">{txHash}</p>
-            ) : null}
+            <Step done={phase !== "signing"} label={phase === "signing" ? "Authorizing…" : "Recorded"} />
+            <Step done={phase === "mined" || phase === "broadcast"} label="Waiting for chain verification" />
           </div>
         ) : null}
 
@@ -182,7 +170,7 @@ export function PayWallet({
                 ? "Confirm in wallet…"
                 : phase === "broadcast"
                   ? "Waiting on chain…"
-                  : `Pay ${inv.cryptoAmount} ${inv.asset}`}
+                  : `Send ${inv.cryptoAmount} ${inv.asset}`}
             </Button>
           )}
           {connected ? (
@@ -237,7 +225,8 @@ export function PayWallet({
               </Button>
             ) : null}
             <p className="mt-4 text-xs text-subtle">
-              Demo vault signs a grant authorization. Production broadcasts to the invoice address via WalletConnect / NOWPayments.
+              A wallet signature is not payment. The grant waits for a verified
+              on-chain payment (NOWPayments IPN) or an operator grant.
             </p>
           </div>
         </Overlay>

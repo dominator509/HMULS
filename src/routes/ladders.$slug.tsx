@@ -222,7 +222,7 @@ function LadderPage() {
   const story = next ? next.story || fallbackStory(ladder.theme, next.stepIndex) : "";
   const sting = next ? dropLine(next.stepIndex, dials, next.dropLine) : "";
   const also = alsoUnlocked(ladder.slug);
-  const rival = next ? rivalLine(dials, next.stepIndex, ladder.collectorsCount) : "";
+  const rival = next ? rivalLine(dials, next.stepIndex, 0) : "";
   const endowed = endowmentLine(progress.unlockedCount, dials);
   const recover = recoveryLine(dials, bump, pressure.expired);
   const whisper = next
@@ -498,7 +498,7 @@ function LadderPage() {
                 {sting ? <p className="mt-3 text-xs text-blood">{sting}</p> : null}
                 {dials.socialProof >= 4 ? (
                   <p className="mt-3 text-xs text-subtle">
-                    Collectors who took this yes also opened {also}.
+                    Parallel hunger: {also}.
                   </p>
                 ) : null}
                 {recover ? (

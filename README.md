@@ -16,7 +16,16 @@ cp .env.example .env
 npm run dev
 ```
 
-Operator: first signed-in account is admin. Studio and Theme live under Admin.
+Operator: first signed-in account is admin (atomic bootstrap). Studio and Theme live under Ops.
+
+## Payments
+
+The browser cannot grant access. A buyer invoice stays `confirming` until:
+
+- NOWPayments IPN verifies `x-nowpayments-sig` (HMAC-SHA512), or
+- an operator grants the invoice from checkout (preview / exception)
+
+Set `NOWPAYMENTS_IPN_SECRET` before taking public payment. Complete Ops → Legal (entity, address, contact) or only the operator can open invoices.
 
 ## Do not commit
 

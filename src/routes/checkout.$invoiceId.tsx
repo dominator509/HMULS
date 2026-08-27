@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { confirmInvoice, getInvoice } from "@/lib/server/purchases";
-import { getLadderBySlug, getMyUnlocks, listLadders } from "@/lib/server/catalog";
+import { confirmInvoice, getInvoice, operatorGrantInvoice } from "@/lib/server/purchases";
+import { getLadderBySlug, getMyRole, getMyUnlocks, listLadders } from "@/lib/server/catalog";
 import { getPsychology } from "@/lib/server/transporter";
 import type { InvoiceView } from "@/lib/types";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -39,6 +39,7 @@ function CheckoutPage() {
   const [dials, setDials] = useState<Dials>(DEFAULT_DIALS);
   const [surfaces, setSurfaces] = useState<Surfaces>(() => fallbackSurfaces(DEFAULT_DIALS));
   const [licenseOk, setLicenseOk] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     setClock(0);
@@ -54,6 +55,13 @@ function CheckoutPage() {
       })
       .catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    getMyRole()
+      .then((r) => setIsAdmin(r.role === "admin"))
+      .catch(() => setIsAdmin(false));
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -96,7 +104,7 @@ function CheckoutPage() {
   void clock;
   const clockLabel = clock == null ? null : remainingLabel(inv.expiresAt);
 
-  async function settle(info?: { method: string; wallet: string; txHash: string }) {
+  async function markSent(info?: { method: string; wallet: string; txHash: string }) {
     setPhase("wait");
     try {
       const res = await confirmInvoice({
@@ -107,14 +115,47 @@ function CheckoutPage() {
           txHash: info?.txHash,
         },
       });
-      setGiftCode(res.giftCode);
-      setPhase("done");
-      toast.success("Access granted.");
+      if (res.settled) {
+        setGiftCode(res.giftCode);
+        setPhase("done");
+        toast.success("Access granted.");
+        return;
+      }
+      toast.message("Payment recorded. Access grants after verification.");
     } catch (err) {
       setPhase("pay");
-      toast.error(err instanceof Error ? err.message : "Confirmation failed.");
+      toast.error(err instanceof Error ? err.message : "Could not record payment.");
     }
   }
+
+  async function operatorGrant() {
+    setPhase("wait");
+    try {
+      const res = await operatorGrantInvoice({ data: { id: invoiceId } });
+      setGiftCode(res.giftCode);
+      setPhase("done");
+      toast.success("Operator grant complete.");
+    } catch (err) {
+      setPhase("pay");
+      toast.error(err instanceof Error ? err.message : "Grant failed.");
+    }
+  }
+
+  useEffect(() => {
+    if (phase !== "wait" || !user) return;
+    const t = window.setInterval(() => {
+      getInvoice({ data: { id: invoiceId } })
+        .then((row) => {
+          if (row?.status === "paid") {
+            setInv(row);
+            setGiftCode(row.giftCode);
+            setPhase("done");
+          }
+        })
+        .catch(() => undefined);
+    }, 4000);
+    return () => window.clearInterval(t);
+  }, [phase, invoiceId, user]);
 
   if (phase === "done") {
     return (
@@ -194,7 +235,7 @@ function CheckoutPage() {
         <PayWallet
           inv={inv}
           disabled={phase === "wait" || !licenseOk}
-          onPaid={(info) => settle(info)}
+          onSubmitted={(info) => markSent(info)}
         />
       </div>
 
@@ -206,14 +247,26 @@ function CheckoutPage() {
           variant="ghost"
           size="xl"
           disabled={!licenseOk}
-          onClick={() => void settle()}
+          onClick={() => void markSent()}
         >
           {CHECKOUT_COPY.sent}
         </Button>
       )}
+      {isAdmin ? (
+        <Button
+          className="mt-2"
+          variant="outline"
+          size="xl"
+          disabled={!licenseOk || phase === "wait"}
+          onClick={() => void operatorGrant()}
+        >
+          Operator grant (does not take payment)
+        </Button>
+      ) : null}
       <p className="mt-4 text-center text-xs leading-relaxed text-subtle">
-        Vault wallet and browser-wallet signatures settle the grant here. Production
-        broadcasts the transfer to the invoice address (WalletConnect / NOWPayments IPN).
+        Sending a transaction or signing a message does not unlock. The grant
+        waits for NOWPayments IPN (HMAC) or an operator grant. Configure
+        NOWPAYMENTS_IPN_SECRET before taking public payment.
       </p>
     </div>
   );

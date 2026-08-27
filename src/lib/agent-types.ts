@@ -9,5 +9,3 @@ export type AgentKey = {
   createdAt: string;
   revoked: boolean;
 };
-
-export const PREVIEW_TOKEN = "she_preview_local_agent_key_do_not_use_live";

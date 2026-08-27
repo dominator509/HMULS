@@ -16,10 +16,9 @@ import { ensureLegal, loadEntity, loadModels, regenerateAll } from "./legal";
 import { modelCardPrompt } from "@/lib/legal-templates";
 import { bibleFor, loadMuseBibles } from "./muse-lookup";
 import type { ContentKind, LegalEntity, MuseModel } from "@/lib/legal-types";
-import { PREVIEW_TOKEN, type AgentKey, type KeyScope } from "@/lib/agent-types";
+import { type AgentKey, type KeyScope } from "@/lib/agent-types";
 
 export type { AgentKey, KeyScope };
-export { PREVIEW_TOKEN };
 
 const NEED: Record<string, KeyScope> = {
   health: "read",
@@ -70,19 +69,7 @@ export async function ensureKeys(sql: Sql) {
       created_at timestamptz not null default now()
     )
   `;
-  const n = await sql<{ c: number }>`select count(*)::int as c from api_keys`;
-  if ((n[0]?.c ?? 0) === 0) {
-    await sql`
-      insert into api_keys (id, label, prefix, hash, scope)
-      values (
-        'key_preview',
-        'Preview agent (local only)',
-        ${PREVIEW_TOKEN.slice(0, 12)},
-        ${await hashToken(PREVIEW_TOKEN)},
-        'operator'
-      )
-    `;
-  }
+  await sql`delete from api_keys where id = 'key_preview'`;
   keysReady = true;
 }
 

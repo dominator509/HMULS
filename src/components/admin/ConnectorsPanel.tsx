@@ -6,7 +6,7 @@ import {
   mintApiKey,
   revokeApiKey,
 } from "@/lib/server/agent";
-import { PREVIEW_TOKEN, type AgentKey, type KeyScope } from "@/lib/agent-types";
+import type { AgentKey, KeyScope } from "@/lib/agent-types";
 import { toast } from "sonner";
 
 export function ConnectorsPanel() {
@@ -58,7 +58,8 @@ export function ConnectorsPanel() {
         REST at <span className="text-fg">/api/v1</span> · MCP at{" "}
         <span className="text-fg">/api/mcp</span>. Scopes: read (catalog,
         analytics, legal), write (shots, models, prices), operator (dials,
-        Grok transporter, legal regen).
+        Grok transporter, legal regen). There is no default key. Mint one
+        below; the secret is shown once.
       </p>
       <p className="text-sm">
         <Link to="/connectors" className="text-gold">
@@ -75,11 +76,10 @@ export function ConnectorsPanel() {
       </p>
 
       <section className="panel p-5">
-        <p className="text-xs tracking-[0.18em] text-gold uppercase">Preview key</p>
-        <p className="mt-2 font-mono text-xs break-all text-fg">{PREVIEW_TOKEN}</p>
+        <p className="text-xs tracking-[0.18em] text-gold uppercase">Keys</p>
         <p className="mt-2 text-xs text-subtle">
-          Seeded for this environment so n8n / MCP clients can connect before
-          you mint a real key. Revoke it before a public deploy.
+          A fresh vault starts with zero API keys. Operator mints the first one.
+          Revoked keys stay listed so you can audit.
         </p>
       </section>
 

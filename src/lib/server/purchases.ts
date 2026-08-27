@@ -1,16 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
-import { getSql, type Sql } from "@/lib/db";
+import { getSql, withTransaction, type Sql } from "@/lib/db";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { ensureCatalog, ensureProfile } from "./catalog";
 import { loadDials } from "./transporter";
 import { continueHours, invoiceMinutes, priceBumpPct } from "@/lib/psychology";
-import {
-  CRYPTO_ASSETS,
-  demoAddress,
-  giftCode,
-  invoiceId,
-  usdToCrypto,
-} from "@/lib/crypto";
+import { CRYPTO_ASSETS, giftCode, invoiceId } from "@/lib/crypto";
+import { quoteCrypto, resolvePayAddress } from "./payments";
+import { entityComplete } from "@/lib/legal-types";
+import { ensureLegal, loadEntity } from "./legal";
 import type { CryptoAsset, InvoiceKind, InvoiceView, VaultItem } from "@/lib/types";
 
 let payColsReady = false;
@@ -105,6 +102,7 @@ export const createInvoice = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const sql = await getSql();
     await ensureCatalog(sql);
+    await ensureLegal(sql);
     await ensureProfile(sql, context.userId);
     await ensurePayCols(sql);
 
@@ -115,9 +113,17 @@ export const createInvoice = createServerFn({ method: "POST" })
       id: string;
       title: string;
       bundle_discount: string | number;
-    }>`select id, title, bundle_discount from ladders where id = ${data.ladderId}`;
+      climax_cap: number;
+      climax_collectors: number;
+    }>`select id, title, bundle_discount, climax_cap, climax_collectors from ladders where id = ${data.ladderId}`;
     const ladder = ladders[0];
     if (!ladder) throw new Error("Ladder not found.");
+
+    const entity = await loadEntity(sql);
+    const role = await ensureProfile(sql, context.userId);
+    if (!entityComplete(entity) && role !== "admin") {
+      throw new Error("This vault is not open for payment until the operator completes Ops → Legal.");
+    }
 
     const shots = await resolvePayableShots(
       sql,
@@ -127,6 +133,9 @@ export const createInvoice = createServerFn({ method: "POST" })
       data.shotId,
       data.upsellCount,
     );
+    if (shots.some((s) => s.is_climax) && (ladder.climax_collectors ?? 0) >= (ladder.climax_cap ?? 48)) {
+      throw new Error("Climax grants for this set are closed.");
+    }
     const discount = typeof ladder.bundle_discount === "number"
       ? ladder.bundle_discount
       : Number(ladder.bundle_discount);
@@ -143,8 +152,14 @@ export const createInvoice = createServerFn({ method: "POST" })
       amount = Math.round(amount * (1 + bump / 100));
     }
     const id = invoiceId();
-    const address = demoAddress(id, data.asset);
-    const cryptoAmount = usdToCrypto(amount, data.asset);
+    const cryptoAmount = await quoteCrypto(amount, data.asset);
+    const pay = await resolvePayAddress({
+      invoiceId: id,
+      asset: data.asset,
+      cryptoAmount,
+      amountCents: amount,
+    });
+    const address = pay.address;
     const gift = Boolean(data.isGift);
     const code = gift ? giftCode(id) : null;
     const expiresAt = new Date(Date.now() + invoiceMinutes(dials) * 60_000);
@@ -183,6 +198,7 @@ export const createInvoice = createServerFn({ method: "POST" })
       giftCode: code,
       createdAt: new Date().toISOString(),
       expiresAt: expiresAt.toISOString(),
+      paymentReady: Boolean(address),
     };
     return view;
   });
@@ -244,100 +260,144 @@ export const getInvoice = createServerFn({ method: "GET" })
       giftCode: inv.gift_code,
       createdAt: new Date(inv.created_at).toISOString(),
       expiresAt: inv.expires_at ? new Date(inv.expires_at).toISOString() : null,
+      paymentReady: Boolean(inv.pay_address),
     };
     return view;
   });
 
-async function settleInvoice(sql: Sql, invoiceId: string, userId: string) {
-  const rows = await sql<{
-    id: string;
-    user_id: string;
-    ladder_id: string;
-    kind: string;
-    shot_ids: string;
-    amount_cents: number;
-    status: string;
-    is_gift: boolean;
-    gift_code: string | null;
-    expires_at: string | Date | null;
-  }>`select * from invoices where id = ${invoiceId} and user_id = ${userId}`;
-  const inv = rows[0];
-  if (!inv) throw new Error("Invoice not found.");
-  if (inv.status === "paid") return { already: true as const, giftCode: inv.gift_code };
-  if (inv.status === "expired") throw new Error("This invitation closed.");
-  if (inv.expires_at && Date.now() > new Date(inv.expires_at).getTime()) {
-    await sql`update invoices set status = 'expired' where id = ${inv.id}`;
-    throw new Error("This invitation closed. Request access again.");
-  }
-
-  const ids = parseIds(inv.shot_ids);
+async function grantShots(
+  sql: Sql,
+  opts: {
+    userId: string;
+    ladderId: string;
+    invoiceId: string;
+    ids: string[];
+    gifted: boolean;
+  },
+) {
   const shots = await sql<ShotRow>`
-    select * from shots where ladder_id = ${inv.ladder_id}
+    select * from shots where ladder_id = ${opts.ladderId}
   `;
   const byId = new Map(shots.map((s) => [s.id, s]));
+  const hasClimax = opts.ids.some((id) => byId.get(id)?.is_climax);
+  if (hasClimax) {
+    const cap = await sql<{ id: string }>`
+      update ladders
+      set climax_collectors = climax_collectors + 1
+      where id = ${opts.ladderId}
+        and climax_collectors < climax_cap
+      returning id
+    `;
+    if (!cap[0]) throw new Error("Climax grants for this set are closed.");
+  }
   const prior = await sql<{ c: number }>`
     select count(*)::int as c from unlocks
-    where user_id = ${userId} and ladder_id = ${inv.ladder_id}
+    where user_id = ${opts.userId} and ladder_id = ${opts.ladderId}
   `;
-
-  if (inv.is_gift && inv.gift_code) {
+  for (const shotId of opts.ids) {
+    const shot = byId.get(shotId);
+    if (!shot) continue;
     await sql`
-      insert into gifts (code, from_user_id, ladder_id, shot_ids, invoice_id)
-      values (${inv.gift_code}, ${userId}, ${inv.ladder_id}, ${inv.shot_ids}, ${inv.id})
-      on conflict (code) do nothing
-    `;
-  } else {
-    for (const shotId of ids) {
-      const shot = byId.get(shotId);
-      if (!shot) continue;
-      await sql`
-        insert into unlocks (user_id, shot_id, ladder_id, invoice_id, amount_cents, gifted)
-        values (${userId}, ${shot.id}, ${inv.ladder_id}, ${inv.id}, ${shot.price_cents}, false)
-        on conflict (user_id, shot_id) do nothing
-      `;
-    }
-    const hasClimax = ids.some((id) => byId.get(id)?.is_climax);
-    if ((prior[0]?.c ?? 0) === 0) {
-      await sql`
-        update ladders
-        set collectors_count = collectors_count + 1,
-            climax_collectors = climax_collectors + ${hasClimax ? 1 : 0}
-        where id = ${inv.ladder_id}
-      `;
-    } else if (hasClimax) {
-      await sql`
-        update ladders
-        set climax_collectors = climax_collectors + 1
-        where id = ${inv.ladder_id}
-      `;
-    }
-    const dials = await loadDials(sql);
-    const continueBy = new Date(Date.now() + continueHours(dials) * 3_600_000).toISOString();
-    await sql`
-      insert into collector_pressure (user_id, ladder_id, last_unlock_at, continue_by)
-      values (${userId}, ${inv.ladder_id}, now(), ${continueBy})
-      on conflict (user_id, ladder_id) do update set
-        last_unlock_at = now(),
-        continue_by = ${continueBy}
+      insert into unlocks (user_id, shot_id, ladder_id, invoice_id, amount_cents, gifted)
+      values (
+        ${opts.userId}, ${shot.id}, ${opts.ladderId}, ${opts.invoiceId},
+        ${opts.gifted ? 0 : shot.price_cents}, ${opts.gifted}
+      )
+      on conflict (user_id, shot_id) do nothing
     `;
   }
-
-  await sql`
-    update invoices set status = 'paid', paid_at = now() where id = ${inv.id}
-  `;
-  await sql`
-    insert into events (user_id, ladder_id, kind, meta)
-    values (
-      ${userId}, ${inv.ladder_id}, 'paid',
-      ${JSON.stringify({ invoiceId: inv.id, amount: inv.amount_cents, kind: inv.kind })}
-    )
-  `;
-  if (!inv.is_gift) {
-    const { stampUnlocks } = await import("./stamps");
-    const tx = "tx_hash" in inv ? String((inv as { tx_hash?: string | null }).tx_hash ?? "") : "";
-    await stampUnlocks(sql, userId, ids, inv.id, tx || null);
+  if ((prior[0]?.c ?? 0) === 0) {
+    await sql`
+      update ladders set collectors_count = collectors_count + 1 where id = ${opts.ladderId}
+    `;
   }
-  return { already: false as const, giftCode: inv.gift_code };
+  const dials = await loadDials(sql);
+  const continueBy = new Date(Date.now() + continueHours(dials) * 3_600_000).toISOString();
+  await sql`
+    insert into collector_pressure (user_id, ladder_id, last_unlock_at, continue_by)
+    values (${opts.userId}, ${opts.ladderId}, now(), ${continueBy})
+    on conflict (user_id, ladder_id) do update set
+      last_unlock_at = now(),
+      continue_by = ${continueBy}
+  `;
+  return { ids: opts.ids, byId };
+}
+
+async function settleInvoice(sql: Sql, invoiceId: string, userId: string) {
+  return withTransaction(async (tx) => {
+    const claimed = await tx<{
+      id: string;
+      user_id: string;
+      ladder_id: string;
+      kind: string;
+      shot_ids: string;
+      amount_cents: number;
+      status: string;
+      is_gift: boolean;
+      gift_code: string | null;
+      expires_at: string | Date | null;
+      tx_hash: string | null;
+    }>`
+      update invoices
+      set status = 'settling'
+      where id = ${invoiceId}
+        and user_id = ${userId}
+        and status in ('pending', 'confirming')
+        and (expires_at is null or expires_at > now())
+      returning *
+    `;
+    const inv = claimed[0];
+    if (!inv) {
+      const rows = await tx<{ status: string; gift_code: string | null }>`
+        select status, gift_code from invoices where id = ${invoiceId} and user_id = ${userId}
+      `;
+      const cur = rows[0];
+      if (!cur) throw new Error("Invoice not found.");
+      if (cur.status === "paid") return { already: true as const, settled: true as const, giftCode: cur.gift_code };
+      if (cur.status === "expired") throw new Error("This invitation closed.");
+      throw new Error("This invoice is not ready to settle.");
+    }
+
+    const ids = parseIds(inv.shot_ids);
+    if (inv.is_gift && inv.gift_code) {
+      await tx`
+        insert into gifts (code, from_user_id, ladder_id, shot_ids, invoice_id)
+        values (${inv.gift_code}, ${userId}, ${inv.ladder_id}, ${inv.shot_ids}, ${inv.id})
+        on conflict (code) do nothing
+      `;
+    } else {
+      await grantShots(tx, {
+        userId,
+        ladderId: inv.ladder_id,
+        invoiceId: inv.id,
+        ids,
+        gifted: false,
+      });
+    }
+
+    await tx`
+      update invoices set status = 'paid', paid_at = now() where id = ${inv.id}
+    `;
+    await tx`
+      insert into events (user_id, ladder_id, kind, meta)
+      values (
+        ${userId}, ${inv.ladder_id}, 'paid',
+        ${JSON.stringify({ invoiceId: inv.id, amount: inv.amount_cents, kind: inv.kind })}
+      )
+    `;
+    if (!inv.is_gift) {
+      const { stampUnlocks } = await import("./stamps");
+      await stampUnlocks(tx, userId, ids, inv.id, inv.tx_hash || null);
+    }
+    return { already: false as const, settled: true as const, giftCode: inv.gift_code };
+  });
+}
+
+export async function settleVerifiedInvoice(sql: Sql, invoiceId: string) {
+  const rows = await sql<{ user_id: string }>`select user_id from invoices where id = ${invoiceId}`;
+  const owner = rows[0];
+  if (!owner) throw new Error("Invoice not found.");
+  return settleInvoice(sql, invoiceId, owner.user_id);
 }
 
 export const confirmInvoice = createServerFn({ method: "POST" })
@@ -353,23 +413,57 @@ export const confirmInvoice = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const sql = await getSql();
     await ensurePayCols(sql);
-    if (data.method || data.wallet || data.txHash) {
-      await sql`
-        update invoices
-        set pay_method = ${data.method ?? null},
-            wallet_address = ${data.wallet ?? null},
-            tx_hash = ${data.txHash ?? null},
-            status = 'confirming'
-        where id = ${data.id} and user_id = ${context.userId} and status = 'pending'
+    const bumped = await sql<{ id: string; gift_code: string | null; status: string }>`
+      update invoices
+      set pay_method = coalesce(${data.method ?? null}, pay_method),
+          wallet_address = coalesce(${data.wallet ?? null}, wallet_address),
+          tx_hash = coalesce(${data.txHash ?? null}, tx_hash),
+          status = 'confirming'
+      where id = ${data.id} and user_id = ${context.userId} and status = 'pending'
+      returning id, gift_code, status
+    `;
+    const row = bumped[0];
+    if (!row) {
+      const cur = await sql<{ status: string; gift_code: string | null }>`
+        select status, gift_code from invoices where id = ${data.id} and user_id = ${context.userId}
       `;
-    } else {
-      await sql`
-        update invoices set status = 'confirming'
-        where id = ${data.id} and user_id = ${context.userId} and status = 'pending'
-      `;
+      if (!cur[0]) throw new Error("Invoice not found.");
+      if (cur[0].status === "paid") {
+        return { settled: true as const, already: true as const, giftCode: cur[0].gift_code, status: "paid" as const };
+      }
+      if (cur[0].status === "confirming" || cur[0].status === "settling") {
+        return {
+          settled: false as const,
+          already: false as const,
+          giftCode: cur[0].gift_code,
+          status: "confirming" as const,
+        };
+      }
+      throw new Error("This invoice cannot be confirmed.");
     }
-    const result = await settleInvoice(sql, data.id, context.userId);
-    return result;
+    return {
+      settled: false as const,
+      already: false as const,
+      giftCode: row.gift_code,
+      status: "confirming" as const,
+    };
+  });
+
+export const operatorGrantInvoice = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    const role = await ensureProfile(sql, context.userId);
+    if (role !== "admin") throw new Error("Operator access only.");
+    await ensurePayCols(sql);
+    const owner = await sql<{ user_id: string }>`select user_id from invoices where id = ${data.id}`;
+    if (!owner[0]) throw new Error("Invoice not found.");
+    await sql`
+      update invoices set status = 'confirming'
+      where id = ${data.id} and status = 'pending'
+    `;
+    return settleInvoice(sql, data.id, owner[0].user_id);
   });
 
 export const listVault = createServerFn({ method: "GET" })
@@ -441,40 +535,45 @@ export const redeemGift = createServerFn({ method: "POST" })
     const sql = await getSql();
     await ensureProfile(sql, context.userId);
     const code = data.code.trim().toUpperCase();
-    const rows = await sql<{
-      code: string;
-      from_user_id: string;
-      ladder_id: string;
-      shot_ids: string;
-      invoice_id: string;
-      redeemed_by: string | null;
-    }>`select * from gifts where code = ${code}`;
-    const gift = rows[0];
-    if (!gift) throw new Error("That grant code is not real.");
-    if (gift.redeemed_by) throw new Error("This grant was already claimed.");
-    if (gift.from_user_id === context.userId) {
-      throw new Error("You can't redeem a grant you sent.");
-    }
-    const ids = parseIds(gift.shot_ids);
-    const shots = await sql<ShotRow>`select * from shots where ladder_id = ${gift.ladder_id}`;
-    const byId = new Map(shots.map((s) => [s.id, s]));
-    for (const shotId of ids) {
-      const shot = byId.get(shotId);
-      if (!shot) continue;
-      await sql`
-        insert into unlocks (user_id, shot_id, ladder_id, invoice_id, amount_cents, gifted)
-        values (${context.userId}, ${shot.id}, ${gift.ladder_id}, ${gift.invoice_id}, 0, true)
-        on conflict (user_id, shot_id) do nothing
+    return withTransaction(async (tx) => {
+      const claimed = await tx<{
+        code: string;
+        from_user_id: string;
+        ladder_id: string;
+        shot_ids: string;
+        invoice_id: string;
+      }>`
+        update gifts
+        set redeemed_by = ${context.userId}, redeemed_at = now()
+        where code = ${code}
+          and redeemed_by is null
+          and from_user_id <> ${context.userId}
+        returning code, from_user_id, ladder_id, shot_ids, invoice_id
       `;
-    }
-    await sql`
-      update gifts set redeemed_by = ${context.userId}, redeemed_at = now()
-      where code = ${code}
-    `;
-    const { stampUnlocks } = await import("./stamps");
-    await stampUnlocks(sql, context.userId, ids, gift.invoice_id, null);
-    const lad = await sql<{ slug: string }>`select slug from ladders where id = ${gift.ladder_id}`;
-    return { slug: lad[0]?.slug ?? "", count: ids.length };
+      const gift = claimed[0];
+      if (!gift) {
+        const rows = await tx<{ redeemed_by: string | null; from_user_id: string }>`
+          select redeemed_by, from_user_id from gifts where code = ${code}
+        `;
+        if (!rows[0]) throw new Error("That grant code is not real.");
+        if (rows[0].from_user_id === context.userId) {
+          throw new Error("You can't redeem a grant you sent.");
+        }
+        throw new Error("This grant was already claimed.");
+      }
+      const ids = parseIds(gift.shot_ids);
+      await grantShots(tx, {
+        userId: context.userId,
+        ladderId: gift.ladder_id,
+        invoiceId: gift.invoice_id,
+        ids,
+        gifted: true,
+      });
+      const { stampUnlocks } = await import("./stamps");
+      await stampUnlocks(tx, context.userId, ids, gift.invoice_id, null);
+      const lad = await tx<{ slug: string }>`select slug from ladders where id = ${gift.ladder_id}`;
+      return { slug: lad[0]?.slug ?? "", count: ids.length };
+    });
   });
 
 export const peekGift = createServerFn({ method: "GET" })
