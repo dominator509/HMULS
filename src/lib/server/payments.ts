@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { ipnCanonicalJson, type IpnPayment } from "@/lib/nowpayments";
+import { ipnCanonicalJson, normalizePaymentId, type IpnPayment } from "@/lib/nowpayments";
+import { nowPayCurrency } from "@/lib/crypto";
 import type { CryptoAsset } from "@/lib/types";
 
 export function paymentsLive() {
@@ -58,7 +59,7 @@ export async function createNowpaymentsPayment(opts: {
     body: JSON.stringify({
       price_amount: opts.amountCents / 100,
       price_currency: "usd",
-      pay_currency: opts.asset.toLowerCase(),
+      pay_currency: nowPayCurrency(opts.asset),
       order_id: opts.invoiceId,
       order_description: "SHE UNDRESSES grant",
       ipn_callback_url: ipn,
@@ -76,12 +77,14 @@ export async function createNowpaymentsPayment(opts: {
   if (!res.ok || !body.pay_address || body.payment_id == null) {
     throw new Error(body.message || "NOWPayments did not return a payment.");
   }
+  const paymentId = normalizePaymentId(body.payment_id);
+  if (!paymentId) throw new Error("NOWPayments omitted payment_id.");
   return {
     address: body.pay_address,
     provider: "nowpayments",
-    paymentId: String(body.payment_id),
+    paymentId,
     payAmount: String(body.pay_amount ?? ""),
-    payCurrency: String(body.pay_currency || opts.asset).toLowerCase(),
+    payCurrency: String(body.pay_currency || nowPayCurrency(opts.asset)).toLowerCase(),
     priceAmount: Number(body.price_amount ?? opts.amountCents / 100),
     expiresAt: body.expiration_estimate_date ?? null,
   };

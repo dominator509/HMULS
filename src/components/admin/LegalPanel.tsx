@@ -121,6 +121,13 @@ export function LegalPanel() {
           human performers. P.O. boxes fail 28 C.F.R. Part 75. Stage names fail.
         </p>
       ) : null}
+      {/united states|usa|u\.s\./i.test(`${entity.country} ${entity.jurisdiction}`) ? (
+        <p className="rounded-md border border-gold/40 bg-gold/10 px-4 py-3 text-sm text-fg">
+          NOWPayments merchant terms currently exclude US (and EU/UK) residents
+          and citizens. Do not take live US settlement through NOWPayments until
+          eligibility is confirmed in writing, or switch processors.
+        </p>
+      ) : null}
 
       <section className="rounded-xl border border-border bg-surface p-5">
         <h2 className="font-display text-2xl text-fg">Custodian / entity</h2>

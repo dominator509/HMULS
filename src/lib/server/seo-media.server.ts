@@ -3,6 +3,7 @@ import { constants } from "node:fs";
 import { dirname, extname, resolve } from "node:path";
 import { seoStem } from "@/lib/seo";
 import { containedPublicPath, isInside } from "@/lib/safe-path";
+import { isProductionRuntime } from "@/lib/runtime";
 
 async function realContained(userPath: string) {
   const candidate = containedPublicPath(userPath);
@@ -40,6 +41,15 @@ export async function persistSeoMedia(opts: {
   if (!stem) return opts.srcUrl;
   const destUrl = `/media/${stem}${ext}`;
   if (destUrl === opts.srcUrl) return opts.srcUrl;
+  if (isProductionRuntime()) {
+    try {
+      const dest = containedPublicPath(destUrl);
+      await access(dest, constants.F_OK);
+      return destUrl;
+    } catch {
+      return opts.srcUrl;
+    }
+  }
   let src: string;
   let dest: string;
   try {

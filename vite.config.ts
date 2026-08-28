@@ -1,4 +1,4 @@
-import { readdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Plugin } from "vite";
 import { defineConfig } from "vite";
@@ -11,6 +11,26 @@ import { grokPwaPlugin } from "./scripts/grok-pwa-plugin.mjs";
 // @ts-expect-error JS plugin alongside the TS vite config
 import { appEnvPlugin } from "./scripts/app-env-plugin.mjs";
 import { isMigrationFile } from "./scripts/migration-plan.mjs";
+
+function copyPrivateMediaPlugin(): Plugin {
+  return {
+    name: "copy-private-media",
+    apply: "build",
+    closeBundle() {
+      const src = join(process.cwd(), "private-media");
+      if (!existsSync(src)) return;
+      const serverOut = join(process.cwd(), ".output/server/private-media");
+      mkdirSync(join(process.cwd(), ".output/server"), { recursive: true });
+      cpSync(src, serverOut, { recursive: true });
+      const fnRoot = join(process.cwd(), ".vercel/output/functions");
+      if (!existsSync(fnRoot)) return;
+      for (const ent of readdirSync(fnRoot, { withFileTypes: true })) {
+        if (!ent.isDirectory()) continue;
+        cpSync(src, join(fnRoot, ent.name, "private-media"), { recursive: true });
+      }
+    },
+  };
+}
 
 /** The files `src/lib/db.ts` globs — same directory, same non-recursive scope. */
 function hasGlobbedMigrations(root: string): boolean {
@@ -165,6 +185,7 @@ export default defineConfig(({ command, isPreview }) => ({
     appEnvPlugin(),
     // PWA head + ?install=1 tutorial page; runs before Start/Nitro.
     grokPwaPlugin(),
+    copyPrivateMediaPlugin(),
     tailwindcss(),
     tanstackStart(),
     ...(command === "build" || isPreview

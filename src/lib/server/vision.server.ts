@@ -56,7 +56,32 @@ async function ffmpegStill(input: string) {
 }
 
 async function loadFrameBytes(url: string, mediaType: string): Promise<Buffer> {
-  const { resolveMediaPath } = await import("./stamp.server");
+  const { resolveMediaPath, readPrivateOriginal } = await import("./stamp.server");
+  const privateBytes = await readPrivateOriginal(url).catch(() => null);
+  if (privateBytes) {
+    if (isVideo(url, mediaType)) {
+      const tmp = join(tmpdir(), `see_in_${randomBytes(6).toString("hex")}${extname(url) || ".mp4"}`);
+      await writeFile(tmp, privateBytes);
+      try {
+        return await ffmpegStill(tmp);
+      } finally {
+        await unlink(tmp).catch(() => undefined);
+      }
+    }
+    try {
+      const tmp = join(tmpdir(), `see_in_${randomBytes(6).toString("hex")}.jpg`);
+      await writeFile(tmp, privateBytes);
+      try {
+        return await ffmpegStill(tmp);
+      } catch {
+        return privateBytes;
+      } finally {
+        await unlink(tmp).catch(() => undefined);
+      }
+    } catch {
+      return privateBytes;
+    }
+  }
   const local = resolveMediaPath(url);
   if (local) {
     if (isVideo(url, mediaType)) return ffmpegStill(local);

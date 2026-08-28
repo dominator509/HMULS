@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { describe, it } from "node:test";
-import { ipnCanonicalJson, sortObject } from "./nowpayments.ts";
+import { ipnCanonicalJson, ipnFulfillsInvoice, normalizePaymentId, sortObject } from "./nowpayments.ts";
+import { nowPayCurrency } from "./crypto.ts";
 import { dropLine, rivalLine, DEFAULT_DIALS } from "./psychology.ts";
 
 describe("nowpayments ipn canonicalization", () => {
@@ -12,6 +13,101 @@ describe("nowpayments ipn canonicalization", () => {
     const digest = createHmac("sha512", secret).update(ipnCanonicalJson(body)).digest("hex");
     const again = createHmac("sha512", secret).update(JSON.stringify(sortObject(body))).digest("hex");
     assert.equal(digest, again);
+  });
+});
+
+describe("payment_id normalization", () => {
+  it("treats the provider's JSON number as the stored text id", () => {
+    assert.equal(normalizePaymentId(123456789), "123456789");
+    assert.equal(normalizePaymentId("123456789"), "123456789");
+    assert.equal(normalizePaymentId(null), "");
+  });
+});
+
+describe("ipn economic match", () => {
+  const inv = {
+    id: "inv_1",
+    amountCents: 499,
+    asset: "ETH",
+    payCurrency: "eth",
+    providerPaymentId: "123456789",
+    payAddress: "0xabc",
+  };
+
+  const finished = {
+    payment_id: 123456789 as string | number,
+    payment_status: "finished",
+    order_id: "inv_1",
+    price_amount: 4.99,
+    price_currency: "usd",
+    pay_currency: "eth",
+    pay_amount: 0.001,
+    actually_paid: 0.001,
+    pay_address: "0xabc",
+  };
+
+  it("accepts a finished matching payment with numeric payment_id", () => {
+    const r = ipnFulfillsInvoice(finished, inv);
+    assert.equal(r.ok, true);
+  });
+
+  it("accepts the same id as a string", () => {
+    const r = ipnFulfillsInvoice({ ...finished, payment_id: "123456789" }, inv);
+    assert.equal(r.ok, true);
+  });
+
+  it("fails closed when fulfillment fields are absent", () => {
+    assert.equal(ipnFulfillsInvoice({ payment_status: "finished", order_id: "inv_1" }, inv).ok, false);
+    assert.equal(
+      ipnFulfillsInvoice({ ...finished, payment_id: undefined }, inv).ok,
+      false,
+    );
+    assert.equal(
+      ipnFulfillsInvoice({ ...finished, price_currency: undefined }, inv).ok,
+      false,
+    );
+    assert.equal(
+      ipnFulfillsInvoice({ ...finished, pay_currency: undefined }, inv).ok,
+      false,
+    );
+    assert.equal(
+      ipnFulfillsInvoice({ ...finished, pay_amount: undefined }, inv).ok,
+      false,
+    );
+    assert.equal(
+      ipnFulfillsInvoice({ ...finished, actually_paid: undefined }, inv).ok,
+      false,
+    );
+    assert.equal(
+      ipnFulfillsInvoice({ ...finished, pay_address: undefined }, inv).ok,
+      false,
+    );
+  });
+
+  it("rejects confirming, underpay, wrong asset, wrong order", () => {
+    assert.equal(
+      ipnFulfillsInvoice({ payment_status: "confirmed", order_id: "inv_1", price_amount: 4.99 }, inv).ok,
+      false,
+    );
+    assert.equal(
+      ipnFulfillsInvoice({ ...finished, price_amount: 1.0 }, inv).ok,
+      false,
+    );
+    assert.equal(
+      ipnFulfillsInvoice({ ...finished, pay_currency: "btc" }, inv).ok,
+      false,
+    );
+    assert.equal(
+      ipnFulfillsInvoice({ ...finished, order_id: "inv_other" }, inv).ok,
+      false,
+    );
+  });
+});
+
+describe("USDT network ticker", () => {
+  it("sends USDTERC20, not a generic usdt ticker", () => {
+    assert.equal(nowPayCurrency("USDT"), "usdterc20");
+    assert.equal(nowPayCurrency("ETH"), "eth");
   });
 });
 

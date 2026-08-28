@@ -1,4 +1,5 @@
 import { pendingMigrations } from "../../scripts/migration-plan.mjs";
+import { isProductionRuntime } from "@/lib/runtime";
 
 /** Which database backend is active. */
 export type DbSource = "neon" | "pglite";
@@ -9,6 +10,14 @@ const rawDatabaseUrl =
   typeof process !== "undefined" ? process.env.DATABASE_URL : undefined;
 const databaseUrl =
   rawDatabaseUrl && rawDatabaseUrl.trim() ? rawDatabaseUrl : undefined;
+
+function assertProductionDatabase() {
+  if (isProductionRuntime() && !databaseUrl) {
+    throw new Error(
+      "DATABASE_URL is required in production. Refusing to start on the PGLite preview fallback.",
+    );
+  }
+}
 
 /**
  * Active backend: real **Neon** when `DATABASE_URL` is set (deployed / configured
@@ -189,6 +198,7 @@ async function createSql(): Promise<Sql> {
  * both backends — define tables there, never inline in server functions.
  */
 export function getSql(): Promise<Sql> {
+  assertProductionDatabase();
   sqlPromise ??= createSql().catch((err) => {
     sqlPromise = null; // don't memoize failures — let the next call retry
     throw err;
@@ -264,6 +274,7 @@ export async function getPglite(): Promise<import("@electric-sql/pglite").PGlite
  * module kick it off immediately (see bottom of file).
  */
 export function ensureDbReady(): Promise<void> {
+  assertProductionDatabase();
   if (dbSource !== "pglite") return Promise.resolve();
   return getSql().then(() => undefined);
 }
@@ -273,7 +284,7 @@ export function ensureDbReady(): Promise<void> {
 const globalBoot = globalThis as typeof globalThis & {
   __pgBootstrapPromise__?: Promise<void>;
 };
-if (typeof window === "undefined" && dbSource === "pglite") {
+if (typeof window === "undefined" && dbSource === "pglite" && !isProductionRuntime()) {
   globalBoot.__pgBootstrapPromise__ ??= ensureDbReady().catch((err) => {
     globalBoot.__pgBootstrapPromise__ = undefined;
     console.error("[db] PGLite bootstrap failed:", err);

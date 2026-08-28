@@ -10,8 +10,15 @@ export function bootstrapSecretFromEnv() {
   return (process.env.BOOTSTRAP_SECRET || "").trim();
 }
 
-/** Production Postgres never elects the first random signup. Preview (no DATABASE_URL) may, unless an owner is configured. */
+function productionRuntime() {
+  if (typeof process === "undefined") return false;
+  if (process.env.VERCEL === "1") return true;
+  return process.env.NODE_ENV === "production";
+}
+
+/** Production never elects the first signup. Preview (no DATABASE_URL, not Vercel) may, unless an owner is configured. */
 export function firstUserAdminAllowed() {
+  if (productionRuntime()) return false;
   if (ownerEmailFromEnv() || ownerUserIdFromEnv() || bootstrapSecretFromEnv()) return false;
   return !process.env.DATABASE_URL?.trim();
 }

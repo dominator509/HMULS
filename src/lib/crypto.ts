@@ -6,7 +6,7 @@ export const CRYPTO_ASSETS: {
   network: string;
 }[] = [
   { id: "ETH", name: "Ethereum", network: "Wallet · ERC-20" },
-  { id: "USDT", name: "Tether", network: "Stablecoin" },
+  { id: "USDT", name: "Tether", network: "ERC-20" },
   { id: "SOL", name: "Solana", network: "Phantom" },
   { id: "BTC", name: "Bitcoin", network: "On-chain" },
 ];
@@ -18,6 +18,11 @@ export const DEMO_RATES: Record<CryptoAsset, number> = {
   USDT: 1,
   SOL: 148,
 };
+
+export function nowPayCurrency(asset: CryptoAsset) {
+  if (asset === "USDT") return "usdterc20";
+  return asset.toLowerCase();
+}
 
 export function usdToCrypto(cents: number, asset: CryptoAsset) {
   const usd = cents / 100;
@@ -64,7 +69,7 @@ export function demoAddress(invoiceId: string, asset: CryptoAsset) {
     case "ETH":
       return `0x${hexRepeat(seed, 40)}`;
     case "USDT":
-      return `T${b58(seed, 33)}`;
+      return `0x${hexRepeat(seed, 40)}`;
     case "SOL":
       return b58(seed, 44);
   }

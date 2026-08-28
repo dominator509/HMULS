@@ -9,6 +9,7 @@ import { createNowpaymentsPayment, paymentsLive } from "./payments";
 import { entityComplete } from "@/lib/legal-types";
 import { ensureLegal, loadEntity } from "./legal";
 import { grantVaultReady } from "./catalog";
+import { climaxOccupied, writeClimaxOccupancy } from "./inventory";
 import type { CryptoAsset, InvoiceKind, InvoiceView, VaultItem } from "@/lib/types";
 
 let payColsReady = false;
@@ -146,8 +147,11 @@ export const createInvoice = createServerFn({ method: "POST" })
       data.shotId,
       data.upsellCount,
     );
-    if (shots.some((s) => s.is_climax) && (ladder.climax_collectors ?? 0) >= (ladder.climax_cap ?? 48)) {
-      throw new Error("Climax grants for this set are closed.");
+    if (shots.some((s) => s.is_climax)) {
+      const occupied = await climaxOccupied(sql, data.ladderId);
+      if (occupied >= (ladder.climax_cap ?? 48)) {
+        throw new Error("Climax grants for this set are closed.");
+      }
     }
     const discount = typeof ladder.bundle_discount === "number"
       ? ladder.bundle_discount
@@ -314,14 +318,14 @@ async function grantShots(
   const byId = new Map(shots.map((s) => [s.id, s]));
   const hasClimax = opts.ids.some((id) => byId.get(id)?.is_climax);
   if (hasClimax && !opts.skipClimaxReserve) {
-    const cap = await sql<{ id: string }>`
-      update ladders
-      set climax_collectors = climax_collectors + 1
-      where id = ${opts.ladderId}
-        and climax_collectors < climax_cap
-      returning id
+    await sql`select id from ladders where id = ${opts.ladderId} for update`;
+    const occupied = await climaxOccupied(sql, opts.ladderId);
+    const cap = await sql<{ climax_cap: number }>`
+      select climax_cap from ladders where id = ${opts.ladderId}
     `;
-    if (!cap[0]) throw new Error("Climax grants for this set are closed.");
+    if (occupied >= (cap[0]?.climax_cap ?? 48)) {
+      throw new Error("Climax grants for this set are closed.");
+    }
   }
   const prior = await sql<{ c: number }>`
     select count(*)::int as c from unlocks
@@ -362,6 +366,9 @@ async function grantShots(
       last_unlock_at = now(),
       continue_by = ${continueBy}
   `;
+  if (hasClimax) {
+    await writeClimaxOccupancy(sql, opts.ladderId);
+  }
   return { ids: opts.ids, byId };
 }
 
@@ -415,20 +422,21 @@ async function settleInvoice(
       const byId = new Map(shots.map((s) => [s.id, s]));
       const hasClimax = ids.some((id) => byId.get(id)?.is_climax);
       if (hasClimax) {
-        const cap = await tx<{ id: string }>`
-          update ladders
-          set climax_collectors = climax_collectors + 1
-          where id = ${inv.ladder_id}
-            and climax_collectors < climax_cap
-          returning id
+        await tx`select id from ladders where id = ${inv.ladder_id} for update`;
+        const occupied = await climaxOccupied(tx, inv.ladder_id);
+        const cap = await tx<{ climax_cap: number }>`
+          select climax_cap from ladders where id = ${inv.ladder_id}
         `;
-        if (!cap[0]) throw new Error("Climax grants for this set are closed.");
+        if (occupied >= (cap[0]?.climax_cap ?? 48)) {
+          throw new Error("Climax grants for this set are closed.");
+        }
       }
       await tx`
         insert into gifts (code, from_user_id, ladder_id, shot_ids, invoice_id, reserved_climax)
         values (${inv.gift_code}, ${userId}, ${inv.ladder_id}, ${inv.shot_ids}, ${inv.id}, ${hasClimax})
         on conflict (code) do nothing
       `;
+      if (hasClimax) await writeClimaxOccupancy(tx, inv.ladder_id);
     } else {
       await grantShots(tx, {
         userId,
@@ -450,10 +458,6 @@ async function settleInvoice(
         ${JSON.stringify({ invoiceId: inv.id, amount: inv.amount_cents, kind: inv.kind })}
       )
     `;
-    if (!inv.is_gift) {
-      const { stampUnlocks } = await import("./stamps");
-      await stampUnlocks(tx, userId, ids, inv.id, inv.tx_hash || null);
-    }
     return { already: false as const, settled: true as const, giftCode: inv.gift_code };
   });
 }
@@ -638,8 +642,6 @@ export const redeemGift = createServerFn({ method: "POST" })
         gifted: true,
         skipClimaxReserve: Boolean(gift.reserved_climax),
       });
-      const { stampUnlocks } = await import("./stamps");
-      await stampUnlocks(tx, context.userId, ids, gift.invoice_id, null);
       const lad = await tx<{ slug: string }>`select slug from ladders where id = ${gift.ladder_id}`;
       return { slug: lad[0]?.slug ?? "", count: ids.length };
     });

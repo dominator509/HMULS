@@ -12,6 +12,7 @@ import {
   userIdMatchesOwner,
 } from "@/lib/owner";
 import { timingSafeEqual } from "node:crypto";
+import { climaxOccupied } from "./inventory";
 
 type LadderRow = {
   id: string;
@@ -157,18 +158,18 @@ export async function ensureCatalog(sql: Sql) {
 }
 
 async function syncLiveCounts(sql: Sql) {
-  await sql`
-    update ladders l set
-      collectors_count = (
-        select count(distinct u.user_id)::int from unlocks u where u.ladder_id = l.id
-      ),
-      climax_collectors = (
-        select count(distinct u.user_id)::int
-        from unlocks u
-        join shots s on s.id = u.shot_id
-        where u.ladder_id = l.id and s.is_climax
-      )
-  `;
+  const ladders = await sql<{ id: string }>`select id from ladders`;
+  for (const lad of ladders) {
+    const occupied = await climaxOccupied(sql, lad.id);
+    await sql`
+      update ladders l set
+        collectors_count = (
+          select count(distinct u.user_id)::int from unlocks u where u.ladder_id = l.id
+        ),
+        climax_collectors = ${occupied}
+      where l.id = ${lad.id}
+    `;
+  }
 }
 
 export async function ensureProfile(sql: Sql, userId: string) {
@@ -423,8 +424,6 @@ async function authorizePublicAndGrants(sql: Sql) {
   }>`select id, ladder_id, step_index, title, media_url, media_type, visual_beat, teaser_url from shots`;
   const ladBy = new Map(lads.map((l) => [l.id, l]));
   const keep = new Set<string>(lads.map((l) => l.cover_url));
-  keep.add("/media/hero.jpg");
-  keep.add("/media/portrait.jpg");
   for (const s of shots) {
     const teaserName = (s.teaser_url || "").split("/").pop() || "";
     if (

@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { privateMediaDir, runtimeDataDir, materializeOriginal, readPrivateOriginal } from "./object-store";
 
 const exec = promisify(execFile);
 const FFMPEG = "/usr/local/bin/ffmpeg";
@@ -123,15 +124,15 @@ function publicFile(url: string) {
 }
 
 export function originalsDir() {
-  return join(process.cwd(), "data", "originals");
+  return join(runtimeDataDir(), "originals");
 }
 
 export function stampsDir() {
-  return join(process.cwd(), "data", "stamps");
+  return join(runtimeDataDir(), "stamps");
 }
 
 export function grantsDir() {
-  return join(process.cwd(), "data", "grants");
+  return privateMediaDir();
 }
 
 function under(root: string, file: string) {
@@ -146,12 +147,12 @@ export function resolveMediaPath(mediaUrl: string) {
   if (mediaUrl.startsWith("grant:")) {
     const name = mediaUrl.slice(6).replace(/[^a-zA-Z0-9._-]/g, "");
     if (!name) return null;
-    const full = join(grantsDir(), name);
-    return under(grantsDir(), full) ? full : null;
+    const full = join(privateMediaDir(), name);
+    return under(privateMediaDir(), full) ? full : null;
   }
   if (mediaUrl.startsWith("/grants/")) {
-    const full = join(process.cwd(), "data", mediaUrl.replace(/^\/+/, ""));
-    return under(join(process.cwd(), "data", "grants"), full) ? full : null;
+    const full = join(privateMediaDir(), mediaUrl.replace(/^\/grants\//, ""));
+    return under(privateMediaDir(), full) ? full : null;
   }
   const pub = publicFile(mediaUrl);
   if (pub) return pub;
@@ -160,6 +161,8 @@ export function resolveMediaPath(mediaUrl: string) {
 }
 
 export async function copyOriginal(mediaUrl: string) {
+  const local = await materializeOriginal(mediaUrl);
+  if (local) return local;
   const src = resolveMediaPath(mediaUrl);
   if (!src) return mediaUrl;
   if (mediaUrl.startsWith("grant:")) return src;
@@ -285,4 +288,4 @@ export function isVideoUrl(url: string, mediaType: string) {
   return mediaType === "video" || /\.(mp4|webm|mov)(\?|$)/i.test(url);
 }
 
-export { extname };
+export { extname, materializeOriginal, readPrivateOriginal };

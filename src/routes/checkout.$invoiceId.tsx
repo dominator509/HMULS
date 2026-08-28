@@ -80,6 +80,22 @@ function CheckoutPage() {
       .catch(() => setInv(null));
   }, [invoiceId, user]);
 
+  useEffect(() => {
+    if (phase !== "wait" || !user) return;
+    const t = window.setInterval(() => {
+      getInvoice({ data: { id: invoiceId } })
+        .then((row) => {
+          if (row?.status === "paid") {
+            setInv(row);
+            setGiftCode(row.giftCode);
+            setPhase("done");
+          }
+        })
+        .catch(() => undefined);
+    }, 4000);
+    return () => window.clearInterval(t);
+  }, [phase, invoiceId, user]);
+
   if (isPending) {
     return <div className="px-5 py-24 text-center text-muted">Checking your session…</div>;
   }
@@ -140,22 +156,6 @@ function CheckoutPage() {
       toast.error(err instanceof Error ? err.message : "Grant failed.");
     }
   }
-
-  useEffect(() => {
-    if (phase !== "wait" || !user) return;
-    const t = window.setInterval(() => {
-      getInvoice({ data: { id: invoiceId } })
-        .then((row) => {
-          if (row?.status === "paid") {
-            setInv(row);
-            setGiftCode(row.giftCode);
-            setPhase("done");
-          }
-        })
-        .catch(() => undefined);
-    }, 4000);
-    return () => window.clearInterval(t);
-  }, [phase, invoiceId, user]);
 
   if (phase === "done") {
     return (

@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { readFile, stat } from "node:fs/promises";
 import { getSql } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth/verify.server";
 import { loadStampSettings } from "@/lib/server/stamps";
@@ -52,11 +51,19 @@ export const Route = createFileRoute("/api/media/$shotId")({
         }
 
         const stamp = await import("@/lib/server/stamp.server");
+        const { grantMediaUrl } = await import("@/lib/server/stamps");
         if (settings.stampGrants && !stamp.isVideoUrl(row.media_url, row.media_type)) {
-          const cached = stamp.cachePath(userId, shotId);
+          await grantMediaUrl(sql, {
+            userId,
+            shotId,
+            mediaUrl: row.media_url,
+            mediaType: row.media_type,
+          }).catch((err) => console.error("[media] stamp mint failed", err));
           try {
+            const cached = stamp.cachePath(userId, shotId);
+            const { readFile } = await import("node:fs/promises");
             const bytes = await readFile(cached);
-            return new Response(bytes, {
+            return new Response(new Uint8Array(bytes), {
               headers: {
                 ...ROBOTS,
                 "Content-Type": "image/png",
@@ -68,25 +75,41 @@ export const Route = createFileRoute("/api/media/$shotId")({
           }
         }
 
+        const bytes = await stamp.readPrivateOriginal(row.media_url);
+        if (bytes) {
+          const type = stamp.isVideoUrl(row.media_url, row.media_type)
+            ? "video/mp4"
+            : row.media_url.endsWith(".png")
+              ? "image/png"
+              : "image/jpeg";
+          return new Response(new Uint8Array(bytes), {
+            headers: {
+              ...ROBOTS,
+              "Content-Type": type,
+            },
+          });
+        }
+
         const path = stamp.resolveMediaPath(row.media_url);
         if (!path) return new Response("Media missing.", { status: 404, headers: ROBOTS });
         try {
+          const { readFile, stat } = await import("node:fs/promises");
           await stat(path);
+          const fileBytes = await readFile(path);
+          const type = stamp.isVideoUrl(row.media_url, row.media_type)
+            ? "video/mp4"
+            : path.endsWith(".png")
+              ? "image/png"
+              : "image/jpeg";
+          return new Response(new Uint8Array(fileBytes), {
+            headers: {
+              ...ROBOTS,
+              "Content-Type": type,
+            },
+          });
         } catch {
           return new Response("Media missing.", { status: 404, headers: ROBOTS });
         }
-        const bytes = await readFile(path);
-        const type = stamp.isVideoUrl(row.media_url, row.media_type)
-          ? "video/mp4"
-          : path.endsWith(".png")
-            ? "image/png"
-            : "image/jpeg";
-        return new Response(bytes, {
-          headers: {
-            ...ROBOTS,
-            "Content-Type": type,
-          },
-        });
       },
     },
   },

@@ -1,5 +1,3 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { seoStem } from "@/lib/seo";
 import {
   isModerationStatus,
@@ -383,31 +381,27 @@ export async function imagineGenerateVideo(prompt: string): Promise<ImagineAttem
 }
 
 export async function persistOriginal(bytes: Buffer, id: string, ext = ".jpg") {
-  const dir = join(process.cwd(), "data", "originals");
-  await mkdir(dir, { recursive: true });
+  const { putPrivateOriginal } = await import("./object-store");
   const safeExt = ext.startsWith(".") ? ext : `.${ext}`;
   const name = `${id.replace(/[^a-zA-Z0-9._-]/g, "_")}${safeExt}`;
-  await writeFile(join(dir, name), bytes);
-  return name;
+  return putPrivateOriginal(name, bytes);
 }
 
 export async function persistPublicCover(bytes: Buffer, museSlug: string, title: string) {
+  const { putPublicTeaser } = await import("./object-store");
   const stem = seoStem([museSlug, "00", title]).slice(0, 56);
   const url = `/media/${stem || museSlug}-cover.jpg`;
-  const dest = join(process.cwd(), "public", url.replace(/^\/+/, ""));
-  await mkdir(join(process.cwd(), "public", "media"), { recursive: true });
-  await writeFile(dest, bytes);
-  return url;
+  return putPublicTeaser(url, bytes);
 }
 
 export async function writeAwaitingStill(shotId: string) {
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { readFile, unlink } = await import("node:fs/promises");
   const exec = promisify(execFile);
-  const dir = join(process.cwd(), "data", "originals");
-  await mkdir(dir, { recursive: true });
-  const name = `${shotId.replace(/[^a-zA-Z0-9._-]/g, "_")}.jpg`;
-  const dest = join(dir, name);
+  const tmp = join(tmpdir(), `${shotId.replace(/[^a-zA-Z0-9._-]/g, "_")}.jpg`);
   const args = [
     "-y",
     "-f",
@@ -418,12 +412,15 @@ export async function writeAwaitingStill(shotId: string) {
     "1",
     "-q:v",
     "6",
-    dest,
+    tmp,
   ];
   try {
     await exec(process.env.FFMPEG || "/usr/local/bin/ffmpeg", args, { timeout: 12000 });
   } catch {
     await exec("ffmpeg", args, { timeout: 12000 });
   }
-  return name;
+  const bytes = await readFile(tmp);
+  await unlink(tmp).catch(() => undefined);
+  const { putPrivateOriginal } = await import("./object-store");
+  return putPrivateOriginal(`${shotId.replace(/[^a-zA-Z0-9._-]/g, "_")}.jpg`, bytes);
 }

@@ -86,15 +86,15 @@ async function mintAndStamp(
   `;
   const use = row[0]?.token ?? token;
   if (stampPixels && !stamp.isVideoUrl(opts.mediaUrl, opts.mediaType)) {
-    const src = await stamp.copyOriginal(opts.mediaUrl);
+    const src = await stamp.materializeOriginal(opts.mediaUrl);
     const dest = stamp.cachePath(opts.userId, opts.shotId);
-    try {
-      await stamp.stampStill({ sourcePath: src, destPath: dest, token: use, visible });
-    } catch (err) {
-      console.error("[stamp] still failed", err);
+    if (src) {
+      try {
+        await stamp.stampStill({ sourcePath: src, destPath: dest, token: use, visible });
+      } catch (err) {
+        console.error("[stamp] still failed", err);
+      }
     }
-  } else {
-    await stamp.copyOriginal(opts.mediaUrl);
   }
   return use;
 }

@@ -40,9 +40,10 @@ export const Route = createFileRoute("/api/payments/ipn")({
             asset: string;
             provider_payment_id: string | null;
             pay_address: string | null;
+            pay_currency: string | null;
             status: string;
           }>`
-            select id, amount_cents, asset, provider_payment_id, pay_address, status
+            select id, amount_cents, asset, provider_payment_id, pay_address, pay_currency, status
             from invoices where id = ${orderId}
           `;
           const inv = rows[0];
@@ -51,6 +52,7 @@ export const Route = createFileRoute("/api/payments/ipn")({
             id: inv.id,
             amountCents: inv.amount_cents,
             asset: inv.asset,
+            payCurrency: inv.pay_currency || undefined,
             providerPaymentId: inv.provider_payment_id,
             payAddress: inv.pay_address,
           });

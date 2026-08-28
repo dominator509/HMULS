@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { join } from "node:path";
 import { describe, it } from "node:test";
-import { containedPublicPath, MARKETING_FILES } from "./safe-path.ts";
-import { ipnFulfillsInvoice } from "./nowpayments.ts";
-import { emailMatchesOwner, userIdMatchesOwner, firstUserAdminAllowed } from "./owner.ts";
+import { containedPublicPath, MARKETING_FILES, isMarketingFilename } from "./safe-path.ts";
 import { SEED_LADDERS } from "./catalog-seed.ts";
+
+const ROOT = process.cwd();
 
 describe("containedPublicPath", () => {
   const cwd = "/workspace";
@@ -21,81 +24,56 @@ describe("containedPublicPath", () => {
   });
 });
 
-describe("ipn economic match", () => {
-  const inv = {
-    id: "inv_1",
-    amountCents: 499,
-    asset: "ETH",
-    providerPaymentId: "pay_9",
-    payAddress: "0xabc",
-  };
-  it("accepts a finished matching payment", () => {
-    const r = ipnFulfillsInvoice(
-      {
-        payment_id: "pay_9",
-        payment_status: "finished",
-        order_id: "inv_1",
-        price_amount: 4.99,
-        price_currency: "usd",
-        pay_currency: "eth",
-        pay_amount: 0.001,
-        actually_paid: 0.001,
-        pay_address: "0xabc",
-      },
-      inv,
-    );
-    assert.equal(r.ok, true);
-  });
-  it("rejects confirming, underpay, wrong asset, wrong order", () => {
-    assert.equal(
-      ipnFulfillsInvoice({ payment_status: "confirmed", order_id: "inv_1", price_amount: 4.99 }, inv).ok,
-      false,
-    );
-    assert.equal(
-      ipnFulfillsInvoice(
-        { payment_status: "finished", order_id: "inv_1", price_amount: 1.00, price_currency: "usd" },
-        inv,
-      ).ok,
-      false,
-    );
-    assert.equal(
-      ipnFulfillsInvoice(
-        {
-          payment_status: "finished",
-          order_id: "inv_1",
-          price_amount: 4.99,
-          price_currency: "usd",
-          pay_currency: "btc",
-        },
-        inv,
-      ).ok,
-      false,
-    );
-    assert.equal(
-      ipnFulfillsInvoice(
-        { payment_status: "finished", order_id: "inv_other", price_amount: 4.99, price_currency: "usd" },
-        inv,
-      ).ok,
-      false,
-    );
-  });
-});
+describe("seed paid originals", () => {
+  const shots = SEED_LADDERS.flatMap((l) => l.shots);
 
-describe("owner bootstrap", () => {
-  it("does not treat a random email as owner", () => {
-    assert.equal(emailMatchesOwner("attacker@example.com"), false);
-    assert.equal(userIdMatchesOwner("user_attacker"), false);
-    void firstUserAdminAllowed;
+  it("every published shot uses a grant: URL, never a public /media original", () => {
+    const bad = shots.filter((s) => !s.media.startsWith("grant:"));
+    assert.deepEqual(bad.map((s) => `${s.id}:${s.media}`), []);
   });
-});
 
-describe("seed paid frames vs marketing names", () => {
-  it("vaulting is required whenever a seed shot uses a public marketing filename", () => {
-    const hits = SEED_LADDERS.flatMap((l) =>
-      l.shots.filter((s) => MARKETING_FILES.includes(s.media.split("/").pop() as (typeof MARKETING_FILES)[number])),
+  it("every grant file exists in private-media/", () => {
+    const missing = shots.filter((s) => {
+      const name = s.media.slice("grant:".length);
+      return !existsSync(join(ROOT, "private-media", name));
+    });
+    assert.deepEqual(
+      missing.map((s) => s.media),
+      [],
     );
-    // These must be rewritten to grant: at vault time — isolatePaidFromPublic then
-    // replaces any remaining public bytes. The list is allowed as *source* only.
-    assert.ok(hits.length >= 0);
+  });
+
+  it("no seed shot uses a public marketing filename as the paid original", () => {
+    const hits = shots.filter((s) => {
+      const base = s.media.split("/").pop() || "";
+      return (MARKETING_FILES as readonly string[]).includes(base);
+    });
+    assert.deepEqual(
+      hits.map((s) => `${s.id}:${s.media}`),
+      [],
+    );
+  });
+
+  it("public/media files are not byte-identical to private originals", () => {
+    const priv = new Map<string, string>();
+    for (const name of readdirSync(join(ROOT, "private-media"))) {
+      const buf = readFileSync(join(ROOT, "private-media", name));
+      priv.set(createHash("sha256").update(buf).digest("hex"), name);
+    }
+    const collisions: string[] = [];
+    for (const name of readdirSync(join(ROOT, "public/media"))) {
+      const buf = readFileSync(join(ROOT, "public/media", name));
+      const hash = createHash("sha256").update(buf).digest("hex");
+      const paid = priv.get(hash);
+      if (paid) collisions.push(`${name}=${paid}`);
+    }
+    assert.deepEqual(collisions, []);
+  });
+
+  it("covers are marketing names, not grant originals", () => {
+    for (const lad of SEED_LADDERS) {
+      assert.equal(lad.cover.startsWith("/media/"), true);
+      assert.equal(isMarketingFilename(lad.cover), true);
+    }
   });
 });

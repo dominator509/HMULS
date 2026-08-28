@@ -54,7 +54,7 @@ export const SEED_LADDERS: SeedLadder[] = [
     tagline: "She faces you when you've earned the next yes.",
     description:
       "Nine frontal permissions. Gaze, robe, lace, then the private set. She undresses in order because men who rush never see the last close — and she knows that's what you came for.",
-    cover: "/media/cover-reveal.jpg",
+    cover: "/media/liora-00-the-reveal-cover.jpg",
     sort: 1,
     collectors: 0,
     climax: 0,
@@ -70,7 +70,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "Shot 1 is how she lets tourists in. Shot 2 is where the silk moves. Men who stop at the look never find out if she meant it.",
         drop: "",
-        media: "/media/hero.jpg",
+        media: "grant:rev_1.jpg",
         type: "photo",
         pos: "center top",
         price: P[1],
@@ -85,7 +85,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "A robe that moves is a delay she enjoys watching you fail. Lace is underneath. That's the measurement.",
         drop: "38% of men pay for the look and bounce. She priced Shot 2 so the tourists self-select out.",
-        media: "/media/robe-slip.jpg",
+        media: "grant:rev_2.jpg",
         type: "photo",
         pos: "center",
         price: P[2],
@@ -100,7 +100,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "Lace is not the gift. Lace is the test. She sits down in Shot 4 for men who pass it.",
         drop: "51% never make it past lace. That's not a coincidence. That's a filter.",
-        media: "/media/cover-reveal.jpg",
+        media: "grant:rev_3.jpg",
         type: "photo",
         pos: "center",
         price: P[3],
@@ -115,7 +115,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "Sitting down is a decision. The look she saves comes next — the one she doesn't give men who are still browsing.",
         drop: "61% of collectors never see her sit. They wanted a dump. She doesn't dump.",
-        media: "/media/bed-sit.jpg",
+        media: "grant:rev_4.jpg",
         type: "photo",
         pos: "center 30%",
         price: P[4],
@@ -130,7 +130,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "The look is the status. Motion is rarer. Shot 6 is six seconds she will not reshoot.",
         drop: "70% never get chosen. They left when the price started to sting. You're still here. She noticed.",
-        media: "/media/portrait.jpg",
+        media: "grant:rev_5.jpg",
         type: "photo",
         pos: "center top",
         price: P[5],
@@ -145,7 +145,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "Still frames you can pause. Motion you can't. After this, polite is over. Shot 7 is the last layer that still pretends to be clothing.",
         drop: "78% never see her breathe like this. They bought stills and told themselves that was enough.",
-        media: "/media/robe-clip.mp4",
+        media: "grant:rev_6.mp4",
         type: "video",
         pos: "center",
         price: P[6],
@@ -160,7 +160,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "Polite is a costume. Shot 8 is sheet, skin, no performance. Shot 9 is the close she doesn't give the room.",
         drop: "84% quit before polite ends. That's why the last two frames cost what they cost.",
-        media: "/media/slip-side.jpg",
+        media: "grant:rev_7.jpg",
         type: "photo",
         pos: "center",
         price: P[7],
@@ -175,7 +175,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "You can leave her uncovered and tell yourself you're satisfied. Or you take the last yes — the frontal close 37 men have. The cap is 48.",
         drop: "89% never see the private set. They got shy when it stopped being a tease.",
-        media: "/media/silk-sheet.jpg",
+        media: "grant:rev_8.jpg",
         type: "photo",
         pos: "center 40%",
         price: P[8],
@@ -190,7 +190,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "This is the frame the ladder was built to make inevitable. You didn't buy a nude. You finished a yes.",
         drop: "93% of men who start this ladder never see the last frame. The ones who do don't come back as tourists.",
-        media: "/media/silk-sheet.jpg",
+        media: "grant:rev_9.jpg",
         type: "photo",
         pos: "center bottom",
         price: P[9],
@@ -206,7 +206,7 @@ export const SEED_LADDERS: SeedLadder[] = [
     tagline: "She turns around when you've earned the back.",
     description:
       "Ass worship, sequenced. The look over the shoulder, the drape, then the close studies men replay. She faces away because she can — and because that's the hunger she priced.",
-    cover: "/media/cover-curve.jpg",
+    cover: "/media/liora-00-the-curve-cover.jpg",
     sort: 2,
     collectors: 0,
     climax: 0,
@@ -222,7 +222,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "The face is a courtesy. The back is the product. Shot 2 is silk on a spine — a delay she uses well.",
         drop: "",
-        media: "/media/cover-curve.jpg",
+        media: "grant:crv_1.jpg",
         type: "photo",
         pos: "center 20%",
         price: P[1],
@@ -237,7 +237,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "The drape is her enjoying the wait. Shot 3 is from the small of her back down. That's the line. Stay on it.",
         drop: "38% admit the hunger, then flinch. She priced the drape to catch them.",
-        media: "/media/back-robe.jpg",
+        media: "grant:crv_2.jpg",
         type: "photo",
         pos: "center",
         price: P[2],
@@ -252,7 +252,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "The line is the study. Shot 4 she holds longer for men who don't rush the curve. That's how preferred starts.",
         drop: "51% never stay on the line long enough. They wanted a dump of the ending.",
-        media: "/media/hips.jpg",
+        media: "grant:crv_3.jpg",
         type: "photo",
         pos: "center 30%",
         price: P[3],
@@ -267,7 +267,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "Held is status. Shot 5 is rim light on the worship — the study frame men save.",
         drop: "61% never get a pose held for them. They were still browsing.",
-        media: "/media/cover-curve.jpg",
+        media: "grant:crv_4.jpg",
         type: "photo",
         pos: "center 60%",
         price: P[4],
@@ -282,7 +282,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "The study is still polite. Shot 6 is cropped. No face. She doesn't need to look at you to keep you here.",
         drop: "70% never get the study. They left when the ladder stopped pretending to be a portrait.",
-        media: "/media/back-robe.jpg",
+        media: "grant:crv_5.jpg",
         type: "photo",
         pos: "center 70%",
         price: P[5],
@@ -297,7 +297,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "No face means she's done performing. Shot 7 is the curve without the pose — side-lying, unoffered, rarer.",
         drop: "78% never see her without the performance. They needed the over-the-shoulder to feel safe.",
-        media: "/media/hips.jpg",
+        media: "grant:crv_6.jpg",
         type: "photo",
         pos: "center 55%",
         price: P[6],
@@ -312,7 +312,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "Unoffered is intimacy. Shot 8 is the offered frame — the one men screenshot. She knows. Shot 9 is the close with nothing left to drape.",
         drop: "84% never see her unposed. They wanted the postcard, not the room.",
-        media: "/media/slip-side.jpg",
+        media: "grant:crv_7.jpg",
         type: "photo",
         pos: "center 80%",
         price: P[7],
@@ -327,7 +327,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "Offered is still a pose. Shot 9 is the last close-up of the curve. No robe left to hide behind. 29 men have it. The cap is 48.",
         drop: "89% never get the offer. They stalled when the ladder got expensive on purpose.",
-        media: "/media/cover-curve.jpg",
+        media: "grant:crv_8.jpg",
         type: "photo",
         pos: "bottom",
         price: P[8],
@@ -342,7 +342,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "You didn't buy an ass shot. You finished a climb she designed so stopping would feel stupid.",
         drop: "93% of men who start this ladder never see the last close. The ones who do stop calling it a fetish and start calling it finished.",
-        media: "/media/hips.jpg",
+        media: "grant:crv_9.jpg",
         type: "photo",
         pos: "center bottom",
         price: P[9],
@@ -358,7 +358,7 @@ export const SEED_LADDERS: SeedLadder[] = [
     tagline: "You start at the floor. She lets you stay there.",
     description:
       "Feet, sequenced like a ritual. Heels first, then the extend, then soles. Built for men who already know this is not a side dish — and who will pay to be kept on the floor.",
-    cover: "/media/cover-pedestal.jpg",
+    cover: "/media/liora-00-the-pedestal-cover.jpg",
     sort: 3,
     collectors: 0,
     climax: 0,
@@ -374,7 +374,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "Shoes are a courtesy. Shot 2 she recrosses them. That's not accidental. That's her noticing you stayed on the floor.",
         drop: "",
-        media: "/media/cover-pedestal.jpg",
+        media: "grant:ped_1.jpg",
         type: "photo",
         pos: "center 70%",
         price: P[1],
@@ -389,7 +389,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "Awareness is the product. Shot 3 is one foot toward the lens. A test. Don't flinch.",
         drop: "38% look, then pretend they were here for the face. She priced the recross to drop them.",
-        media: "/media/cover-pedestal.jpg",
+        media: "grant:ped_2.jpg",
         type: "photo",
         pos: "center 85%",
         price: P[2],
@@ -404,7 +404,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "The extend is the interview. Shot 4 is gold on the ankle. She only wears it for the private set.",
         drop: "51% fail the extend. They wanted a tease, not a pedestal.",
-        media: "/media/foot-extend.jpg",
+        media: "grant:ped_3.jpg",
         type: "photo",
         pos: "center 60%",
         price: P[3],
@@ -419,7 +419,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "Jewelry is a private-set signal. Shot 5 is shoes off. Everything before this was a courtesy.",
         drop: "61% never see the anklet. They left while she still had shoes on.",
-        media: "/media/foot-extend.jpg",
+        media: "grant:ped_4.jpg",
         type: "photo",
         pos: "center 80%",
         price: P[4],
@@ -434,7 +434,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "Bare is admission. Shot 6 she holds the foot in frame. No fidgeting. For you. Don't waste it.",
         drop: "70% never get shoes off. They were window-shopping a fetish they wouldn't pay for.",
-        media: "/media/soles.jpg",
+        media: "grant:ped_5.jpg",
         type: "photo",
         pos: "center 40%",
         price: P[5],
@@ -449,7 +449,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "Held still is obedience from her side. Shot 7 is soles. That's why 156 men are on this ladder.",
         drop: "78% never get a foot held still for them. They rushed. She doesn't reward rushing.",
-        media: "/media/foot-extend.jpg",
+        media: "grant:ped_6.jpg",
         type: "photo",
         pos: "bottom",
         price: P[6],
@@ -464,7 +464,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "Soles are the confession. Shot 8 is the study: close, soft, a private inspection. Shot 9 is arch, sole, anklet — the close she doesn't redo.",
         drop: "84% never get soles. They called it a side dish and bounced at heels.",
-        media: "/media/soles.jpg",
+        media: "grant:ped_7.jpg",
         type: "photo",
         pos: "center",
         price: P[7],
@@ -479,7 +479,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "The study is time. Shot 9 is the last close-up. 22 men have it. The cap is 48. She doesn't reshoot an inspection.",
         drop: "89% never get the inspection. They got shy when it got close.",
-        media: "/media/soles.jpg",
+        media: "grant:ped_8.jpg",
         type: "photo",
         pos: "center 20%",
         price: P[8],
@@ -494,7 +494,7 @@ export const SEED_LADDERS: SeedLadder[] = [
         story:
           "You didn't buy feet. You finished a ritual she designed so the floor would feel like a throne.",
         drop: "93% of men who start this ladder never see the last inspection. The ones who do don't pretend it was a side dish.",
-        media: "/media/soles.jpg",
+        media: "grant:ped_9.jpg",
         type: "photo",
         pos: "center bottom",
         price: P[9],
