@@ -65,7 +65,7 @@ export const DEFAULT_ENTITY: LegalEntity = {
   country: "United States",
   contactEmail: "",
   dmcaEmail: "",
-  websiteUrl: "",
+  websiteUrl: "https://sheundresses.com",
 };
 
 export const LIORA_SEED: MuseModel = {

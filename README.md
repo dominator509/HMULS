@@ -8,6 +8,22 @@ This is **not** a clothes-remover. Models are fictional adults. Paid files live 
 
 TanStack Start, Better Auth, PGLite/Postgres, Tailwind v4, xAI Grok + Imagine.
 
+## Public domain
+
+Canonical origin: **https://sheundresses.com** (apex). `www.sheundresses.com` should 301 to the apex.
+
+After the domain is attached to this app's Vercel project:
+
+1. At the registrar, set:
+   - `@` (apex) → `A` `10.0.1.2`
+   - `www` → `CNAME` `cname.vercel-dns.com`
+2. On the host, add both `sheundresses.com` and `www.sheundresses.com`, and redirect www → apex.
+3. Set `BETTER_AUTH_URL=https://sheundresses.com`, `VITE_PUBLIC_HOSTNAME=sheundresses.com`, `PUBLIC_SITE_URL=https://sheundresses.com`.
+4. Set `NOWPAYMENTS_IPN_URL=https://sheundresses.com/api/payments/ipn` once payments are live.
+5. Ops → Legal: Public URL should read `https://sheundresses.com`. Save and regenerate the legal pack. Use `legal@sheundresses.com` / `dmca@sheundresses.com` once those mailboxes exist.
+
+SEO, sitemap, robots, and JSON-LD use that origin. Empty legal `website_url` is filled with the apex on boot.
+
 ## Local
 
 ```bash

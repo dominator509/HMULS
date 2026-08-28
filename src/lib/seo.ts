@@ -3,6 +3,10 @@
 
 export const BRAND = "SHE UNDRESSES";
 
+/** Public apex. Point www at this host and 301 it here. */
+export const CANONICAL_HOST = "sheundresses.com";
+export const CANONICAL_ORIGIN = "https://sheundresses.com";
+
 export const DEFAULT_DESC =
   "Sequential adult photosets. She undresses for you, one paid yes at a time. Not a nudify app. 18+.";
 
@@ -15,13 +19,15 @@ export const BOT_UA =
 export type FaqItem = { q: string; a: string };
 
 export function originOf(websiteUrl?: string | null) {
-  const raw = (websiteUrl || "").trim();
-  if (!raw) return "";
+  const raw =
+    (websiteUrl || "").trim() ||
+    (typeof process !== "undefined" ? process.env.PUBLIC_SITE_URL?.trim() || "" : "");
+  const source = raw || CANONICAL_ORIGIN;
   try {
-    const u = new URL(raw.includes("://") ? raw : `https://${raw}`);
+    const u = new URL(source.includes("://") ? source : `https://${source}`);
     return `${u.protocol}//${u.host}`.replace(/\/$/, "");
   } catch {
-    return "";
+    return CANONICAL_ORIGIN;
   }
 }
 

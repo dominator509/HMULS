@@ -156,6 +156,7 @@ export function LegalPanel() {
                 value={entity[key]}
                 onChange={(e) => setEntity({ ...entity, [key]: e.target.value })}
                 className="field-input"
+                placeholder={key === "websiteUrl" ? "https://sheundresses.com" : undefined}
               />
             </label>
           ))}

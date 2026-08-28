@@ -31,6 +31,7 @@ export function Footer() {
         <div>
           <p className="kicker kicker-accent">18+ · Paid permission</p>
           <p className="mt-3 font-display text-2xl text-fg">SHE UNDRESSES</p>
+          <p className="mt-1 text-xs tracking-[0.14em] text-gold uppercase">sheundresses.com</p>
           <p className="mt-3 max-w-xs text-xs leading-relaxed text-subtle">
             Not a clothes-remover. She undresses FOR you, in order. Synthetic
             performers are fictional adults 21+.

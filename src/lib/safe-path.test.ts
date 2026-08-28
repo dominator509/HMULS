@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 import { containedPublicPath, MARKETING_FILES, isMarketingFilename } from "./safe-path.ts";
 import { SEED_LADDERS } from "./catalog-seed.ts";
+import { CANONICAL_ORIGIN, originOf } from "./seo.ts";
 
 const ROOT = process.cwd();
 
@@ -75,5 +76,13 @@ describe("seed paid originals", () => {
       assert.equal(lad.cover.startsWith("/media/"), true);
       assert.equal(isMarketingFilename(lad.cover), true);
     }
+  });
+});
+
+describe("canonical origin", () => {
+  it("defaults empty legal URL to sheundresses.com", () => {
+    assert.equal(originOf(""), CANONICAL_ORIGIN);
+    assert.equal(originOf("sheundresses.com"), CANONICAL_ORIGIN);
+    assert.equal(originOf("https://sheundresses.com/"), CANONICAL_ORIGIN);
   });
 });

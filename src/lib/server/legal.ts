@@ -143,6 +143,11 @@ export async function ensureLegal(sql: Sql) {
   `;
   await sql`insert into legal_entity (id) values (1) on conflict (id) do nothing`;
   await sql`
+    update legal_entity
+    set website_url = ${DEFAULT_ENTITY.websiteUrl}, updated_at = now()
+    where id = 1 and btrim(coalesce(website_url, '')) = ''
+  `;
+  await sql`
     create table if not exists models (
       id text primary key,
       slug text unique not null,
