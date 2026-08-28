@@ -39,6 +39,8 @@ Owner: set `INITIAL_ADMIN_EMAIL` or claim with `BOOTSTRAP_SECRET`. Preview witho
 - Seed paid originals ship in `private-media/` and are included as Nitro server assets on Vercel. They are never under `public/`.
 - `public/media/` holds teasers and covers only.
 - Forensic stamps and Studio-generated originals need `BLOB_READ_WRITE_TOKEN` (Vercel Blob) in production. `/tmp` is cache only — it is not durable storage.
+- Create the Blob store as **private** (or put vault/stamp objects with `access: "private"`). Paid originals are never public CDN objects. HMAC pathnames are not access control. `/api/media` is the only read path for grants.
+- Marketing teasers under `/media/` may be public Blob objects.
 - `DATABASE_URL` is required in production.
 
 ## Payments
@@ -55,3 +57,25 @@ USDT is modeled as ERC-20 (`usdterc20` on NOWPayments).
 - `.env` — keys
 
 Do commit `private-media/` (paid seed originals) and `public/media/*-tease.jpg` / `*-cover.jpg` (public derivatives only).
+
+## CI
+
+`.github/workflows/ci.yml` runs typecheck, product tests, lint, and a production build on `main` (and on PRs).
+
+This repository is **private**. GitHub-hosted runners therefore need available Actions minutes and a working billing setup. All five runs through `312f122` failed in ~4 seconds with **no steps** because GitHub refused to start a runner:
+
+> The job was not started because recent account payments have failed or your spending limit needs to be increased.
+
+That is not a product-test failure. Fix it at [github.com/settings/billing](https://github.com/settings/billing) (add a payment method and/or raise the Actions spending limit), then re-run the `CI` workflow. Do not treat a red check as a test regression until a runner actually executes `npm test`.
+
+## Branch protection
+
+`main` now blocks force pushes and deletion (classic protection + a `protect-main` ruleset).
+
+Required status checks are **not** on yet on purpose: GitHub is currently refusing to start hosted runners on this private repo (billing / spending limit), so a required `check` would freeze every merge. After [billing](https://github.com/settings/billing) is healthy and a CI run actually executes `npm test`:
+
+1. Repo **Settings → Rules → Rulesets → protect-main**
+2. Add required status check **`check`** (the CI job name)
+3. Optionally require a pull request
+
+Do not require the check while runners still fail in ~4 seconds with no steps.

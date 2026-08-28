@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth/verify.server";
 import { loadStampSettings } from "@/lib/server/stamps";
+import { authorizeMediaGrant } from "@/lib/server/media-access";
 
 const ROBOTS = {
   "X-Robots-Tag": "noindex, nofollow, noimageindex, nosnippet",
@@ -24,31 +25,37 @@ export const Route = createFileRoute("/api/media/$shotId")({
         const row = shot[0];
         if (!row) return new Response("Not found", { status: 404, headers: ROBOTS });
 
-        let userId: string | null = null;
-        if (k) {
-          const st = await sql<{ user_id: string }>`
-            select user_id from media_stamps where token = ${k} and shot_id = ${shotId}
-          `;
-          userId = st[0]?.user_id ?? null;
-        }
-        if (!userId) {
-          const session = await getSessionUser();
-          if (session) {
-            const un = await sql<{ c: number }>`
-              select count(*)::int as c from unlocks
-              where user_id = ${session.id} and shot_id = ${shotId}
-            `;
-            if ((un[0]?.c ?? 0) > 0) userId = session.id;
-            if (!userId) {
+        const grant = await authorizeMediaGrant({
+          shotId,
+          mediaToken: k,
+          lookup: {
+            userIdForStamp: async (token, id) => {
+              const st = await sql<{ user_id: string }>`
+                select user_id from media_stamps where token = ${token} and shot_id = ${id}
+              `;
+              return st[0]?.user_id ?? null;
+            },
+            sessionUser: async () => {
+              const session = await getSessionUser();
+              return session ? { id: session.id } : null;
+            },
+            hasUnlock: async (userId, id) => {
+              const un = await sql<{ c: number }>`
+                select count(*)::int as c from unlocks
+                where user_id = ${userId} and shot_id = ${id}
+              `;
+              return (un[0]?.c ?? 0) > 0;
+            },
+            isAdmin: async (userId) => {
               const { ensureProfile } = await import("@/lib/server/catalog");
-              const role = await ensureProfile(sql, session.id);
-              if (role === "admin") userId = session.id;
-            }
-          }
-        }
-        if (!userId) {
+              return (await ensureProfile(sql, userId)) === "admin";
+            },
+          },
+        });
+        if (!grant.ok) {
           return new Response("Granted collectors only.", { status: 403, headers: ROBOTS });
         }
+        const userId = grant.userId;
 
         const stamp = await import("@/lib/server/stamp.server");
         const { grantMediaUrl } = await import("@/lib/server/stamps");
@@ -59,19 +66,15 @@ export const Route = createFileRoute("/api/media/$shotId")({
             mediaUrl: row.media_url,
             mediaType: row.media_type,
           }).catch((err) => console.error("[media] stamp mint failed", err));
-          try {
-            const cached = stamp.cachePath(userId, shotId);
-            const { readFile } = await import("node:fs/promises");
-            const bytes = await readFile(cached);
-            return new Response(new Uint8Array(bytes), {
+          const cached = await stamp.readStampCache(userId, shotId);
+          if (cached) {
+            return new Response(new Uint8Array(cached), {
               headers: {
                 ...ROBOTS,
                 "Content-Type": "image/png",
                 "Cache-Control": "private, max-age=3600",
               },
             });
-          } catch {
-            /* fall through to original grant */
           }
         }
 

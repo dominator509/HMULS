@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { privateMediaDir, runtimeDataDir, materializeOriginal, readPrivateOriginal } from "./object-store";
+import { privateMediaDir, runtimeDataDir, materializeOriginal, readPrivateOriginal, readRuntimeFile } from "./object-store";
 
 const exec = promisify(execFile);
 const FFMPEG = "/usr/local/bin/ffmpeg";
@@ -282,6 +282,11 @@ function guessExt(bytes: Buffer) {
 
 export function cachePath(userId: string, shotId: string) {
   return join(stampsDir(), userId.replace(/[^a-zA-Z0-9_-]/g, "_"), `${shotId}.png`);
+}
+
+export async function readStampCache(userId: string, shotId: string) {
+  const rel = `stamps/${userId.replace(/[^a-zA-Z0-9_-]/g, "_")}/${shotId}.png`;
+  return readRuntimeFile(rel);
 }
 
 export function isVideoUrl(url: string, mediaType: string) {

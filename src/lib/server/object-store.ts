@@ -3,8 +3,10 @@ import { constants } from "node:fs";
 import { createHmac } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { isProductionRuntime } from "@/lib/runtime";
-import { isInside } from "@/lib/safe-path";
+import { isProductionRuntime } from "../runtime.ts";
+import { isInside } from "../safe-path.ts";
+
+export type BlobAccess = "public" | "private";
 
 export function privateMediaDir() {
   return resolve(process.cwd(), "private-media");
@@ -51,31 +53,76 @@ function blobPathname(kind: "vault" | "stamps" | "media", name: string) {
   return `${kind}/${digest}/${name}`;
 }
 
-async function blobPut(pathname: string, bytes: Buffer, _access: "public" | "private") {
+export function blobWriteOptions(access: BlobAccess) {
+  if (access !== "public" && access !== "private") {
+    throw new Error("Blob access must be public or private.");
+  }
+  return {
+    access,
+    addRandomSuffix: false as const,
+    allowOverwrite: true as const,
+  };
+}
+
+type BlobSdk = {
+  put: (
+    pathname: string,
+    body: Buffer,
+    opts: {
+      access: BlobAccess;
+      token?: string;
+      addRandomSuffix?: boolean;
+      allowOverwrite?: boolean;
+    },
+  ) => Promise<{ url: string; pathname: string }>;
+  get: (
+    pathname: string,
+    opts: { access: BlobAccess; token?: string; useCache?: boolean },
+  ) => Promise<{ statusCode: 200 | 304; stream: ReadableStream<Uint8Array> | null } | null>;
+};
+
+let testBlobSdk: BlobSdk | null = null;
+
+/** Test-only. Throws outside node:test so production cannot swap the Blob client. */
+export function installBlobSdkForTests(sdk: BlobSdk | null) {
+  if (!process.env.NODE_TEST_CONTEXT) {
+    throw new Error("installBlobSdkForTests is only available under node:test.");
+  }
+  testBlobSdk = sdk;
+}
+
+async function loadBlobSdk(): Promise<BlobSdk> {
+  if (testBlobSdk) return testBlobSdk;
+  const mod = await import("@vercel/blob");
+  return { put: mod.put as BlobSdk["put"], get: mod.get as BlobSdk["get"] };
+}
+
+async function blobPut(pathname: string, bytes: Buffer, access: BlobAccess) {
   const token = blobToken();
   if (!token) return null;
-  const { put } = await import("@vercel/blob");
-  const res = await put(pathname, bytes, {
-    access: "public",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    token,
-  });
-  return res.url;
+  const sdk = await loadBlobSdk();
+  const res = await sdk.put(pathname, bytes, { ...blobWriteOptions(access), token });
+  if (access === "private") {
+    // Paid objects are never handed out as CDN URLs. Read via blobRead / get({ access: "private" }).
+    return { access: "private" as const, pathname: res.pathname || pathname, url: null as string | null };
+  }
+  return { access: "public" as const, pathname: res.pathname || pathname, url: res.url };
 }
 
 async function blobRead(kind: "vault" | "stamps" | "media", name: string): Promise<Buffer | null> {
   const token = blobToken();
   if (!token) return null;
   try {
-    const { list } = await import("@vercel/blob");
-    const prefix = blobPathname(kind, name).replace(/\/[^/]+$/, "/");
-    const listed = await list({ prefix, token });
-    const hit = listed.blobs.find((b) => b.pathname.endsWith(`/${name}`) || b.pathname === name);
-    if (!hit) return null;
-    const res = await fetch(hit.url);
-    if (!res.ok) return null;
-    return Buffer.from(await res.arrayBuffer());
+    const sdk = await loadBlobSdk();
+    const pathname = blobPathname(kind, name);
+    const access: BlobAccess = kind === "media" ? "public" : "private";
+    const result = await sdk.get(pathname, {
+      access,
+      token,
+      useCache: kind !== "stamps",
+    });
+    if (!result || result.statusCode !== 200 || !result.stream) return null;
+    return Buffer.from(await new Response(result.stream).arrayBuffer());
   } catch {
     return null;
   }
@@ -113,7 +160,10 @@ export async function putPrivateOriginal(name: string, bytes: Buffer) {
   const key = safeKey(name);
   const token = blobToken();
   if (token) {
-    await blobPut(blobPathname("vault", key), bytes, "private");
+    const stored = await blobPut(blobPathname("vault", key), bytes, "private");
+    if (!stored || stored.access !== "private") {
+      throw new Error("Refusing to persist a paid original without private blob access.");
+    }
     return `grant:${key}`;
   }
   if (isProductionRuntime()) {
@@ -136,8 +186,8 @@ export async function putPublicTeaser(relUrl: string, bytes: Buffer) {
   const name = url.replace(/^\/media\//, "");
   const token = blobToken();
   if (token) {
-    const blobUrl = await blobPut(blobPathname("media", name), bytes, "public");
-    return blobUrl || url;
+    const stored = await blobPut(blobPathname("media", name), bytes, "public");
+    return stored?.url || url;
   }
   if (isProductionRuntime()) {
     throw new Error("Cannot write public teasers on a read-only production filesystem. Commit teasers or set BLOB_READ_WRITE_TOKEN.");
@@ -170,11 +220,22 @@ export async function readRuntimeFile(rel: string): Promise<Buffer | null> {
   return readFileIfInside(root, dest);
 }
 
+function stampRel(userId: string, shotId: string) {
+  return `${userId.replace(/[^a-zA-Z0-9_-]/g, "_")}/${shotId}.png`;
+}
+
 export async function putStampCache(userId: string, shotId: string, bytes: Buffer) {
-  const rel = `stamps/${userId.replace(/[^a-zA-Z0-9_-]/g, "_")}/${shotId}.png`;
+  const rel = `stamps/${stampRel(userId, shotId)}`;
   const token = blobToken();
   if (token) {
-    await blobPut(blobPathname("stamps", `${userId}/${shotId}.png`), bytes, "private").catch(() => undefined);
+    try {
+      const stored = await blobPut(blobPathname("stamps", stampRel(userId, shotId)), bytes, "private");
+      if (stored && stored.access !== "private") {
+        throw new Error("Refusing to cache a stamp that is not private.");
+      }
+    } catch (err) {
+      if (/not private/i.test(String(err))) throw err;
+    }
   }
   return writeRuntimeFile(rel, bytes);
 }
