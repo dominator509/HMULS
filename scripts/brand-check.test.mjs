@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, utimesSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,6 +17,9 @@ import {
 
 const TEMPLATE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SCRIPT = join(TEMPLATE_ROOT, "scripts/brand-check.mjs");
+const OG_SKILL = join(TEMPLATE_ROOT, ".grok/skills/og/SKILL.md");
+const AGENTS_DOC = join(TEMPLATE_ROOT, "AGENTS.md");
+const SANDBOX_DOCS = existsSync(OG_SKILL) && existsSync(AGENTS_DOC);
 
 const GAME_SITE = JSON.stringify({ title: "Wild Race", type: "x:game", card: "custom" });
 const UTILITY_SITE = JSON.stringify({ title: "Invoice" });
@@ -302,9 +305,12 @@ test("cli: a non-game with a compliant card passes", () => {
 });
 
 // --- the prompts are the only enforcement here, so pin them to the code ---
+// App Builder docs are gitignored on the GitHub checkout. Product CI still
+// validates the CLI; these pin tests run in the sandbox where the docs exist.
 
 const readDoc = (rel) => readFileSync(join(TEMPLATE_ROOT, rel), "utf8");
 
+if (SANDBOX_DOCS) {
 test("SKILL.md and AGENTS.md name the marker path and bound this script uses", () => {
   // Prose wraps, so the minute count may straddle a line break.
   const bound = new RegExp(`${OG_PENDING_MAX_AGE_MS / 60_000}\\s+minutes`);
@@ -371,3 +377,4 @@ test("SKILL.md tells the pass to self-check with the flag this CLI accepts", () 
     assert.equal(parseBrandCheckArgs(argv.filter(Boolean)).error, undefined, line);
   }
 });
+}

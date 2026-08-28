@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -505,8 +505,14 @@ test("nitro middleware and its bundled assets exist", () => {
   assert.match(middleware, /install-page\.html\?raw/);
   assert.match(middleware, /virtual:grok-og-identity/);
   readFileSync(join(TEMPLATE_ROOT, "scripts/install-page.html"));
-  readFileSync(join(TEMPLATE_ROOT, "public/__grok/icon-180.png"));
-  readFileSync(join(TEMPLATE_ROOT, "public/__grok/install/styles.css"));
+  const shared = readFileSync(join(TEMPLATE_ROOT, "scripts/grok-pwa-shared.mjs"), "utf8");
+  assert.match(shared, /\/__grok\/icon-180\.png/);
+  assert.match(readFileSync(join(TEMPLATE_ROOT, "scripts/install-page.html"), "utf8"), /\/__grok\/icon-180\.png/);
+  // Binaries live under public/__grok, which is gitignored on the product checkout.
+  const icon = join(TEMPLATE_ROOT, "public/__grok/icon-180.png");
+  const css = join(TEMPLATE_ROOT, "public/__grok/install/styles.css");
+  if (existsSync(icon)) assert.ok(readFileSync(icon).length > 0);
+  if (existsSync(css)) assert.match(readFileSync(css, "utf8"), /\S/);
 });
 
 test("vite plugin bakes og identity as a virtual module", () => {

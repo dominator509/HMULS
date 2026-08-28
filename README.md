@@ -60,22 +60,18 @@ Do commit `private-media/` (paid seed originals) and `public/media/*-tease.jpg` 
 
 ## CI
 
-`.github/workflows/ci.yml` runs typecheck, product tests, lint, and a production build on `main` (and on PRs).
+`.github/workflows/ci.yml` runs typecheck, tests, lint, and a production build on `main` (and on PRs).
 
-This repository is **private**. GitHub-hosted runners therefore need available Actions minutes and a working billing setup. All five runs through `312f122` failed in ~4 seconds with **no steps** because GitHub refused to start a runner:
+Hosted runners start when the repository is **public** (free runner pool) or when a **private** repo has a working [Actions billing](https://github.com/settings/billing) setup (payment method + spending limit). Early private-repo runs failed in ~4 seconds with no steps because GitHub refused to provision a runner — that was billing, not tests.
 
-> The job was not started because recent account payments have failed or your spending limit needs to be increased.
-
-That is not a product-test failure. Fix it at [github.com/settings/billing](https://github.com/settings/billing) (add a payment method and/or raise the Actions spending limit), then re-run the `CI` workflow. Do not treat a red check as a test regression until a runner actually executes `npm test`.
+**Do not leave this repository public.** `private-media/` is the paid seed vault. A public GitHub repo makes those files world-downloadable, independent of `/api/media`. Switch it back to private before any exclusive paid original is unique to this vault, then keep Actions billing healthy so CI still runs.
 
 ## Branch protection
 
-`main` now blocks force pushes and deletion (classic protection + a `protect-main` ruleset).
+`main` blocks force pushes and deletion (classic protection + a `protect-main` ruleset).
 
-Required status checks are **not** on yet on purpose: GitHub is currently refusing to start hosted runners on this private repo (billing / spending limit), so a required `check` would freeze every merge. After [billing](https://github.com/settings/billing) is healthy and a CI run actually executes `npm test`:
+After a CI run on `main` actually executes `npm test` and goes green:
 
 1. Repo **Settings → Rules → Rulesets → protect-main**
 2. Add required status check **`check`** (the CI job name)
 3. Optionally require a pull request
-
-Do not require the check while runners still fail in ~4 seconds with no steps.

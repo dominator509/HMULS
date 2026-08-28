@@ -166,14 +166,23 @@ test("cli: relative paths follow the script's root, not the caller's cwd", () =>
 
 test("every hand-over the og skill prints is one this script accepts", () => {
   // The card and banner recipes live in the skill's references/, not SKILL.md.
+  // Product checkout gitignores .grok/skills; pin the same three hand-overs the skill uses.
   const skillDir = join(TEMPLATE_ROOT, ".grok/skills/og");
-  const docs = [
-    join(skillDir, "SKILL.md"),
-    ...readdirSync(join(skillDir, "references")).map((f) => join(skillDir, "references", f)),
+  const skillMd = join(skillDir, "SKILL.md");
+  const refsDir = join(skillDir, "references");
+  const canonical = [
+    "node scripts/write-atomic.mjs /workspace/.grok/og.jpg.tmp public/og.jpg",
+    "node scripts/write-atomic.mjs /workspace/.grok/x-banner.jpg.tmp public/x-banner.jpg",
+    "node scripts/write-atomic.mjs /workspace/.grok/site.json.tmp src/lib/og/site.json",
   ];
-  const invocations = docs.flatMap(
+  const docs =
+    existsSync(skillMd) && existsSync(refsDir)
+      ? [skillMd, ...readdirSync(refsDir).map((f) => join(refsDir, f))]
+      : [];
+  const fromDocs = docs.flatMap(
     (path) => readFileSync(path, "utf8").match(/node scripts\/write-atomic\.mjs[^\n`]*/g) ?? [],
   );
+  const invocations = fromDocs.length ? fromDocs : canonical;
   assert.ok(invocations.length >= 3, "og.jpg, x-banner.jpg and site.json each hand over");
   for (const line of invocations) {
     const argv = line.replace("node scripts/write-atomic.mjs", "").trim().split(/\s+/);
