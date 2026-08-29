@@ -134,10 +134,10 @@ function CheckoutPage() {
       if (res.settled) {
         setGiftCode(res.giftCode);
         setPhase("done");
-        toast.success("Access granted.");
+        toast.success("Unlocked.");
         return;
       }
-      toast.message("Payment recorded. Access grants after verification.");
+      toast.message("Payment recorded. The shot unlocks after the chain confirms.");
     } catch (err) {
       setPhase("pay");
       toast.error(err instanceof Error ? err.message : "Could not record payment.");
@@ -264,9 +264,9 @@ function CheckoutPage() {
         </Button>
       ) : null}
       <p className="mt-4 text-center text-xs leading-relaxed text-subtle">
-        Sending a transaction or signing a message does not unlock. The grant
+        Sending a transaction or signing a message does not unlock. The shot
         waits for NOWPayments status <span className="text-fg">finished</span>{" "}
-        (HMAC + amount/currency match) or an operator grant. Public checkout
+        (HMAC + amount/currency match) or an operator unlock. Public checkout
         requires API key, IPN secret, and IPN URL.
       </p>
     </div>

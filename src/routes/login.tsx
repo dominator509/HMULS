@@ -120,7 +120,7 @@ function Login() {
               />
             </Field>
             <Button type="submit" size="xl" disabled={busy}>
-              {busy ? "Granting…" : mode === "in" ? AUTH.inCta : AUTH.upCta}
+              {busy ? "Signing in…" : mode === "in" ? AUTH.inCta : AUTH.upCta}
             </Button>
           </form>
 
@@ -153,7 +153,7 @@ function Login() {
           <p className="mt-8 text-center text-xs text-subtle">
             By entering you confirm you are 18 or older.{" "}
             <Link to="/" className="text-muted hover:text-fg">
-              Back to ladders
+              Back to the sets
             </Link>
           </p>
         </div>

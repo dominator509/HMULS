@@ -79,7 +79,7 @@ Operator: ${entityLabel(e)}
 Governing law: ${e.jurisdiction || "Washington, United States"}
 
 ## 1. What this vault is
-${name} is an adults-only sequential unlock vault. Collectors pay (typically in cryptocurrency) to be granted the next shot on a ladder. This is not a clothes-remover, not a "nudify" tool, and not a service that undresses photographs you upload. She undresses FOR the collector, in order.
+${name} is an adults-only sequential unlock vault. Collectors pay (typically in cryptocurrency) to unlock the next shot on a ladder. This is not a clothes-remover, not a "nudify" tool, and not a service that undresses photographs you upload. She undresses FOR the collector, in order.
 
 ## 2. Eligibility
 You must be at least 18 years old (or the age of majority where you live, if higher) to enter, create an account, or pay. By entering you represent that you are not accessing from a jurisdiction where adult material is illegal. We may refuse or close any account.
@@ -390,7 +390,7 @@ ${formatAddress(e)}
 The performer's legal name is not published here. It is in the records. Stage name only is shown to collectors.`
 }
 
-## What collectors are granted
+## What collectors unlock
 A personal, non-transferable license to view sequential shots on the listed ladders inside this vault, and to keep a private copy for personal viewing only. No copyright. No right to duplicate, edit, share, or distribute. No right to train models. No right to claim ${m.stageName} is a real partner.
 
 ## Operator checklist (auto)

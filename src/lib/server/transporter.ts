@@ -3,6 +3,7 @@ import { getSql, type Sql } from "@/lib/db";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { ensureCatalog, ensureProfile } from "./catalog";
 import { bibleFor } from "./muse-lookup";
+import { COPY_REV } from "@/lib/copy";
 import {
   SURFACE_SYSTEM,
   TRANSPORTER_SYSTEM,
@@ -30,6 +31,10 @@ async function ensureSurfaceColumn(sql: Sql) {
   await sql`
     alter table psychology_dials
     add column if not exists surface_json text not null default ''
+  `;
+  await sql`
+    alter table psychology_dials
+    add column if not exists copy_rev text not null default ''
   `;
   surfaceColumnReady = true;
 }
@@ -62,6 +67,11 @@ export async function loadDials(sql: Sql): Promise<Dials> {
 
 export async function loadSurfaces(sql: Sql, dials: Dials): Promise<Surfaces> {
   await ensureSurfaceColumn(sql);
+  await sql`
+    update psychology_dials
+    set surface_json = '', copy_rev = ${COPY_REV}
+    where id = 1 and copy_rev <> ${COPY_REV}
+  `;
   const rows = await sql<{ surface_json: string }>`
     select surface_json from psychology_dials where id = 1
   `;

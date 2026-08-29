@@ -359,7 +359,7 @@ async function dispatch(sql: Sql, op: string, p: Params): Promise<unknown> {
       const hook = str(p, "tagline") || `${muse.stageName} only opens this set in order.`;
       const tease =
         str(p, "description") ||
-        `${muse.stageName}'s photoset. Nine yeses. She undresses for the man who stays.`;
+        `${muse.stageName}'s photoset. Nine shots. She starts dressed. You pay. One layer comes off.`;
       const coverIn = str(p, "coverUrl") || "/media/portrait.jpg";
       const theme = str(p, "theme") || "frontal";
       const { persistSeoMedia } = await import("./seo-media.server");
@@ -446,7 +446,7 @@ async function dispatch(sql: Sql, op: string, p: Params): Promise<unknown> {
           media_url, object_position, price_cents, is_climax, visual_beat, teaser_url
         ) values (
           ${id}, ${ladderId}, ${step}, ${title}, ${str(p, "tease") || title},
-          ${str(p, "grantCopy") || `You've been granted ${title}.`}, ${mediaType},
+          ${str(p, "grantCopy") || `${title} is unlocked.`}, ${mediaType},
           ${packed.grantUrl}, 'center', ${price}, ${bool(p, "isClimax")},
           ${str(p, "visualBeat")}, ${packed.teaserUrl}
         )
@@ -557,7 +557,7 @@ async function dispatch(sql: Sql, op: string, p: Params): Promise<unknown> {
       const id = str(p, "id") || `mod_${slug}`;
       const bio =
         str(p, "bio") ||
-        `${stageName} is an adult muse on SHE UNDRESSES. Sequential unlock photosets — she undresses in order, one paid yes at a time. Portrayed ${age}+.`;
+        `${stageName} is an adult muse on SHE UNDRESSES. Sequential unlock photosets — she starts dressed, you pay, one layer comes off. Portrayed ${age}+.`;
       await sql`
         insert into models (
           id, slug, stage_name, content_kind, portrayed_age_min, aliases, bio,

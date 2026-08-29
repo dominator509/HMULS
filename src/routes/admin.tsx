@@ -307,7 +307,7 @@ function LadderBlock({
           ladderId: ladder.id,
           title: newTitle,
           tease: newTitle,
-          grantCopy: `You've been granted ${newTitle}.`,
+          grantCopy: `${newTitle} is unlocked.`,
           mediaUrl: newUrl,
           mediaType: newUrl.endsWith(".mp4") ? "video" : "photo",
           priceCents: cents,

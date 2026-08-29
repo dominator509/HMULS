@@ -84,35 +84,35 @@ export function fetishFocus(theme: string, heat: number) {
   const hot = heat >= 7;
   if (theme === "worship") {
     return hot
-      ? "She turned her back on purpose. The curve is the product. Stay looking."
-      : "The back is the study. She knows you're here for it.";
+      ? "She turned her back on purpose. That's the whole product. Stay looking."
+      : "This set is the back. She knows that's why you're here.";
   }
   if (theme === "feet") {
     return hot
-      ? "Start at the floor. Heels, then bare, then soles. She likes you there."
-      : "This ladder is feet, in order. She doesn't rush a man who already knows.";
+      ? "Start at the floor. Heels, then bare, then soles. She likes you looking down."
+      : "This set is feet, in order. She doesn't rush a man who already knows.";
   }
   return hot
-    ? "Frontal, sequenced. Each layer is a yes she can still take back."
-    : "She faces you when you've earned the next yes.";
+    ? "She faces you. Each layer comes off when you pay. Not before."
+    : "She looks at you when you've earned the next shot.";
 }
 
 export function sunkLine(spentCents: number, unlocked: number, d: Dials) {
   if (unlocked === 0) {
     return d.tease >= 6
-      ? "You haven't paid for a yes yet. That's why she still feels optional."
-      : "Shot 1 is the invitation. The rest is the hook.";
+      ? "You haven't bought a shot yet. That's why she still feels optional."
+      : "Shot 1 is the cheap seat. The rest of the set is the hook.";
   }
   if (d.sunkCost >= 8 && unlocked >= 4) {
-    return `You've already been granted ${unlocked}. Walking away mid-undress is how tourists leave.`;
+    return `You've already unlocked ${unlocked} shots. Closing now leaves her mid-strip.`;
   }
   if (d.sunkCost >= 8 && unlocked >= 3) {
-    return `${unlocked} yeses in. She doesn't restart a climb for men who hesitate.`;
+    return `${unlocked} shots in. She doesn't restart a strip for men who hesitate.`;
   }
   if (d.sunkCost >= 5) {
-    return `$${(spentCents / 100).toFixed(2)} already granted. She doesn't rewind.`;
+    return `$${(spentCents / 100).toFixed(2)} already in. She doesn't rewind.`;
   }
-  return `${unlocked} granted. The next one is waiting.`;
+  return `${unlocked} unlocked. The next one is waiting.`;
 }
 
 export function scarcityLine(
@@ -123,22 +123,22 @@ export function scarcityLine(
 ) {
   if (d.scarcity >= 8 && climaxLeft <= 12) {
     return clock
-      ? `${climaxLeft} climax grants left · ${clock}`
-      : `${climaxLeft} climax grants left tonight`;
+      ? `${climaxLeft} last-shot unlocks left · ${clock}`
+      : `${climaxLeft} last-shot unlocks left tonight`;
   }
-  if (d.scarcity >= 5 && clock) return `Invitation window · ${clock}`;
+  if (d.scarcity >= 5 && clock) return `This rate holds for ${clock}`;
   if (d.socialProof >= 5) return `${collectors} collectors already inside`;
   return clock ? clock : `${collectors} collectors`;
 }
 
 export function addictionCta(d: Dials, remaining: number) {
   if (remaining === 1) {
-    return d.fetishHeat >= 7 ? "Take the last yes" : "Request the climax";
+    return d.fetishHeat >= 7 ? "Unlock the last shot" : "Unlock the close";
   }
-  if (remaining === 2 && d.addiction >= 6) return "Two yeses from the end";
-  if (d.addiction >= 8 && remaining >= 3) return "Don't stop on an even number";
-  if (d.addiction >= 6) return "One more yes while she's still in the pose";
-  return "Request the next permission";
+  if (remaining === 2 && d.addiction >= 6) return "Two shots from the nude";
+  if (d.addiction >= 8 && remaining >= 3) return "Don't stop halfway dressed";
+  if (d.addiction >= 6) return "One more while she's still in this pose";
+  return "Unlock the next shot";
 }
 
 export function dropLine(_step: number, d: Dials, stored?: string) {
@@ -154,45 +154,45 @@ export function dropLine(_step: number, d: Dials, stored?: string) {
 
 export function waitingLine(expired: boolean, d: Dials) {
   if (expired && d.urgency >= 5) {
-    return "She stopped holding the pose. Preferred rate is gone.";
+    return "She dropped the pose. The cheaper rate is gone.";
   }
   if (d.urgency >= 7) return "She's holding still. That doesn't last.";
-  return "She's waiting on your next yes.";
+  return "The next shot unlocks when you pay.";
 }
 
 /** `requestedToday` must be a real event count, not a formula on collectors. */
 export function rivalLine(d: Dials, step: number, requestedToday: number) {
   if (d.socialProof < 5 || requestedToday < 3) return "";
   if (d.fetishHeat >= 7) {
-    return `${requestedToday} other men requested shot ${step} today. She noticed who paused.`;
+    return `${requestedToday} other men bought shot ${step} today. She noticed who paused.`;
   }
-  return `${requestedToday} collectors took a shot on this ladder today.`;
+  return `${requestedToday} collectors bought a shot on this set today.`;
 }
 
 export function endowmentLine(unlocked: number, d: Dials) {
   if (unlocked === 0 || d.sunkCost < 4) return "";
-  if (unlocked === 1) return "One yes is a sample. She doesn't count tourists.";
+  if (unlocked === 1) return "One shot is a sample. Samples don't stick.";
   if (d.sunkCost >= 8) {
-    return `${unlocked} yeses. This ladder is already yours. Finish it.`;
+    return `${unlocked} shots in. This set is already yours. Finish it.`;
   }
-  return `${unlocked} granted. She doesn't rewind.`;
+  return `${unlocked} unlocked. She doesn't rewind.`;
 }
 
 export function recoveryLine(d: Dials, bump: number, expired: boolean) {
   if (!expired || bump <= 0) return "";
   if (d.addiction >= 6) {
-    return `Singles jumped +${bump}%. Next 3 still sit at the original rate. That's the sane yes.`;
+    return `Single shots jumped +${bump}%. The next-3 bundle is still at the old rate. That's the smart buy.`;
   }
-  return `Preferred window closed. This shot is +${bump}% now.`;
+  return `The cheaper window closed. This shot is +${bump}% now.`;
 }
 
 export function invoiceUrge(d: Dials, expired: boolean, clock: string | null) {
-  if (expired) return "This invitation died. Request access again — singles may have jumped.";
+  if (expired) return "This invoice died. Open a new one — the single-shot price may have jumped.";
   if (d.urgency >= 8 && clock) {
-    return `She's holding the pose until ${clock}. After that this invoice is ash.`;
+    return `She's holding this pose until ${clock}. After that, this invoice is dead.`;
   }
-  if (d.urgency >= 5 && clock) return `Invitation dies in ${clock}. Send the yes.`;
-  return "Send payment. Confirmation is the grant.";
+  if (d.urgency >= 5 && clock) return `This rate dies in ${clock}. Send payment.`;
+  return "Send payment. When it confirms, the shot unlocks.";
 }
 
 export function whisperLine(
@@ -201,45 +201,47 @@ export function whisperLine(
 ) {
   if (opts.isClimax) {
     return d.scarcity >= 6
-      ? "Last frame. She doesn't reshoot a climax because you got shy."
-      : "The last permission on this ladder.";
+      ? "Last shot. She doesn't reshoot the close because you got cheap."
+      : "The last unlock on this set.";
   }
-  if (opts.isVideo && d.tease >= 6) return "Motion. She only breathed like this once.";
-  if (opts.remaining <= 2 && d.addiction >= 6) return "You're too close to leave her half-open.";
+  if (opts.isVideo && d.tease >= 6) return "This one's moving. Six seconds she only did once.";
+  if (opts.remaining <= 2 && d.addiction >= 6) return "You're too close to leave her half-dressed.";
   return "";
 }
 
 export function fallbackSurfaces(d: Dials): Surfaces {
   return {
-    heroKicker: d.tease >= 7 ? "The Nine-Yes" : "Private sequential sets",
+    heroKicker: d.tease >= 7 ? "Nine shots. You cannot skip." : "Private sequential sets",
     heroHeadline:
-      d.fetishHeat >= 7 ? "She undresses for the man who stays." : "You've been invited.",
+      d.fetishHeat >= 7
+        ? "Watch her take it off. One layer at a time."
+        : "She starts dressed. You pay. Layers come off.",
     heroBody:
       d.addiction >= 7
-        ? "Free porn finishes her before you arrive. That's why nothing hits. Each muse grants nine permissions — paid, in order, each one a yes she can still take back."
-        : "Nine permissions per ladder. Crypto in, the next shot opens. She does not skip.",
+        ? "Free porn flashes the nude and you're already bored. Here she starts dressed. You pay. The robe slips off one shoulder. You pay again. Black lace. Then the bed. Then skin. The last shot is the close-up she only gives men who didn't skip."
+        : "Nine shots per set. Pay, the next layer comes off. You cannot skip to the nude.",
     stickyCta:
       d.addiction >= 8
-        ? "Don't leave her half-open"
+        ? "Don't leave her half-dressed"
         : d.urgency >= 7
           ? "She's still in the pose"
-          : "Request the next yes",
+          : "Unlock the next shot",
     checkoutUrge:
       d.urgency >= 7
-        ? "She's holding the pose until this invoice dies. After that, you request again — at the new rate."
-        : "Send payment to be granted.",
+        ? "She's holding this pose until the invoice dies. After that you start over — at the new rate."
+        : "Send payment to unlock this shot.",
     postGrant:
       d.addiction >= 7
-        ? "You've been granted. The next yes is already cheaper than the feeling of closing this tab."
-        : "Access granted. The next shot is waiting.",
+        ? "Unlocked. The next shot is already cheaper than the feeling of closing this tab."
+        : "Unlocked. The next shot is waiting.",
     unfinished:
       d.sunkCost >= 7
-        ? "You left her mid-undress. She does not hold a pose for tourists."
-        : "Continue where you stopped.",
+        ? "You left her mid-strip. She doesn't hold a pose for men who wander off."
+        : "Pick up where you stopped.",
     loginPromise:
       d.sunkCost >= 6
-        ? "Collectors keep every grant. She remembers who paid — and who left."
-        : "Sign in to keep your vault across devices.",
+        ? "Sign in and every shot you buy stays in your vault. She remembers who paid — and who left."
+        : "Sign in to keep your collection across devices.",
   };
 }
 
@@ -279,39 +281,39 @@ export function fallbackStory(theme: string, step: number) {
   const arcs: Record<string, string[]> = {
     frontal: [
       "",
-      "Shot 1 is how she lets tourists in. Shot 2 is where the silk moves.",
-      "A robe that moves is a delay she enjoys watching you fail. Lace is underneath.",
-      "Lace is the test. She sits down in Shot 4 for men who pass it.",
-      "Sitting down is a decision. The look she saves comes next.",
-      "The look is the status. Motion is rarer. Shot 6 is six seconds she will not reshoot.",
-      "Still frames you can pause. Motion you can't. After this, polite is over.",
-      "Polite is a costume. Shot 8 is the private set. Shot 9 is the close she doesn't give the room.",
-      "You can leave her uncovered and tell yourself you're satisfied. Or you take the last yes.",
-      "This is the frame the ladder was built to make inevitable.",
+      "She's in the doorway. Cream robe still tied. Shot 2 is the first time the silk moves.",
+      "The robe just slipped off one shoulder. Under it: black lace. That's Shot 3.",
+      "Black lace. No smile. She's measuring you. Shot 4 she sits down for men who don't rush.",
+      "She sat on the bed. That's a private room now. Shot 5 is the look she doesn't give a crowd.",
+      "Eye contact. This-is-for-you. Shot 6 is six seconds of the robe moving — not a still.",
+      "You can pause a photo. You can't pause this. After the clip, polite clothing is over.",
+      "The slip is the last layer that still pretends to be clothes. Shot 8 is sheet and skin.",
+      "She's uncovered. You can tell yourself that's enough. Or you take the last close-up.",
+      "This is the nude the whole set was built to make you buy.",
     ],
     worship: [
       "",
-      "The face is a courtesy. The back is the product.",
-      "The drape is her enjoying the wait. Shot 3 is the line. Stay on it.",
-      "The line is the study. Shot 4 she holds longer for men who don't rush.",
-      "Held is status. Shot 5 is the study frame men save.",
-      "The study is still polite. Shot 6 is cropped. No face.",
-      "No face means she's done performing. Shot 7 is the curve without the pose.",
-      "Unoffered is intimacy. Shot 8 is the offered frame. Shot 9 is the close with nothing left to drape.",
-      "Offered is still a pose. Shot 9 is the last close-up of the curve.",
-      "You didn't buy an ass shot. You finished a climb.",
+      "She turned her back. The face was a courtesy. The rest of this set is the curve.",
+      "Silk on her spine. That's a delay, and she knows it. Shot 3 is from the small of her back down.",
+      "Hips. The line. Stay on it. Shot 4 she holds the pose longer if you don't rush.",
+      "She's holding still for you. Shot 5 is rim light on the curve — the frame men save.",
+      "Study light. After this she stops showing you her face. Shot 6 is cropped. Honest.",
+      "No face. She's done performing. Shot 7 is the curve without the pose.",
+      "Side-lying. Unposed. Rarer than an arch. Shot 8 is the frame men screenshot.",
+      "That's the save-frame. Shot 9 is the close-up with nothing left to drape.",
+      "You didn't buy an ass shot. You finished the back.",
     ],
     feet: [
       "",
-      "Shoes are a courtesy. Shot 2 she recrosses them. That's not accidental.",
-      "Awareness is the product. Shot 3 is one foot toward the lens. A test.",
-      "The extend is the interview. Shot 4 is gold on the ankle.",
-      "Jewelry is a private-set signal. Shot 5 is shoes off.",
-      "Bare is admission. Shot 6 she holds the foot in frame. For you.",
-      "Held still is obedience from her side. Shot 7 is soles.",
-      "Soles are the confession. Shot 8 is the study. Shot 9 is the last inspection.",
-      "The study is time. Shot 9 is the last close-up. She doesn't reshoot an inspection.",
-      "You didn't buy feet. You finished a ritual.",
+      "Crossed ankles. Heels. That's how this set always starts. Shot 2 she recrosses them.",
+      "She recrossed. That's not a fidget. Shot 3 is one foot toward the lens.",
+      "One foot out. A test. Men who flinch never get the anklet — and never get bare.",
+      "Gold on the ankle. Private-set jewelry. Shot 5 the shoes come off.",
+      "Shoes off. Heels were a costume. Shot 6 she holds the foot still. For you.",
+      "Held in frame. No fidgeting. Shot 7 is soles — the shot this set exists for.",
+      "Soles. After this, the study. Then the last inspection.",
+      "Close. Soft. She let you look this long. Shot 9 is arch, sole, anklet — held.",
+      "You didn't buy feet. You finished the ritual.",
     ],
   };
   const list = arcs[theme] ?? arcs.frontal;
@@ -323,11 +325,11 @@ export const DIAL_META: {
   label: string;
   hint: string;
 }[] = [
-  { key: "urgency", label: "Urgency", hint: "Deadline length. High = she stops holding the pose sooner. Shortens invoices and preferred windows." },
-  { key: "scarcity", label: "Scarcity", hint: "Climax caps, invitation clocks, last-frame copy." },
+  { key: "urgency", label: "Urgency", hint: "How fast the pose expires. High = shorter invoices and cheaper-rate windows." },
+  { key: "scarcity", label: "Scarcity", hint: "Last-shot caps, countdown clocks, 'when they're gone' copy." },
   { key: "tease", label: "Tease", hint: "How much of the next shot leaks through the blur. High = hungrier preview." },
-  { key: "sunkCost", label: "Sunk cost", hint: "How hard it feels to leave money and yeses on the ladder." },
-  { key: "socialProof", label: "Social proof", hint: "Collector counts, rival lines, drop-off percentages." },
-  { key: "fetishHeat", label: "Fetish heat", hint: "How directly the copy names the ladder's fetish." },
-  { key: "addiction", label: "One-more", hint: "Upsell aggression, expired-rate bump on singles, 'don't stop' CTAs." },
+  { key: "sunkCost", label: "Sunk cost", hint: "How stupid it feels to leave money and shots on the set." },
+  { key: "socialProof", label: "Social proof", hint: "Collector counts, rival lines, drop-off stings." },
+  { key: "fetishHeat", label: "Fetish heat", hint: "How directly the copy names the body this set is built for." },
+  { key: "addiction", label: "One-more", hint: "Upsell aggression, expired-rate bump on singles, don't-stop CTAs." },
 ];

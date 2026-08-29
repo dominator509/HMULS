@@ -33,7 +33,7 @@ export const Route = createFileRoute("/")({
     return headTags({
       title: "SHE UNDRESSES — sequential adult photosets",
       description: names
-        ? `Sequential unlock photosets from ${names}. She undresses for you, one paid permission at a time. 18+.`
+        ? `Sequential unlock photosets from ${names}. She starts dressed. You pay. One layer comes off. 18+.`
         : DEFAULT_DESC,
       path: "/",
       origin,
@@ -109,7 +109,7 @@ function Home() {
       <section className="relative min-h-[82dvh] overflow-hidden">
         <img
           src="/media/hero.jpg"
-          alt="SHE UNDRESSES — she stands in the doorway until you pay for the next yes"
+          alt="SHE UNDRESSES — she stands in the doorway until you pay for the next shot"
           className="absolute inset-0 h-full w-full object-cover object-[center_18%]"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/70 to-bg/25" />
@@ -279,13 +279,13 @@ function Home() {
                       <ProgressBar value={(have / total) * 100} />
                       <div className="flex items-center justify-between text-xs text-subtle">
                         <span>
-                          {have}/{total} granted
+                          {have}/{total} unlocked
                         </span>
                         <span>{formatCompact(lad.collectorsCount)} collectors</span>
                       </div>
                       {dials.scarcity >= 5 && climaxLeft <= 20 ? (
                         <p className="text-xs text-gold">
-                          {climaxLeft} last-frame grants left
+                          {climaxLeft} last-frame unlocks left
                           {window ? ` · ${window}` : ""}
                         </p>
                       ) : null}
@@ -299,7 +299,7 @@ function Home() {
                           {have === 0 ? (
                             <>From {formatUsd(first?.priceCents ?? 0)}</>
                           ) : have === total ? (
-                            "Fully granted"
+                            "Finished"
                           ) : (
                             <>Finish for {formatUsd(bundle)}</>
                           )}
@@ -329,9 +329,9 @@ function Home() {
 
       <section className="border-t border-border">
         <div className="mx-auto max-w-6xl px-5 py-16">
-          <p className="kicker">Fascinations</p>
+          <p className="kicker">{LETTER.fascinationsKicker}</p>
           <h2 className="mt-2 max-w-lg font-display text-3xl text-fg sm:text-4xl">
-            Why the next yes costs what it costs.
+            {LETTER.fascinationsTitle}
           </h2>
           <div className="mt-10 grid gap-8 md:grid-cols-3">
             {LETTER.fascinations.map((f) => (

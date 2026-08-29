@@ -347,7 +347,7 @@ export async function upsertMuseModel(sql: Sql, data: MuseModel): Promise<MuseMo
   }
   const bio =
     data.bio.trim() ||
-    `${data.stageName.trim()} is an adult muse on SHE UNDRESSES. Sequential unlock photosets — she undresses in order, one paid yes at a time. Portrayed ${data.portrayedAgeMin}+.`;
+    `${data.stageName.trim()} is an adult muse on SHE UNDRESSES. Sequential unlock photosets — she starts dressed, you pay, one layer comes off. Portrayed ${data.portrayedAgeMin}+.`;
   await sql`
     insert into models (
       id, slug, stage_name, content_kind, portrayed_age_min, aliases, bio,

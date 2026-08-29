@@ -69,7 +69,7 @@ async function resolvePayableShots(
   `;
   const unlocked = await getUnlockedSet(sql, userId, ladderId);
   const remaining = shots.filter((s) => !unlocked.has(s.id));
-  if (remaining.length === 0) throw new Error("This ladder is already fully granted.");
+  if (remaining.length === 0) throw new Error("This set is already finished.");
 
   if (kind === "shot") {
     const next = remaining[0];

@@ -20,7 +20,7 @@ export function remainingLabel(endsAt: string | Date | null | undefined) {
   if (!endsAt) return null;
   const end = new Date(endsAt).getTime();
   const ms = end - Date.now();
-  if (ms <= 0) return "Invitation closing";
+  if (ms <= 0) return "This rate is expiring";
   const h = Math.floor(ms / 3_600_000);
   const m = Math.floor((ms % 3_600_000) / 60_000);
   const s = Math.floor((ms % 60_000) / 1000);
@@ -32,9 +32,9 @@ export function remainingLabel(endsAt: string | Date | null | undefined) {
 }
 
 export function collectorTier(unlockedCount: number, hasClimax: boolean) {
-  if (hasClimax) return { id: "inner", label: "Inner circle" };
-  if (unlockedCount >= 6) return { id: "preferred", label: "Preferred" };
-  if (unlockedCount >= 3) return { id: "chosen", label: "Chosen" };
-  if (unlockedCount >= 1) return { id: "granted", label: "Granted" };
-  return { id: "invited", label: "Invited" };
+  if (hasClimax) return { id: "inner", label: "Finished the set" };
+  if (unlockedCount >= 6) return { id: "preferred", label: "Deep in" };
+  if (unlockedCount >= 3) return { id: "chosen", label: "In deep" };
+  if (unlockedCount >= 1) return { id: "granted", label: "Started" };
+  return { id: "invited", label: "Looking" };
 }
