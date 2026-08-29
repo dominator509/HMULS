@@ -29,12 +29,12 @@ export function Footer() {
     <footer className="relative z-10 border-t border-border bg-raised/30">
       <div className="mx-auto grid max-w-6xl gap-10 px-5 py-12 sm:grid-cols-3">
         <div>
-          <p className="kicker kicker-accent">18+ · Paid permission</p>
+          <p className="kicker kicker-accent">18+ · Sequential strip</p>
           <p className="mt-3 font-display text-2xl text-fg">SHE UNDRESSES</p>
           <p className="mt-1 text-xs tracking-[0.14em] text-gold uppercase">sheundresses.com</p>
           <p className="mt-3 max-w-xs text-xs leading-relaxed text-subtle">
-            Not a clothes-remover. She undresses FOR you, in order. Synthetic
-            performers are fictional adults 21+.
+            Not a clothes-remover. She starts dressed. You pay. One layer
+            comes off. Synthetic performers are fictional adults 21+.
           </p>
         </div>
         <div>

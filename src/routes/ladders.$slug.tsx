@@ -235,7 +235,7 @@ function LadderPage() {
   const feedLines = [
     ...feed.map((f) =>
       f.kind === "paid"
-        ? `A collector just finished a yes on ${f.ladderTitle}.`
+        ? `A collector just unlocked a shot on ${f.ladderTitle}.`
         : `A collector requested ${f.ladderTitle}.`,
     ),
     rival,
@@ -365,7 +365,7 @@ function LadderPage() {
         <div className="panel mt-6 p-5">
           <div className="flex items-center justify-between gap-3 text-xs text-muted">
             <span>
-              {progress.unlockedCount} of {progress.total} granted
+              {progress.unlockedCount} of {progress.total} unlocked
             </span>
             <span className="tabular-nums text-gold">
               {sunkLine(progress.spentCents, progress.unlockedCount, dials)}
@@ -459,7 +459,7 @@ function LadderPage() {
                     <p className="truncate font-display text-sm text-fg">{shot.title}</p>
                     <p className={`mt-0.5 text-xs ${isNext && bump > 0 ? "text-gold" : "text-muted"}`}>
                       {shot.unlocked
-                        ? "Granted"
+                        ? "Unlocked"
                         : isNext
                           ? formatUsd(nextPrice)
                           : formatUsd(shot.priceCents)}
@@ -498,7 +498,7 @@ function LadderPage() {
                 {sting ? <p className="mt-3 text-xs text-blood">{sting}</p> : null}
                 {dials.socialProof >= 4 ? (
                   <p className="mt-3 text-xs text-subtle">
-                    Parallel hunger: {also}.
+                    She also has: {also}.
                   </p>
                 ) : null}
                 {recover ? (
@@ -545,7 +545,7 @@ function LadderPage() {
               {frame.body}
             </p>
             <Link to="/" className="mt-6 inline-block">
-              <Button variant="gold">Open another ladder</Button>
+              <Button variant="gold">Open another set</Button>
             </Link>
           </div>
         )}

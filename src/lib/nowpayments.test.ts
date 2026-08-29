@@ -114,10 +114,10 @@ describe("USDT network ticker", () => {
 describe("public social proof", () => {
   it("does not invent drop-off percentages", () => {
     const stored =
-      "61% of collectors never see her sit. They wanted a dump. She doesn't dump.";
+      "61% of collectors never see her sit. They wanted the nude dropped on them. She doesn't work that way.";
     const line = dropLine(4, DEFAULT_DIALS, stored);
     assert.equal(line.includes("%"), false);
-    assert.match(line, /dump/i);
+    assert.match(line, /nude/i);
     assert.equal(dropLine(4, DEFAULT_DIALS, ""), "");
   });
 

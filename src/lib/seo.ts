@@ -8,7 +8,7 @@ export const CANONICAL_HOST = "sheundresses.com";
 export const CANONICAL_ORIGIN = "https://sheundresses.com";
 
 export const DEFAULT_DESC =
-  "Sequential adult photosets. She undresses for you, one paid yes at a time. Not a nudify app. 18+.";
+  "Sequential adult photosets. She starts dressed. You pay. One layer comes off. Not a nudify app. 18+.";
 
 export const RTA = "RTA-5042-1996-1400-1577-RTA";
 
@@ -87,7 +87,7 @@ export function authorModelSeo(m: ModelSeoIn) {
       : `${name} is portrayed ${age}+.`;
   const hook = bio || looks || `${name} undresses in order on ${BRAND}.`;
   const description = clipMeta(
-    `${name} sequential unlock photosets on ${BRAND}. ${kindLine} ${hook} She undresses for the collector, one paid permission at a time. Not a clothes-remover. 18+.`,
+    `${name} sequential unlock photosets on ${BRAND}. ${kindLine} ${hook} She starts dressed. You pay. The next layer comes off. Not a clothes-remover. 18+.`,
   );
   const title = clipMeta(`${name} sequential unlock photosets | ${BRAND}`, 60);
   const keywords = [
@@ -110,7 +110,7 @@ export function authorModelSeo(m: ModelSeoIn) {
     },
     {
       q: `How do ${name}'s photosets work?`,
-      a: `Pick a set. Pay for Shot 1. The next still or clip opens only after that yes. Progress saves to the account. Grants are a personal license — no sharing, editing, or redistribution.`,
+      a: `Pick a set. Pay for Shot 1. The next still or clip opens only after that payment. Progress saves to the account. Unlocks are a personal license — no sharing, editing, or redistribution.`,
     },
     {
       q: `Is ${name} 18 or older?`,
@@ -118,7 +118,7 @@ export function authorModelSeo(m: ModelSeoIn) {
     },
     {
       q: `Can I download and share ${name}'s unlocked frames?`,
-      a: `A grant is a personal viewing license. Duplicating, editing, sharing, or distributing unlocked media is prohibited by the Terms. Forensic stamps may identify a leak.`,
+      a: `A personal viewing license. Duplicating, editing, sharing, or distributing unlocked media is prohibited by the Terms. Forensic stamps may identify a leak.`,
     },
   ];
   return { title, description, keywords, faqs, kindLine };
@@ -159,13 +159,13 @@ export function authorLadderSeo(l: LadderSeoIn) {
     {
       q: `What is ${titleName} by ${name}?`,
       a: clipMeta(
-        `${titleName} is ${name}'s ${theme} sequential photoset on ${BRAND}. ${hook || tease || "She undresses in order. Each paid yes opens the next frame."} You cannot skip shots.`,
+        `${titleName} is ${name}'s ${theme} sequential photoset on ${BRAND}. ${hook || tease || "She starts dressed. Each payment peels one layer. You cannot skip."} You cannot skip shots.`,
         280,
       ),
     },
     {
       q: `Can I skip shots in ${titleName}?`,
-      a: `No. ${name} opens ${titleName} in order. Pay for the next yes. Bundle and keep-the-pose offers still climb sequentially — they never jump the climax.`,
+      a: `No. ${name} opens ${titleName} in order. Pay for the next shot. Bundles and next-3 offers still climb sequentially — they never jump the last nude.`,
     },
     {
       q: `Is ${titleName} a nudify or clothes-remover tool?`,
@@ -186,11 +186,11 @@ export function homeFaqs(models: { stageName: string }[]): FaqItem[] {
   return [
     {
       q: `What is ${BRAND}?`,
-      a: `${BRAND} is an adults-only sequential unlock vault. Collectors pay (typically crypto) to be granted the next still or clip. She undresses FOR you, in order. This is not a nudify app, not a clothes-remover, and not a service that undresses uploaded photographs.`,
+      a: `${BRAND} is an adults-only sequential unlock vault. Collectors pay (typically crypto) to unlock the next still or clip. She undresses FOR you, in order. This is not a nudify app, not a clothes-remover, and not a service that undresses uploaded photographs.`,
     },
     {
       q: "How does sequential unlock work?",
-      a: "Pick a muse, pick a photoset, pay for Shot 1. Shot 2 opens. Nine yeses. No skipping. Progress is saved to the account. A grant is a personal license.",
+      a: "Pick a muse, pick a photoset, pay for Shot 1. Shot 2 opens. Nine shots. No skipping. Progress is saved to the account. An unlock is a personal license.",
     },
     {
       q: "Who are the muses?",
@@ -202,11 +202,11 @@ export function homeFaqs(models: { stageName: string }[]): FaqItem[] {
     },
     {
       q: "Can I share unlocked photos or videos?",
-      a: "No. Terms prohibit duplicating, editing, sharing, or distributing grants. Forensic watermarks may identify a leak back to the collector account.",
+      a: "No. Terms prohibit duplicating, editing, sharing, or distributing unlocked shots. Forensic watermarks may identify a leak back to the collector account.",
     },
     {
       q: "Is this a nudify or undress-AI tool?",
-      a: "No. Nothing you upload is undressed. The product is permission — she undresses for the man who stays, one paid shot at a time.",
+      a: "No. Nothing you upload is undressed. She starts dressed. You pay. One layer comes off. This is not a clothes-remover.",
     },
   ];
 }
@@ -302,7 +302,7 @@ export function jsonLdGraph(input: {
     graph.push({
       "@type": "HowTo",
       name: `How sequential unlock works on ${BRAND}`,
-      description: "Pay for the next yes. She undresses in order. No skipping.",
+      description: "Pay for the next shot. She undresses in order. No skipping.",
       step: [
         {
           "@type": "HowToStep",
@@ -320,13 +320,13 @@ export function jsonLdGraph(input: {
           "@type": "HowToStep",
           position: 3,
           name: "Pay for Shot 1",
-          text: "Crypto checkout grants a personal license for that still or clip. Shot 2 then opens.",
+          text: "Crypto checkout unlocks a personal license for that still or clip. Shot 2 then opens.",
         },
         {
           "@type": "HowToStep",
           position: 4,
           name: "Climb in order",
-          text: "Nine yeses. No skip. The last frame is only for collectors who stayed.",
+          text: "Nine shots. No skip. The last frame is only for collectors who stayed.",
         },
       ],
     });

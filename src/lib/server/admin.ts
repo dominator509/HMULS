@@ -229,9 +229,9 @@ export const addShot = createServerFn({ method: "POST" })
     const muse = await bibleFor(sql, lad[0]?.model_id);
     const tease =
       data.tease.trim() ||
-      `${muse.stageName} · ${data.title}. The next yes is still hers to give.`;
+      `${muse.stageName} · ${data.title}. The next shot is still hers to give.`;
     const grant =
-      data.grantCopy.trim() || `You've been granted ${data.title}. ${muse.stageName} noticed.`;
+      data.grantCopy.trim() || `${data.title} is unlocked. ${muse.stageName} noticed.`;
     const { vaultShotMedia } = await import("./grant-media.server");
     const packed = await vaultShotMedia({
       srcUrl: data.mediaUrl,
@@ -339,7 +339,7 @@ export const createLadder = createServerFn({ method: "POST" })
     const hook = data.tagline.trim() || `${muse.stageName} only opens this set in order.`;
     const tease =
       data.description.trim() ||
-      `${muse.stageName}'s photoset. Nine yeses. She undresses for the man who stays.`;
+      `${muse.stageName}'s photoset. Nine shots. She starts dressed. You pay. One layer comes off.`;
     const coverIn = data.coverUrl.trim() || "/media/portrait.jpg";
     const { persistSeoMedia } = await import("./seo-media.server");
     const cover = await persistSeoMedia({

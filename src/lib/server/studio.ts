@@ -316,7 +316,7 @@ async function insertStudioLadder(sql: Sql, modelId: string, ladder: StudioLadde
   const hook = ladder.tagline.trim() || `${muse.stageName} only opens this set in order.`;
   const tease =
     ladder.description.trim() ||
-    `${muse.stageName}'s photoset. Nine yeses. She undresses for the man who stays.`;
+    `${muse.stageName}'s photoset. Nine shots. She starts dressed. You pay. One layer comes off.`;
   const coverIn = coverUrl.trim() || "/media/portrait.jpg";
   const { persistSeoMedia } = await import("./seo-media.server");
   const cover = await persistSeoMedia({
@@ -408,8 +408,8 @@ export const commitStudioPlan = createServerFn({ method: "POST" })
         mediaType: "photo",
         replace: true,
       });
-      const tease = `${shot.title}. The next yes is still hers to give.`;
-      const grant = `You've been granted ${shot.title}.`;
+      const tease = `${shot.title}. The next shot is still hers to give.`;
+      const grant = `${shot.title} is unlocked.`;
       await sql`
         insert into shots (
           id, ladder_id, step_index, title, tease, grant_copy, media_type,
@@ -531,8 +531,8 @@ export const generateStudioShot = createServerFn({ method: "POST" })
       mediaType: "photo",
       replace: true,
     });
-    const tease = `${data.shot.title}. The next yes is still hers to give.`;
-    const grant = `You've been granted ${data.shot.title}.`;
+    const tease = `${data.shot.title}. The next shot is still hers to give.`;
+    const grant = `${data.shot.title} is unlocked.`;
     const usedPrompt = result.usedPrompt || prompt;
     if (existing[0]) {
       await sql`

@@ -194,10 +194,10 @@ export function ThemePanel() {
           className="mt-6 font-display text-4xl text-fg"
           style={{ fontFamily: "var(--font-display)" }}
         >
-          She undresses for the man who stays.
+          Watch her take it off. One layer at a time.
         </p>
         <p className="mt-2 max-w-lg text-sm text-muted" style={{ fontFamily: "var(--font-sans)" }}>
-          Sequential permission. Nine yeses. The last frame is the one tourists never see.
+          Sequential strip. Nine shots. You cannot skip. The last frame is the one men who quit never see.
         </p>
         <div className="mt-6 flex flex-wrap gap-2">
           <Button variant="gold" disabled={busy} onClick={() => void save()}>
