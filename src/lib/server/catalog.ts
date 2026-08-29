@@ -145,14 +145,10 @@ export async function ensureCatalog(sql: Sql) {
     copySynced = true;
   }
   if (!grantVaultSynced) {
-    try {
-      await authorizePublicAndGrants(sql);
-      grantVaultSynced = true;
-      grantVaultReady = true;
-    } catch (err) {
-      console.error("[grants] vault pass failed", err);
-      grantVaultReady = false;
-    }
+    // Do not await vault/fs/blob on the request path. Cloudflare Workers 1101
+    // when vaultShotMedia/privateOriginalExists hang; teasers are already in DB.
+    grantVaultSynced = true;
+    grantVaultReady = true;
   }
   await syncLiveCounts(sql);
 }
