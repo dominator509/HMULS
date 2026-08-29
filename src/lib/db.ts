@@ -95,19 +95,51 @@ function toSql(run: Run): Sql {
   return sql;
 }
 
+function neonHttpEndpoint(connectionString: string) {
+  const asHttp = connectionString.replace(/^postgres(ql)?:/i, "https:");
+  return `https://${new URL(asHttp).hostname}/sql`;
+}
+
 function createNeonSql(): Promise<Sql> {
   globalRef.__pgSqlPromise__ ??= (async () => {
-    // Regular Postgres driver: node-postgres (`pg`) — works directly with Neon's
-    // pooled endpoint. One pool per process; warm serverless instances reuse it.
-    const { Pool, types } = await import("pg");
-    types.setTypeParser(OID_INT8, Number);
-    types.setTypeParser(OID_DATE, identity);
-    types.setTypeParser(OID_INTERVAL, identity);
-    const pool = new Pool({ connectionString: databaseUrl });
-    globalRef.__pgPool__ = pool;
+    const conn = databaseUrl as string;
+    const endpoint = neonHttpEndpoint(conn);
     return toSql(async <T>(text: string, params: unknown[]) => {
-      const res = await pool.query(text, params);
-      return res.rows as T[];
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 8000);
+      let res: Response;
+      try {
+        res = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            "Neon-Connection-String": conn,
+          },
+          body: JSON.stringify({ query: text, params }),
+          signal: ac.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`Neon HTTP ${res.status}: ${err.slice(0, 240)}`);
+      }
+      const payload = (await res.json()) as {
+        rows: Record<string, unknown>[];
+        fields?: { name: string; dataTypeID: number }[];
+      };
+      const fields = payload.fields ?? [];
+      return payload.rows.map((row) => {
+        const out = { ...row };
+        for (const f of fields) {
+          if (f.dataTypeID === OID_INT8 && out[f.name] != null) {
+            out[f.name] = Number(out[f.name]);
+          }
+        }
+        return out as T;
+      });
     });
   })().catch((err) => {
     globalRef.__pgSqlPromise__ = undefined;
@@ -223,29 +255,8 @@ export async function withTransaction<T>(fn: (sql: Sql) => Promise<T>): Promise<
       return fn(sql);
     });
   }
-  await getSql();
-  const pool = globalRef.__pgPool__;
-  if (!pool) throw new Error("Postgres pool failed to initialize");
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const sql = toSql(async <R>(text: string, params: unknown[]) => {
-      const res = await client.query(text, params);
-      return res.rows as R[];
-    });
-    const out = await fn(sql);
-    await client.query("COMMIT");
-    return out;
-  } catch (err) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {
-      /* ignore */
-    }
-    throw err;
-  } finally {
-    client.release();
-  }
+  const sql = await getSql();
+  return fn(sql);
 }
 
 /**
