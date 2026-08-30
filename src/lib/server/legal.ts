@@ -121,68 +121,6 @@ function mapDoc(r: DocRow): LegalDoc {
 
 export async function ensureLegal(sql: Sql) {
   if (legalReady) return;
-  await sql`
-    create table if not exists legal_entity (
-      id int primary key default 1,
-      site_name text not null default 'SHE UNDRESSES',
-      entity_name text not null default '',
-      jurisdiction text not null default 'Washington, United States',
-      custodian_name text not null default '',
-      custodian_title text not null default 'Custodian of Records',
-      address1 text not null default '',
-      address2 text not null default '',
-      city text not null default '',
-      region text not null default 'WA',
-      postal text not null default '',
-      country text not null default 'United States',
-      contact_email text not null default '',
-      dmca_email text not null default '',
-      website_url text not null default '',
-      updated_at timestamptz not null default now()
-    )
-  `;
-  await sql`insert into legal_entity (id) values (1) on conflict (id) do nothing`;
-  await sql`
-    update legal_entity
-    set website_url = ${DEFAULT_ENTITY.websiteUrl}, updated_at = now()
-    where id = 1 and btrim(coalesce(website_url, '')) = ''
-  `;
-  await sql`
-    create table if not exists models (
-      id text primary key,
-      slug text unique not null,
-      stage_name text not null,
-      content_kind text not null default 'synthetic',
-      portrayed_age_min int not null default 24,
-      aliases text not null default '',
-      bio text not null default '',
-      is_fictional boolean not null default true,
-      likeness_ok boolean not null default true,
-      records_on_file boolean not null default false,
-      id_type_on_file text not null default '',
-      first_produced text not null default '',
-      ladder_slugs text not null default '',
-      card_portrayal text not null default '',
-      created_at timestamptz not null default now(),
-      updated_at timestamptz not null default now()
-    )
-  `;
-  await sql`alter table models add column if not exists voice text not null default ''`;
-  await sql`alter table models add column if not exists looks text not null default ''`;
-  await sql`alter table models add column if not exists tease_style text not null default ''`;
-  await sql`
-    create table if not exists legal_docs (
-      id text primary key,
-      scope text not null,
-      model_id text,
-      kind text not null,
-      slug text unique not null,
-      title text not null,
-      body text not null,
-      version int not null default 1,
-      generated_at timestamptz not null default now()
-    )
-  `;
   const existing = await sql<{ c: number }>`select count(*)::int as c from models`;
   if ((existing[0]?.c ?? 0) === 0) {
     const m = LIORA_SEED;
