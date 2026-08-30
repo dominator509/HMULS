@@ -103,7 +103,6 @@ async function syncCatalogCopy(sql: Sql) {
 export async function ensureCatalog(sql: Sql) {
   if (!seedPromise) {
     seedPromise = (async () => {
-      await ensureVoiceColumns(sql);
       const existing = await sql<{ c: number }>`select count(*)::int as c from ladders`;
       if ((existing[0]?.c ?? 0) === 0) {
         for (const lad of SEED_LADDERS) {
@@ -140,10 +139,7 @@ export async function ensureCatalog(sql: Sql) {
     });
   }
   await seedPromise;
-  if (!copySynced) {
-    await syncCatalogCopy(sql);
-    copySynced = true;
-  }
+  copySynced = true;
   if (!grantVaultSynced) {
     // Do not await vault/fs/blob on the request path. Cloudflare Workers 1101
     // when vaultShotMedia/privateOriginalExists hang; teasers are already in DB.
@@ -154,18 +150,28 @@ export async function ensureCatalog(sql: Sql) {
 }
 
 async function syncLiveCounts(sql: Sql) {
-  const ladders = await sql<{ id: string }>`select id from ladders`;
-  for (const lad of ladders) {
-    const occupied = await climaxOccupied(sql, lad.id);
-    await sql`
-      update ladders l set
-        collectors_count = (
-          select count(distinct u.user_id)::int from unlocks u where u.ladder_id = l.id
-        ),
-        climax_collectors = ${occupied}
-      where l.id = ${lad.id}
-    `;
-  }
+  await sql`
+    update ladders l set
+      collectors_count = (
+        select count(distinct u.user_id)::int from unlocks u where u.ladder_id = l.id
+      ),
+      climax_collectors = (
+        (
+          select count(distinct u.user_id)::int
+          from unlocks u
+          join shots s on s.id = u.shot_id
+          where u.ladder_id = l.id and s.is_climax
+        )
+        +
+        (
+          select count(*)::int
+          from gifts g
+          where g.ladder_id = l.id
+            and g.reserved_climax = true
+            and g.redeemed_by is null
+        )
+      )
+  `;
 }
 
 export async function ensureProfile(sql: Sql, userId: string) {
