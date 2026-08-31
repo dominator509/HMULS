@@ -162,7 +162,7 @@ function collectTrustedOrigins(request?: Request): string[] {
 }
 
 // Function form so Better Auth 1.6 re-reads origins per request (Workers env).
-const trustedOrigins = (request: Request) => collectTrustedOrigins(request);
+const trustedOrigins = (request?: Request) => collectTrustedOrigins(request);
 
 const databaseUrl = env("DATABASE_URL");
 
