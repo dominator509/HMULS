@@ -103,27 +103,66 @@ const LOCAL_DEV_ORIGINS: string[] = [
   "http://127.0.0.1:8080",
   "http://[::1]:8080",
 ];
-const baseURL = explicitBaseURL ?? {
-  // Include loopback hosts so dynamic baseURL resolves for local email/password
-  // (not only the preview wildcard).
-  allowedHosts: [...previewAllowedHosts, "localhost", "127.0.0.1", "[::1]"],
-  // `auto` → trust both http:// and https:// expansions of allowedHosts
-  // (preview is https; local dev is http).
+const PRODUCTION_ORIGINS: string[] = [
+  "https://sheundresses.com",
+  "https://www.sheundresses.com",
+];
+
+// Always dynamic: Cloudflare Workers often have empty process.env at module
+// eval, so a string baseURL from BETTER_AUTH_URL captured at boot is wrong.
+const baseURL = {
+  allowedHosts: [
+    ...previewAllowedHosts,
+    "localhost",
+    "127.0.0.1",
+    "[::1]",
+    "sheundresses.com",
+    "www.sheundresses.com",
+  ],
   protocol: "auto" as const,
-  fallback: "http://localhost:8080",
+  fallback: explicitBaseURL ?? "https://sheundresses.com",
 };
 
-// Origins Better Auth accepts on credentialed POSTs (sign-up/sign-in, etc.).
-// Missing entries here surface as FORBIDDEN "Invalid origin".
-const trustedOrigins: string[] = explicitBaseURL
-  ? [explicitBaseURL, ...LOCAL_DEV_ORIGINS]
-  : [
-      // Host wildcards (matched against Origin's host)
-      ...previewAllowedHosts,
-      // Full-origin wildcards (matched against Origin)
-      ...previewAllowedHosts.flatMap((host) => [`https://${host}`, `http://${host}`]),
-      ...LOCAL_DEV_ORIGINS,
-    ];
+function collectTrustedOrigins(request?: Request): string[] {
+  const found = new Set<string>([
+    ...PRODUCTION_ORIGINS,
+    ...LOCAL_DEV_ORIGINS,
+    ...previewAllowedHosts,
+    ...previewAllowedHosts.flatMap((host) => [`https://${host}`, `http://${host}`]),
+  ]);
+  const add = (raw?: string | null) => {
+    const v = raw?.trim();
+    if (!v || v === "null") return;
+    try {
+      const origin = new URL(v.includes("://") ? v : `https://${v}`).origin;
+      const host = new URL(origin).hostname.toLowerCase();
+      if (
+        host === "sheundresses.com" ||
+        host === "www.sheundresses.com" ||
+        host === "localhost" ||
+        host === "127.0.0.1" ||
+        host === "[::1]" ||
+        host === "grok-sandbox.com" ||
+        host.endsWith(".grok-sandbox.com")
+      ) {
+        found.add(origin);
+      }
+    } catch {
+      /* ignore unparseable */
+    }
+  };
+  add(env("BETTER_AUTH_URL"));
+  add(env("PUBLIC_SITE_URL"));
+  if (request) {
+    add(request.url);
+    add(request.headers.get("origin"));
+    add(request.headers.get("referer"));
+  }
+  return [...found];
+}
+
+// Function form so Better Auth 1.6 re-reads origins per request (Workers env).
+const trustedOrigins = (request: Request) => collectTrustedOrigins(request);
 
 const databaseUrl = env("DATABASE_URL");
 
