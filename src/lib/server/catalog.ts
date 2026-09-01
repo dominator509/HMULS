@@ -175,10 +175,6 @@ async function syncLiveCounts(sql: Sql) {
 }
 
 export async function ensureProfile(sql: Sql, userId: string) {
-  const existing = await sql<{ role: string }>`
-    select role from profiles where user_id = ${userId}
-  `;
-  if (existing[0]) return existing[0].role;
   await sql`
     create table if not exists vault_bootstrap (
       slot text primary key,
@@ -191,25 +187,34 @@ export async function ensureProfile(sql: Sql, userId: string) {
   `;
   const email = emailRows[0]?.email ?? "";
   const designated = userIdMatchesOwner(userId) || emailMatchesOwner(email);
-  const admins = await sql<{ user_id: string }>`
-    select user_id from profiles where role = 'admin' order by created_at asc limit 1
+
+  const existing = await sql<{ role: string }>`
+    select role from profiles where user_id = ${userId}
   `;
-  if (admins[0]) {
-    await sql`
-      insert into vault_bootstrap (slot, user_id)
-      values ('admin_zero', ${admins[0].user_id})
-      on conflict (slot) do nothing
-    `;
-    await sql`
-      insert into profiles (user_id, role) values (${userId}, 'buyer')
-      on conflict (user_id) do nothing
-    `;
-    const saved = await sql<{ role: string }>`select role from profiles where user_id = ${userId}`;
-    return saved[0]?.role ?? "buyer";
+  if (existing[0]) {
+    if (designated && existing[0].role !== "admin") {
+      await sql`
+        insert into vault_bootstrap (slot, user_id)
+        values ('admin_zero', ${userId})
+        on conflict (slot) do nothing
+      `;
+      await sql`
+        update profiles set role = 'admin' where user_id = ${userId}
+      `;
+      return "admin";
+    }
+    return existing[0].role;
   }
 
   let role = "buyer";
-  if (designated || firstUserAdminAllowed()) {
+  if (designated) {
+    await sql`
+      insert into vault_bootstrap (slot, user_id)
+      values ('admin_zero', ${userId})
+      on conflict (slot) do nothing
+    `;
+    role = "admin";
+  } else if (firstUserAdminAllowed()) {
     const claimed = await sql<{ user_id: string }>`
       insert into vault_bootstrap (slot, user_id)
       values ('admin_zero', ${userId})
@@ -217,27 +222,8 @@ export async function ensureProfile(sql: Sql, userId: string) {
       returning user_id
     `;
     if (claimed[0]?.user_id === userId) role = "admin";
-    else {
-      const slot = await sql<{ user_id: string }>`
-        select user_id from vault_bootstrap where slot = 'admin_zero'
-      `;
-      if (slot[0]?.user_id === userId) role = "admin";
-    }
-    if (!designated && !firstUserAdminAllowed()) role = "buyer";
-    if (!claimed[0] && designated) role = "buyer";
   }
-  if (designated && role !== "admin") {
-    const slot = await sql<{ user_id: string }>`select user_id from vault_bootstrap where slot = 'admin_zero'`;
-    if (!slot[0]) {
-      const claimed = await sql<{ user_id: string }>`
-        insert into vault_bootstrap (slot, user_id)
-        values ('admin_zero', ${userId})
-        on conflict (slot) do nothing
-        returning user_id
-      `;
-      if (claimed[0]?.user_id === userId) role = "admin";
-    }
-  }
+
   await sql`
     insert into profiles (user_id, role) values (${userId}, ${role})
     on conflict (user_id) do nothing
