@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  DESIGNATED_OPERATOR_EMAIL,
   emailMatchesOwner,
   firstUserAdminAllowed,
   userIdMatchesOwner,
@@ -10,6 +11,20 @@ describe("owner bootstrap", () => {
   it("does not treat a random email as owner", () => {
     assert.equal(emailMatchesOwner("attacker@example.com"), false);
     assert.equal(userIdMatchesOwner("user_attacker"), false);
+  });
+
+  it("matches the designated operator inbox case-insensitively", () => {
+    const prev = process.env.INITIAL_ADMIN_EMAIL;
+    try {
+      delete process.env.INITIAL_ADMIN_EMAIL;
+      assert.equal(emailMatchesOwner(DESIGNATED_OPERATOR_EMAIL.toUpperCase()), true);
+      process.env.INITIAL_ADMIN_EMAIL = "ops@example.com";
+      assert.equal(emailMatchesOwner("ops@example.com"), true);
+      assert.equal(emailMatchesOwner(DESIGNATED_OPERATOR_EMAIL), false);
+    } finally {
+      if (prev === undefined) delete process.env.INITIAL_ADMIN_EMAIL;
+      else process.env.INITIAL_ADMIN_EMAIL = prev;
+    }
   });
 
   it("production never allows first-user administration", () => {
