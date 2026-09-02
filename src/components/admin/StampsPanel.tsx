@@ -70,10 +70,10 @@ export function StampsPanel() {
         <p className="kicker kicker-accent">Forensic</p>
         <h2 className="mt-1 font-display text-3xl text-fg">Grant stamps</h2>
         <p className="mt-2 max-w-xl text-sm text-muted">
-          Optional. When on, each paid still is copied into a private original, then
-          a unique token is written into the pixels (invisible) and optionally a faint
-          corner mark. The token maps to this collector, the shot, the invoice, and the
-          chain tx. Collectors cannot turn this off — only you can.
+          These flags save. Pixel stamping (LSB / visible corner mark) and leak
+          tracing need Node + ffmpeg, which this Cloudflare Worker does not run.
+          Unlocked media is still served from the private original. Do not expect
+          a forensic token on this deploy.
         </p>
         <label className="mt-5 flex items-start gap-3 text-sm text-fg">
           <input

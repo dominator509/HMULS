@@ -68,16 +68,16 @@ function AdminPage() {
       .catch(() => setLadders([]));
   }, [role]);
 
-  if (isPending) {
-    return <div className="px-5 py-24 text-center text-muted">Checking access…</div>;
+  if (isPending || (user && role === null)) {
+    return <div className="px-5 py-24 text-center text-muted">Checking operator access…</div>;
   }
   if (!user) return <RedirectToSignIn />;
-  if (role && role !== "admin") {
+  if (role !== "admin") {
     return (
       <div className="mx-auto max-w-md px-5 py-24 text-center">
         <p className="text-muted">
-          Operator access only. Ownership is not granted to the first signup.
-          Set INITIAL_ADMIN_EMAIL or claim with the one-time bootstrap secret.
+          This inbox is not an operator. Sign in as the designated operator, or
+          paste the one-time bootstrap secret only if you were given one.
         </p>
         <label className="mt-6 block text-left text-xs text-subtle">
           Bootstrap secret
@@ -108,7 +108,7 @@ function AdminPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-10">
-      <PageHeader kicker="Operator" title="Vault control" body="Studio generates a nude Image 0 lock, then dresses her. Approve the lock before the other stills." />
+      <PageHeader kicker="Operator" title="Vault control" body="Prices, muses, photosets, and legal save to the live vault. Studio and copy rewrite need an xAI key on this Worker." />
       <div className="mt-6">
         <Segmented
           value={tab}
@@ -116,12 +116,12 @@ function AdminPage() {
             { id: "stats", label: "Analytics" },
             { id: "studio", label: "Studio" },
             { id: "muses", label: "Muses" },
-            { id: "ladders", label: "Ladders" },
-            { id: "dials", label: "Dials" },
+            { id: "ladders", label: "Photosets" },
+            { id: "dials", label: "Pressure" },
             { id: "theme", label: "Theme" },
-            { id: "stamps", label: "Stamps" },
+            { id: "stamps", label: "Watermarks" },
             { id: "legal", label: "Legal" },
-            { id: "connectors", label: "Connectors" },
+            { id: "connectors", label: "API keys" },
           ]}
           onChange={(id) => setTab(id as typeof tab)}
         />
@@ -164,7 +164,11 @@ function AdminPage() {
 
 function Stats({ stats }: { stats: AnalyticsSnapshot | null }) {
   if (!stats) {
-    return <div className="mt-10 h-48 animate-pulse rounded-xl bg-surface" />;
+    return (
+      <p className="mt-10 text-sm text-muted">
+        Analytics did not load. Refresh, or check that this inbox is an operator.
+      </p>
+    );
   }
   const cards = [
     { l: "Revenue", v: formatUsd(stats.revenueCents) },
@@ -219,6 +223,21 @@ function Stats({ stats }: { stats: AnalyticsSnapshot | null }) {
           </tbody>
         </table>
       </div>
+      <div className="rounded-xl border border-border bg-surface p-4">
+        <p className="mb-3 text-xs text-subtle">Recent events</p>
+        {stats.recent.length === 0 ? (
+          <p className="text-sm text-muted">No events yet.</p>
+        ) : (
+          <ul className="space-y-2 text-sm">
+            {stats.recent.map((r) => (
+              <li key={r.id} className="flex justify-between gap-3 text-muted">
+                <span>{r.kind}{r.ladderId ? ` · ${r.ladderId}` : ""}</span>
+                <span className="tabular-nums text-subtle">{r.createdAt.replace("T", " ").slice(0, 16)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
@@ -255,7 +274,7 @@ function LadderBlock({
   const [disc, setDisc] = useState(Math.round(ladder.bundleDiscount * 100));
   const [newTitle, setNewTitle] = useState("");
   const [newUrl, setNewUrl] = useState("");
-  const [newPrice, setNewPrice] = useState("9.99");
+  const [newPrice, setNewPrice] = useState("0.25");
   const [newBeat, setNewBeat] = useState("");
   const [autoBusy, setAutoBusy] = useState(false);
   const [replaceUrl, setReplaceUrl] = useState<Record<string, string>>({});
@@ -272,8 +291,8 @@ function LadderBlock({
           published: ladder.published,
         },
       });
-      onUpdate({ ...ladder, title, tagline, bundleDiscount: disc / 100 });
-      toast.success("Ladder saved.");
+      onUpdate({ ...ladder, title, tagline, bundleDiscount: disc / 100, published: ladder.published });
+      toast.success("Photoset saved.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Save failed.");
     }
@@ -330,7 +349,7 @@ function LadderBlock({
   async function replaceMedia(shotId: string) {
     const url = (replaceUrl[shotId] || "").trim();
     if (!url) {
-      toast.error("Paste a /media or https still first.");
+      toast.error("Paste a /media or https photo or video URL first.");
       return;
     }
     setReplaceBusy(shotId);
@@ -340,7 +359,7 @@ function LadderBlock({
       const next = fresh.find((l) => l.id === ladder.id);
       if (next) onUpdate(next);
       setReplaceUrl((prev) => ({ ...prev, [shotId]: "" }));
-      toast.success("Still replaced and vaulted.");
+      toast.success("Photo/video replaced in the vault.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Replace failed.");
     } finally {
@@ -399,8 +418,17 @@ function LadderBlock({
           />
         </label>
       </div>
+      <label className="mt-3 flex items-center gap-2 text-sm text-fg">
+        <input
+          type="checkbox"
+          checked={ladder.published}
+          onChange={(e) => onUpdate({ ...ladder, published: e.target.checked })}
+          className="size-4 accent-[#c9a227]"
+        />
+        Published on the site
+      </label>
       <Button className="mt-4" variant="gold" size="sm" onClick={() => void saveMeta()}>
-        Save ladder
+        Save photoset
       </Button>
       <Button
         className="mt-4 ml-2"
@@ -420,7 +448,7 @@ function LadderBlock({
               <th className="py-2 pr-3">Shot</th>
               <th className="py-2 pr-3">USD</th>
               <th className="py-2 pr-3">Type</th>
-              <th className="py-2 pr-3">Replace still</th>
+              <th className="py-2 pr-3">Replace photo/video</th>
             </tr>
           </thead>
           <tbody>
@@ -485,11 +513,14 @@ function LadderBlock({
           className="field-input sm:col-span-2"
         />
         <div className="flex gap-2">
-          <input
+          <label className="text-xs text-subtle">
+            USD
+            <input
             value={newPrice}
             onChange={(e) => setNewPrice(e.target.value)}
             className="field-input w-24"
-          />
+            />
+          </label>
           <Button variant="outline" onClick={() => void createShot()}>
             Add shot
           </Button>
@@ -619,10 +650,9 @@ function DialsPanel({
         </p>
         <h2 className="mt-1 font-display text-3xl text-fg">Dials</h2>
         <p className="mt-2 max-w-xl text-sm text-muted">
-          Sign in as operator with Grok, Google, or X. These sliders change live
-          pressure immediately: deadlines, blur, price bumps, scarcity, and
-          fallback copy. Run the transporter after you lock a mix so Grok
-          rewrites her voice to match.
+          These sliders change live pressure immediately: deadlines, blur, price
+          bumps, scarcity, and fallback copy. Save first. Rewriting tease/homepage
+          copy needs an xAI key on this Worker.
         </p>
         <div className="mt-6 space-y-5">
           {DIAL_META.map((m) => (
@@ -666,7 +696,7 @@ function DialsPanel({
 
       <section className="rounded-xl border border-border bg-surface p-5">
         <p className="font-display text-xs tracking-[0.24em] text-gold uppercase">
-          Grok transporter
+          Copy rewrite
         </p>
         <h2 className="mt-1 font-display text-3xl text-fg">Write the vault</h2>
         <p className="mt-2 max-w-xl text-sm text-muted">

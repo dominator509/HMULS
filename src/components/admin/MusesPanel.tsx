@@ -133,8 +133,8 @@ export function MusesPanel({ onLadders }: { onLadders?: () => void }) {
         <p className="kicker kicker-accent">Onboard</p>
         <h2 className="mt-1 font-display text-3xl text-fg">New muse</h2>
         <p className="mt-2 max-w-xl text-sm text-muted">
-          Looks, voice, and tease style are how she stays unique. The transporter
-          writes from those plus each shot's visual beat — she will not inherit Liora.
+          Looks, voice, and tease style are how she stays unique. Auto-from-photos
+          and copy rewrite need an xAI key on this Worker. She will not inherit Liora.
         </p>
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
           <Field

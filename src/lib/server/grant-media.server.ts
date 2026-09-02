@@ -3,7 +3,13 @@ import { constants } from "node:fs";
 import { extname, join } from "node:path";
 import { seoStem } from "@/lib/seo";
 import { isMarketingFilename } from "@/lib/safe-path";
-import { privateMediaDir, privateOriginalExists, resolveBundledOriginal } from "./object-store";
+import {
+  privateMediaDir,
+  privateOriginalExists,
+  putPrivateOriginal,
+  readPrivateOriginal,
+  resolveBundledOriginal,
+} from "./object-store";
 
 export function grantsDir() {
   return privateMediaDir();
@@ -37,9 +43,31 @@ async function exists(path: string) {
   }
 }
 
+const MAX_BYTES = 8_000_000;
+
+async function loadOriginalBytes(srcUrl: string): Promise<Buffer | null> {
+  const raw = (srcUrl || "").trim();
+  if (!raw) return null;
+  const fromVault = await readPrivateOriginal(raw).catch(() => null);
+  if (fromVault && fromVault.length >= 2048) return fromVault;
+
+  let url = raw;
+  if (url.startsWith("/")) {
+    const host = (process.env.PUBLIC_SITE_URL || "https://sheundresses.com").replace(/\/$/, "");
+    url = `${host}${url}`;
+  }
+  if (!/^https?:\/\//i.test(url)) return null;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const bytes = Buffer.from(await res.arrayBuffer());
+  if (bytes.length < 2048 || bytes.length > MAX_BYTES) return null;
+  return bytes;
+}
+
 /**
- * Paid originals live in private-media/ (bundled, read-only on Vercel).
- * This pass never writes public/ and never copies a paid original into public/.
+ * Paid originals live in private blob (or bundled private-media/).
+ * This never writes public/ and never copies a paid original into public/.
+ * On replace, or when the grant file is missing, ingest srcUrl (https, /media, or grant:).
  */
 export async function vaultShotMedia(opts: {
   srcUrl: string;
@@ -54,11 +82,19 @@ export async function vaultShotMedia(opts: {
   const ext =
     extname((opts.srcUrl || "").split("?")[0]) ||
     (opts.mediaType === "video" ? ".mp4" : ".jpg");
-  const grantName = `${opts.shotId.replace(/[^a-zA-Z0-9._-]/g, "_")}${ext}`;
+  const grantName = `${opts.shotId.replace(/[^a-zA-Z0-9._-]/g, "_")}${ext.startsWith(".") ? ext : `.${ext}`}`;
   const grantUrl = `grant:${grantName}`;
-  const ok = await privateOriginalExists(grantName) || await privateOriginalExists(opts.srcUrl);
-  if (!ok) {
-    throw new Error(`Missing private original for ${opts.shotId} (${grantName}).`);
+  const already = await privateOriginalExists(grantName);
+
+  if (!already || opts.replace) {
+    const bytes = await loadOriginalBytes(opts.srcUrl);
+    if (bytes) {
+      await putPrivateOriginal(grantName, bytes);
+    } else if (!already) {
+      throw new Error(
+        `Could not ingest media for ${opts.shotId}. Use a reachable https or /media URL, or generate the still in Studio.`,
+      );
+    }
   }
 
   const stem = seoStem([

@@ -119,8 +119,7 @@ export function ThemePanel() {
       }
       setTheme(res.theme);
       applyThemeToDocument(res.theme);
-      await saveTheme({ data: res.theme });
-      toast.success(`${res.aesthetic.name}: ${res.aesthetic.rationale}`);
+      toast.success(`${res.aesthetic.name}: preview only. Click Save theme to go live.`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Suggest failed.");
     } finally {
@@ -136,8 +135,8 @@ export function ThemePanel() {
         <p className="kicker kicker-accent">Chrome</p>
         <h2 className="mt-1 font-display text-3xl text-fg">Colors & type</h2>
         <p className="mt-2 max-w-xl text-sm text-muted">
-          Live on this vault. Presets, pickers, or Grok reading a muse and
-          photoset type. Display type is for titles; body is everything else.
+          Presets and pickers preview immediately. Click Save theme to publish.
+          Suggest aesthetic needs an xAI key and still requires Save to go live.
         </p>
         <div className="mt-5 flex flex-wrap gap-2">
           {THEME_PRESETS.map((p) => (
@@ -210,7 +209,7 @@ export function ThemePanel() {
       </section>
 
       <section className="rounded-xl border border-border bg-surface p-5">
-        <p className="kicker">Grok</p>
+        <p className="kicker">Suggest</p>
         <h2 className="mt-1 font-display text-3xl text-fg">Suggest from a muse</h2>
         <p className="mt-2 max-w-xl text-sm text-muted">
           Reads her looks lock and the photoset type, then writes a palette, a

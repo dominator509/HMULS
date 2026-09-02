@@ -58,6 +58,9 @@ export function Footer() {
         <div>
           <p className="kicker">Operators</p>
           <nav className="mt-4 flex flex-col gap-2 text-sm">
+            <Link to="/admin" className="inline-flex min-h-11 items-center text-muted hover:text-fg">
+              Operator dashboard
+            </Link>
             <Link to="/models" className="inline-flex min-h-11 items-center text-muted hover:text-fg">
               Muses
             </Link>
