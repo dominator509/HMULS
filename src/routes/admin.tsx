@@ -108,7 +108,7 @@ function AdminPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-10">
-      <PageHeader kicker="Operator" title="Vault control" />
+      <PageHeader kicker="Operator" title="Vault control" body="Studio generates a nude Image 0 lock, then dresses her. Approve the lock before the other stills." />
       <div className="mt-6">
         <Segmented
           value={tab}

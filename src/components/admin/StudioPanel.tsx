@@ -4,137 +4,139 @@ import { Segmented } from "@/components/ui/chrome";
 import { getLegalBundle } from "@/lib/server/legal";
 import {
   authorLikenessSet,
-  authorNewMuse,
   commitStudioPlan,
   generateStudioClip,
-  generateStudioShot,
-  suggestAesthetic,
-  writeStudioCopy,
 } from "@/lib/server/studio";
-import { saveTheme } from "@/lib/server/theme";
-import { applyThemeToDocument, themeFromAesthetic } from "@/lib/theme";
+import {
+  commitNudeMasterPlan,
+  generateLockMaster,
+  generateNudeMasterShot,
+  getOpsStatus,
+} from "@/lib/server/nude-master";
+import {
+  type LadderTheme,
+  type NudeMasterBeat,
+  NUDE_MASTER_LADDERS,
+  laddersForThemes,
+} from "@/lib/nude-master";
 import type { MuseModel } from "@/lib/legal-types";
-import type { StudioPlan, StudioShotPlan } from "@/lib/studio-types";
+import type { StudioPlan } from "@/lib/studio-types";
 import { toast } from "sonner";
 
-const THEMES = [
-  { id: "frontal", label: "Frontal / face" },
-  { id: "worship", label: "Back / curve" },
-  { id: "feet", label: "Feet / floor" },
-];
+type ShotStatus = "pending" | "ok" | "nudged" | "blocked";
+
+type CommittedLadder = {
+  ladderId: string;
+  slug: string;
+  title: string;
+  theme: LadderTheme;
+  shots: { shotId: string; beatId: string; step: number; title: string; isVideoSlot: boolean }[];
+};
 
 export function StudioPanel({ onLadders }: { onLadders?: () => void }) {
   const [mode, setMode] = useState<"new" | "likeness">("new");
+  const [xai, setXai] = useState<boolean | null>(null);
   const [models, setModels] = useState<MuseModel[]>([]);
-  const [brief, setBrief] = useState("");
-  const [notes, setNotes] = useState("");
-  const [theme, setTheme] = useState("frontal");
   const [modelId, setModelId] = useState("");
+  const [stageName, setStageName] = useState("");
+  const [identityLock, setIdentityLock] = useState("");
+  const [voice, setVoice] = useState("");
+  const [notes, setNotes] = useState("");
+  const [themes, setThemes] = useState<LadderTheme[]>(["frontal", "worship", "feet"]);
   const [busy, setBusy] = useState<string | null>(null);
-  const [plan, setPlan] = useState<StudioPlan | null>(null);
-  const [ladderId, setLadderId] = useState<string | null>(null);
+  const [lockUrl, setLockUrl] = useState<string | null>(null);
+  const [lockPreview, setLockPreview] = useState<string | null>(null);
+  const [lockApproved, setLockApproved] = useState(false);
+  const [usedOpenRobe, setUsedOpenRobe] = useState(false);
+  const [committed, setCommitted] = useState<CommittedLadder[] | null>(null);
   const [museSlug, setMuseSlug] = useState("");
-  const [progress, setProgress] = useState<{ step: number; total: number; note: string } | null>(null);
-  const [shotStatus, setShotStatus] = useState<Record<number, "ok" | "blocked" | "pending" | "nudged">>({});
+  const [shotStatus, setShotStatus] = useState<Record<string, ShotStatus>>({});
+  const [shotPreview, setShotPreview] = useState<Record<string, string>>({});
+  const [likenessPlan, setLikenessPlan] = useState<StudioPlan | null>(null);
+  const [likenessLadderId, setLikenessLadderId] = useState<string | null>(null);
 
   useEffect(() => {
+    getOpsStatus()
+      .then((s) => setXai(s.xai))
+      .catch(() => setXai(null));
     getLegalBundle()
       .then((b) => {
         setModels(b.models);
         if (b.models[0]) setModelId(b.models[0].id);
       })
-      .catch(() => toast.error("Could not load muses."));
+      .catch(() => undefined);
   }, []);
 
-  async function author() {
-    setBusy("author");
-    setLadderId(null);
-    setShotStatus({});
-    try {
-      if (mode === "new") {
-        const res = await authorNewMuse({ data: { brief, theme, notes } });
-        if (!res.ok) {
-          toast.error(res.error);
-          return;
-        }
-        setPlan(res.plan);
-        toast.success(`${res.plan.muse.stageName} · ${res.plan.ladder.title} authored. Review, then onboard.`);
-      } else {
-        if (!modelId) {
-          toast.error("Pick a muse.");
-          return;
-        }
-        const res = await authorLikenessSet({ data: { modelId, theme, brief } });
-        if (!res.ok) {
-          toast.error(res.error);
-          return;
-        }
-        setPlan(res.plan);
-        toast.success(
-          `Likeness locked from ${res.framesRead} frames. ${res.plan.ladder.title} is ready to onboard.`,
-        );
+  function toggleTheme(t: LadderTheme) {
+    setThemes((prev) => {
+      if (prev.includes(t)) {
+        const next = prev.filter((x) => x !== t);
+        return next.length ? next : prev;
       }
+      return [...prev, t];
+    });
+  }
+
+  async function makeLock() {
+    if (!identityLock.trim() || identityLock.trim().length < 40) {
+      toast.error("Paste a full identity lock first — looks, hair, body, jewelry. It is copied verbatim into every prompt.");
+      return;
+    }
+    setBusy("lock");
+    try {
+      const res = await generateLockMaster({
+        data: { identityLock, stageName },
+      });
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      setLockUrl(res.lockUrl);
+      setLockPreview(res.previewDataUrl);
+      setLockApproved(false);
+      setCommitted(null);
+      setUsedOpenRobe(Boolean(res.usedOpenRobe));
+      toast.success(
+        res.usedOpenRobe
+          ? "Image 0 landed with the open-robe fallback. Approve it or reroll."
+          : "Image 0 nude lock is ready. Approve it before generating paid stills.",
+      );
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Author failed.");
+      toast.error(err instanceof Error ? err.message : "Image 0 failed.");
     } finally {
       setBusy(null);
     }
   }
 
-  async function suggest() {
-    setBusy("aes");
+  async function approveLock() {
+    if (!lockUrl) return;
+    if (!stageName.trim()) {
+      toast.error("Give her a stage name before onboarding.");
+      return;
+    }
+    setBusy("approve");
     try {
-      const picked = models.find((m) => m.id === modelId);
-      const res = await suggestAesthetic({
+      const res = await commitNudeMasterPlan({
         data: {
-          museName: plan?.muse.stageName || picked?.stageName,
-          looks: plan?.muse.looks || picked?.looks,
-          theme,
-          brief: brief || notes,
+          identityLock,
+          stageName,
+          voice,
+          bio: notes,
+          lockUrl,
+          themes,
         },
       });
       if (!res.ok) {
         toast.error(res.error);
         return;
       }
-      if (plan) setPlan({ ...plan, aesthetic: res.aesthetic });
-      applyThemeToDocument(res.theme);
-      if (!plan) {
-        await saveTheme({ data: res.theme });
-        toast.success(`${res.aesthetic.name} applied to the vault.`);
-      } else {
-        toast.success(`${res.aesthetic.name} loaded into this plan. Apply palette to keep it.`);
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not suggest an aesthetic.");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function applyPlanAesthetic() {
-    if (!plan) return;
-    const themeNext = themeFromAesthetic(plan.aesthetic);
-    applyThemeToDocument(themeNext);
-    try {
-      await saveTheme({ data: themeNext });
-      toast.success(`${plan.aesthetic.name} is now the site palette.`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not save palette.");
-    }
-  }
-
-  async function commit() {
-    if (!plan) return;
-    setBusy("commit");
-    try {
-      const res = await commitStudioPlan({ data: { plan } });
-      if (!res.ok) return;
-      setLadderId(res.ladderId);
+      setLockApproved(true);
+      setCommitted(res.ladders);
       setMuseSlug(res.museSlug);
-      setPlan({ ...plan, muse: { ...plan.muse, id: res.modelId, slug: res.museSlug } });
+      setShotStatus({});
+      setShotPreview({});
       onLadders?.();
-      toast.success(`${res.modelName} · ${res.slug} onboarded. Generate stills next.`);
+      toast.success(`${res.modelName} onboarded. Image 0 is the source for every paid still.`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not onboard.");
     } finally {
@@ -142,111 +144,94 @@ export function StudioPanel({ onLadders }: { onLadders?: () => void }) {
     }
   }
 
-  async function generateAll() {
-    if (!plan || !ladderId) return;
-    setBusy("gen");
-    let previousSrc: string | undefined;
-    const status: Record<number, "ok" | "blocked" | "pending" | "nudged"> = {};
-    for (const shot of plan.shots) {
-      setProgress({ step: shot.step, total: 9, note: shot.title });
-      try {
-        const res = await generateStudioShot({
-          data: {
-            ladderId,
-            museSlug: museSlug || plan.muse.slug,
-            looks: plan.muse.looks,
-            promptStyle: plan.aesthetic.promptStyle,
-            shot,
-            refUrls: plan.refUrls,
-            previousSrc,
-          },
-        });
-        if (res.ok) {
-          status[shot.step] = res.nudged ? "nudged" : "ok";
-          previousSrc = res.srcUrl;
-          if (res.nudged) {
-            toast.message(`Shot ${shot.step} vaulted after easing the prompt${res.nudgeDelta ? ` — ${res.nudgeDelta}` : "."}`);
-          }
-        } else {
-          status[shot.step] = "blocked";
-          toast.error(`Shot ${shot.step}: ${res.error}`);
-        }
-        setShotStatus({ ...status });
-      } catch (err) {
-        status[shot.step] = "blocked";
-        setShotStatus({ ...status });
-        toast.error(err instanceof Error ? err.message : `Shot ${shot.step} failed.`);
-      }
-    }
-    setProgress(null);
-    setBusy(null);
-    onLadders?.();
-    const ok = Object.values(status).filter((s) => s === "ok").length;
-    const blocked = Object.values(status).filter((s) => s === "blocked").length;
-    const eased = Object.values(status).filter((s) => s === "nudged").length;
-    if (ok || eased) {
-      toast.success(
-        `${ok + eased} stills vaulted${eased ? ` (${eased} eased past moderation)` : ""}${blocked ? `, ${blocked} still declined` : ""}.`,
-      );
-    }
-  }
-
-  async function generateOne(shot: StudioShotPlan) {
-    if (!plan || !ladderId) return;
-    setBusy(`shot-${shot.step}`);
+  async function generateBeat(ladder: CommittedLadder, shot: CommittedLadder["shots"][number], packShot: NudeMasterBeat) {
+    if (!lockUrl) return;
+    const key = shot.shotId;
+    setBusy(key);
     try {
-      const res = await generateStudioShot({
+      const res = await generateNudeMasterShot({
         data: {
-          ladderId,
-          museSlug: museSlug || plan.muse.slug,
-          looks: plan.muse.looks,
-          promptStyle: plan.aesthetic.promptStyle,
-          shot,
-          refUrls: plan.refUrls,
+          ladderId: ladder.ladderId,
+          shotId: shot.shotId,
+          step: shot.step,
+          title: shot.title,
+          visualBeat: packShot.visualBeat,
+          identityLock,
+          lockUrl,
+          museSlug,
+          isClimax: packShot.isClimax,
+          beat: packShot,
         },
       });
-      setShotStatus((prev) => ({
-        ...prev,
-        [shot.step]: res.ok ? (res.nudged ? "nudged" : "ok") : "blocked",
-      }));
-      if (res.ok) {
-        toast.success(
-          res.nudged
-            ? `Shot ${shot.step} vaulted after easing the prompt${res.nudgeDelta ? ` — ${res.nudgeDelta}` : "."}`
-            : `Shot ${shot.step} vaulted.`,
-        );
-      } else toast.error(res.error || "Declined.");
+      if (!res.ok) {
+        setShotStatus((s) => ({ ...s, [key]: "blocked" }));
+        toast.error(`${shot.title}: ${res.error}`);
+        return;
+      }
+      setShotStatus((s) => ({ ...s, [key]: res.nudged ? "nudged" : "ok" }));
+      if (res.previewDataUrl) {
+        setShotPreview((s) => ({ ...s, [key]: res.previewDataUrl }));
+      }
       onLadders?.();
+      toast.success(
+        res.nudged
+          ? `${shot.title} vaulted after easing the prompt.`
+          : `${shot.title} vaulted from Image 0.`,
+      );
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Generate failed.");
+      setShotStatus((s) => ({ ...s, [key]: "blocked" }));
+      toast.error(err instanceof Error ? err.message : `${shot.title} failed.`);
     } finally {
       setBusy(null);
     }
   }
 
-  async function generateClip(shot: StudioShotPlan) {
-    if (!plan || !ladderId) return;
-    setBusy(`clip-${shot.step}`);
+  async function generateSet(ladder: CommittedLadder) {
+    const pack = NUDE_MASTER_LADDERS.find((l) => l.theme === ladder.theme);
+    if (!pack) return;
+    for (const shot of ladder.shots) {
+      const beat = pack.shots.find((b) => b.step === shot.step);
+      if (!beat) continue;
+      await generateBeat(ladder, shot, beat);
+      if (busy === "stop") return;
+    }
+  }
+
+  async function generateRemaining() {
+    if (!committed) return;
+    for (const ladder of committed) {
+      const pack = NUDE_MASTER_LADDERS.find((l) => l.theme === ladder.theme);
+      if (!pack) continue;
+      for (const shot of ladder.shots) {
+        if (shotStatus[shot.shotId] === "ok" || shotStatus[shot.shotId] === "nudged") continue;
+        const beat = pack.shots.find((b) => b.step === shot.step);
+        if (!beat) continue;
+        await generateBeat(ladder, shot, beat);
+      }
+    }
+  }
+
+  async function clipFor(ladder: CommittedLadder, shot: CommittedLadder["shots"][number], packShot: NudeMasterBeat) {
+    setBusy(`clip-${shot.shotId}`);
     try {
       const res = await generateStudioClip({
         data: {
-          ladderId,
-          museSlug: museSlug || plan.muse.slug,
-          looks: plan.muse.looks,
-          promptStyle: plan.aesthetic.promptStyle,
-          shot,
+          ladderId: ladder.ladderId,
+          museSlug,
+          looks: identityLock,
+          promptStyle: "Same apartment night as Image 0. Mid-motion still energy.",
+          shot: {
+            step: shot.step,
+            title: shot.title,
+            visualBeat: packShot.visualBeat,
+            imaginePrompt: packShot.visualBeat,
+            priceCents: 0,
+            isClimax: packShot.isClimax,
+          },
         },
       });
-      if (res.ok) {
-        setShotStatus((prev) => ({ ...prev, [shot.step]: res.nudged ? "nudged" : "ok" }));
-        toast.success(
-          res.nudged
-            ? `Shot ${shot.step} clip vaulted after easing the prompt${res.nudgeDelta ? ` — ${res.nudgeDelta}` : "."}`
-            : `Shot ${shot.step} clip vaulted.`,
-        );
-      } else {
-        toast.error(res.error || "Clip declined.");
-      }
+      if (res.ok) toast.success(`${shot.title} clip vaulted.`);
+      else toast.error(res.error || "Clip declined.");
       onLadders?.();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Clip failed.");
@@ -255,33 +240,26 @@ export function StudioPanel({ onLadders }: { onLadders?: () => void }) {
     }
   }
 
-  async function writeCopy() {
-    if (!ladderId) return;
-    setBusy("copy");
-    try {
-      const res = await writeStudioCopy({ data: { ladderId } });
-      if (!res.ok) toast.error(res.error);
-      else toast.success(`Transporter wrote ${res.written} teases.`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Copy failed.");
-    } finally {
-      setBusy(null);
-    }
-  }
+  const packs = laddersForThemes(themes);
+  const imagineOff = xai === false;
 
   return (
     <div className="mt-8 space-y-8">
       <section className="rounded-xl border border-border bg-surface p-5">
         <p className="kicker kicker-accent">Studio</p>
-        <h2 className="mt-1 font-display text-3xl text-fg">Author with Grok</h2>
-        <p className="mt-2 max-w-xl text-sm text-muted">
-          Sign in as operator (Grok or email). Transporter authors the muse
-          bible, the nine-yes, Imagine prompts, and a matching palette. Stills
-          spend Imagine credits — operator click only, nine frames capped.
-          If a still is too spicy, the prompt is eased just enough and retried.
-          Existing-muse likeness is reverse-engineered from her frames with
-          Grok vision (not OCR), then locked into every prompt.
+        <h2 className="mt-1 font-display text-3xl text-fg">Nude lock, then dress her</h2>
+        <p className="mt-2 max-w-2xl text-sm text-muted">
+          Generate her fully nude Image 0 first and approve it. Every paid still is an
+          edit of that lock that ADDS clothes for early beats. Imagine rejects that path
+          less than starting clothed and undressing. Identity lock is pasted verbatim
+          into every prompt.
         </p>
+        {imagineOff ? (
+          <p className="mt-4 rounded-lg border border-blood/40 bg-blood/10 px-3 py-2 text-sm text-fg">
+            Grok Imagine is not configured on this Worker (`XAI_API_KEY`). You can still
+            write the lock and layout; generate stays off until the key is set.
+          </p>
+        ) : null}
         <div className="mt-5">
           <Segmented
             value={mode}
@@ -291,290 +269,347 @@ export function StudioPanel({ onLadders }: { onLadders?: () => void }) {
             ]}
             onChange={(id) => {
               setMode(id as "new" | "likeness");
-              setPlan(null);
-              setLadderId(null);
+              setLikenessPlan(null);
+              setLikenessLadderId(null);
             }}
           />
         </div>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          {mode === "likeness" ? (
-            <label className="text-xs text-subtle">
-              Muse
-              <select value={modelId} onChange={(e) => setModelId(e.target.value)} className="field-input">
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.stageName}
-                  </option>
-                ))}
-              </select>
+      </section>
+
+      {mode === "new" ? (
+        <>
+          <section className="rounded-xl border border-border bg-surface p-5">
+            <p className="kicker">Identity</p>
+            <h2 className="mt-1 font-display text-3xl text-fg">Who she is</h2>
+            <label className="mt-5 block text-xs text-subtle">
+              Stage name
+              <input
+                value={stageName}
+                onChange={(e) => setStageName(e.target.value)}
+                className="field-input"
+                placeholder="Collectors will see this"
+              />
             </label>
-          ) : null}
-          <label className="text-xs text-subtle">
-            Photoset type
-            <select value={theme} onChange={(e) => setTheme(e.target.value)} className="field-input">
-              {THEMES.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={`text-xs text-subtle ${mode === "new" ? "sm:col-span-2" : ""}`}>
-            {mode === "new" ? "Who she is" : "New night"}
-            <textarea
-              value={brief}
-              onChange={(e) => setBrief(e.target.value)}
-              className="field-input"
-              rows={3}
-              placeholder={
-                mode === "new"
-                  ? "Caramel skin, tight dark curls, gold moon jewelry, cream silk — a woman who decides if you stay."
-                  : "Same woman, new garment story. Rain on the terrace. She never takes the necklace off."
-              }
-            />
-          </label>
-          {mode === "new" ? (
-            <label className="text-xs text-subtle sm:col-span-2">
-              Extra notes
+            <label className="mt-3 block text-xs text-subtle">
+              Identity lock (verbatim first paragraph of every Imagine prompt)
+              <textarea
+                value={identityLock}
+                onChange={(e) => setIdentityLock(e.target.value)}
+                rows={6}
+                className="field-input"
+                placeholder="Face geometry, eye shape, nose, lips, hair, skin, head-to-body ratio, shoulder width, waist-to-hip, breast size/shape, hip width, jewelry. Do not mention another muse."
+              />
+            </label>
+            <label className="mt-3 block text-xs text-subtle">
+              Voice (optional)
+              <textarea
+                value={voice}
+                onChange={(e) => setVoice(e.target.value)}
+                rows={2}
+                className="field-input"
+                placeholder="How she talks in a tease."
+              />
+            </label>
+            <label className="mt-3 block text-xs text-subtle">
+              Extra notes (optional)
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="field-input"
                 rows={2}
-                placeholder="Room, jewelry, what the climax withholds…"
-              />
-            </label>
-          ) : null}
-        </div>
-        <div className="mt-5 flex flex-wrap gap-2">
-          <Button variant="gold" disabled={busy !== null} onClick={() => void author()}>
-            {busy === "author"
-              ? mode === "new"
-                ? "Authoring…"
-                : "Reading frames…"
-              : mode === "new"
-                ? "Author muse + set"
-                : "Lock likeness + author set"}
-          </Button>
-          <Button variant="outline" disabled={busy !== null} onClick={() => void suggest()}>
-            {busy === "aes" ? "Suggesting…" : "Suggest aesthetic"}
-          </Button>
-        </div>
-      </section>
-
-      {plan ? (
-        <section className="rounded-xl border border-border bg-surface p-5">
-          <p className="kicker">Plan</p>
-          <h2 className="mt-1 font-display text-3xl text-fg">{plan.muse.stageName}</h2>
-          <p className="mt-1 text-sm text-gold">{plan.ladder.title}</p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <label className="text-xs text-subtle">
-              Stage name
-              <input
                 className="field-input"
-                value={plan.muse.stageName}
-                onChange={(e) => setPlan({ ...plan, muse: { ...plan.muse, stageName: e.target.value } })}
+                placeholder="Room, what the climax withholds…"
               />
             </label>
-            <label className="text-xs text-subtle">
-              Photoset title
-              <input
-                className="field-input"
-                value={plan.ladder.title}
-                onChange={(e) => setPlan({ ...plan, ladder: { ...plan.ladder, title: e.target.value } })}
-              />
-            </label>
-            <label className="text-xs text-subtle sm:col-span-2">
-              Looks lock
-              <textarea
-                className="field-input"
-                rows={2}
-                value={plan.muse.looks}
-                onChange={(e) => setPlan({ ...plan, muse: { ...plan.muse, looks: e.target.value } })}
-              />
-            </label>
-            <label className="text-xs text-subtle sm:col-span-2">
-              Voice
-              <textarea
-                className="field-input"
-                rows={2}
-                value={plan.muse.voice}
-                onChange={(e) => setPlan({ ...plan, muse: { ...plan.muse, voice: e.target.value } })}
-              />
-            </label>
-            <label className="text-xs text-subtle sm:col-span-2">
-              Bio
-              <textarea
-                className="field-input"
-                rows={2}
-                value={plan.muse.bio}
-                onChange={(e) => setPlan({ ...plan, muse: { ...plan.muse, bio: e.target.value } })}
-              />
-            </label>
-            <label className="text-xs text-subtle sm:col-span-2">
-              Tagline
-              <input
-                className="field-input"
-                value={plan.ladder.tagline}
-                onChange={(e) => setPlan({ ...plan, ladder: { ...plan.ladder, tagline: e.target.value } })}
-              />
-            </label>
-          </div>
-          <div className="mt-4 rounded-lg border border-border bg-raised p-4">
-            <p className="font-display text-xs tracking-[0.18em] text-gold uppercase">
-              {plan.aesthetic.name}
-            </p>
-            <p className="mt-1 text-sm text-muted">{plan.aesthetic.rationale}</p>
-            <label className="mt-3 block text-xs text-subtle">
-              Imagine night style
-              <textarea
-                className="field-input"
-                rows={2}
-                value={plan.aesthetic.promptStyle}
-                onChange={(e) =>
-                  setPlan({
-                    ...plan,
-                    aesthetic: { ...plan.aesthetic, promptStyle: e.target.value },
-                  })
-                }
-              />
-            </label>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {[
-                plan.aesthetic.palette.bg,
-                plan.aesthetic.palette.surface,
-                plan.aesthetic.palette.fg,
-                plan.aesthetic.palette.accent,
-                plan.aesthetic.palette.blood,
-              ].map((c) => (
-                <span
-                  key={c}
-                  className="size-8 rounded-md border border-border"
-                  style={{ background: c }}
-                  title={c}
-                />
+            <p className="mt-5 text-xs text-subtle">Photosets to generate after you approve Image 0</p>
+            <div className="mt-2 flex flex-wrap gap-3">
+              {(
+                [
+                  ["frontal", "The Reveal"],
+                  ["worship", "The Curve"],
+                  ["feet", "The Pedestal"],
+                ] as const
+              ).map(([id, label]) => (
+                <label key={id} className="flex items-center gap-2 text-sm text-fg">
+                  <input
+                    type="checkbox"
+                    checked={themes.includes(id)}
+                    onChange={() => toggleTheme(id)}
+                    className="size-4 accent-[#c9a227]"
+                  />
+                  {label}
+                </label>
               ))}
             </div>
-            <Button className="mt-4" variant="outline" size="sm" onClick={() => void applyPlanAesthetic()}>
-              Apply palette to site
-            </Button>
-          </div>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Button
+                variant="gold"
+                disabled={Boolean(busy) || imagineOff}
+                onClick={() => void makeLock()}
+              >
+                {busy === "lock" ? "Generating Image 0…" : lockUrl ? "Reroll Image 0" : "Generate Image 0 · nude lock"}
+              </Button>
+            </div>
+          </section>
 
-          <ol className="mt-6 space-y-3">
-            {plan.shots.map((s, i) => (
-              <li key={s.step} className="rounded-lg border border-border bg-raised p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <label className="min-w-0 flex-1 text-xs text-subtle">
-                    Shot {s.step}
-                    {s.isClimax ? " · climax" : ""}
-                    {shotStatus[s.step] === "ok" ? (
-                      <span className="ml-2 text-xs text-gold">vaulted</span>
-                    ) : shotStatus[s.step] === "nudged" ? (
-                      <span className="ml-2 text-xs text-gold">vaulted · eased</span>
-                    ) : shotStatus[s.step] === "blocked" ? (
-                      <span className="ml-2 text-xs text-blood">declined — swap on Ladders</span>
-                    ) : null}
-                    <input
-                      className="field-input mt-1"
-                      value={s.title}
-                      onChange={(e) => {
-                        const shots = plan.shots.slice();
-                        shots[i] = { ...s, title: e.target.value };
-                        setPlan({ ...plan, shots });
-                      }}
-                    />
-                  </label>
-                  <label className="w-24 text-xs text-subtle">
-                    USD
-                    <input
-                      className="field-input mt-1"
-                      value={(s.priceCents / 100).toFixed(2)}
-                      onChange={(e) => {
-                        const cents = Math.round(Number(e.target.value) * 100);
-                        if (!Number.isFinite(cents)) return;
-                        const shots = plan.shots.slice();
-                        shots[i] = { ...s, priceCents: Math.max(99, cents) };
-                        setPlan({ ...plan, shots });
-                      }}
-                    />
-                  </label>
-                  {ladderId ? (
-                    <div className="flex flex-col gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={busy !== null}
-                        onClick={() => void generateOne(s)}
-                      >
-                        {busy === `shot-${s.step}` ? "Generating…" : "Generate this still"}
-                      </Button>
-                      {shotStatus[s.step] === "ok" || shotStatus[s.step] === "nudged" ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={busy !== null}
-                          onClick={() => void generateClip(s)}
-                        >
-                          {busy === `clip-${s.step}` ? "Clipping…" : "Generate clip"}
-                        </Button>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-                <label className="mt-2 block text-xs text-subtle">
-                  Visual beat
-                  <textarea
-                    className="field-input mt-1"
-                    rows={2}
-                    value={s.visualBeat}
-                    onChange={(e) => {
-                      const shots = plan.shots.slice();
-                      shots[i] = { ...s, visualBeat: e.target.value };
-                      setPlan({ ...plan, shots });
-                    }}
-                  />
-                </label>
-                <label className="mt-2 block text-xs text-subtle">
-                  Imagine prompt
-                  <textarea
-                    className="field-input mt-1"
-                    rows={2}
-                    value={s.imaginePrompt}
-                    onChange={(e) => {
-                      const shots = plan.shots.slice();
-                      shots[i] = { ...s, imaginePrompt: e.target.value };
-                      setPlan({ ...plan, shots });
-                    }}
-                  />
-                </label>
-              </li>
-            ))}
-          </ol>
-
-          <div className="mt-6 flex flex-wrap gap-2">
-            <Button variant="gold" disabled={busy !== null || !!ladderId} onClick={() => void commit()}>
-              {busy === "commit" ? "Onboarding…" : ladderId ? "Onboarded" : "Onboard muse & photoset"}
-            </Button>
-            <Button variant="outline" disabled={busy !== null || !ladderId} onClick={() => void generateAll()}>
-              {busy === "gen" ? "Generating stills…" : "Generate 9 stills"}
-            </Button>
-            <Button variant="ghost" disabled={busy !== null || !ladderId} onClick={() => void writeCopy()}>
-              {busy === "copy" ? "Writing…" : "Write transporter copy"}
-            </Button>
-          </div>
-          {progress ? (
-            <p className="mt-3 text-sm text-muted">
-              Generating {progress.step}/{progress.total} — {progress.note}
-            </p>
+          {lockPreview ? (
+            <section className="rounded-xl border border-border bg-surface p-5">
+              <p className="kicker kicker-accent">Image 0</p>
+              <h2 className="mt-1 font-display text-3xl text-fg">Nude lock</h2>
+              <p className="mt-2 max-w-xl text-sm text-muted">
+                This is the only visual authority. Paid stills edit this file. They never
+                use a drifted child as the new source.
+                {usedOpenRobe ? " Landed on the open-robe fallback after a moderation retry." : ""}
+              </p>
+              <img
+                src={lockPreview}
+                alt="Image 0 nude identity lock"
+                className="mt-5 max-h-[70vh] w-full max-w-md rounded-lg border border-border object-contain"
+              />
+              <div className="mt-5 flex flex-wrap gap-2">
+                <Button
+                  variant="gold"
+                  disabled={Boolean(busy) || lockApproved}
+                  onClick={() => void approveLock()}
+                >
+                  {busy === "approve" ? "Onboarding…" : lockApproved ? "Lock approved" : "Approve lock"}
+                </Button>
+                <Button variant="outline" disabled={Boolean(busy) || imagineOff} onClick={() => void makeLock()}>
+                  Reroll lock
+                </Button>
+              </div>
+            </section>
           ) : null}
-          <p className="mt-3 text-xs text-subtle">
-            If Imagine declines a spicy frame, we ease the prompt a notch — same
-            pose, garment, likeness — and retry (up to three). The original
-            prompt stays on the shot. Clips spend more credits; generate one at
-            a time. If it still refuses, swap a still under Ladders.
-          </p>
-        </section>
-      ) : null}
+
+          {lockApproved && committed ? (
+            <section className="space-y-6">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="gold"
+                  disabled={Boolean(busy) || imagineOff}
+                  onClick={() => void generateRemaining()}
+                >
+                  Generate remaining stills
+                </Button>
+                <p className="text-sm text-muted">
+                  {packs.length} set{packs.length === 1 ? "" : "s"} · source is always Image 0
+                </p>
+              </div>
+              {committed.map((ladder) => {
+                const pack = NUDE_MASTER_LADDERS.find((l) => l.theme === ladder.theme);
+                return (
+                  <div key={ladder.ladderId} className="rounded-xl border border-border bg-surface p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="kicker">{ladder.theme}</p>
+                        <h3 className="mt-1 font-display text-2xl text-fg">{ladder.title}</h3>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={Boolean(busy) || imagineOff}
+                        onClick={() => void generateSet(ladder)}
+                      >
+                        Generate this set
+                      </Button>
+                    </div>
+                    <ul className="mt-5 grid gap-4 md:grid-cols-2">
+                      {ladder.shots.map((shot) => {
+                        const beat = pack?.shots.find((b) => b.step === shot.step);
+                        const status = shotStatus[shot.shotId];
+                        return (
+                          <li key={shot.shotId} className="rounded-lg border border-border p-4">
+                            <div className="flex items-baseline justify-between gap-2">
+                              <p className="font-display text-xl text-fg">
+                                {shot.step}. {shot.title}
+                              </p>
+                              {status === "ok" ? (
+                                <span className="text-xs text-gold">vaulted</span>
+                              ) : status === "nudged" ? (
+                                <span className="text-xs text-gold">vaulted · eased</span>
+                              ) : status === "blocked" ? (
+                                <span className="text-xs text-blood">declined</span>
+                              ) : (
+                                <span className="text-xs text-subtle">pending</span>
+                              )}
+                            </div>
+                            <p className="mt-2 text-sm text-muted">{beat?.visualBeat}</p>
+                            {shotPreview[shot.shotId] ? (
+                              <img
+                                src={shotPreview[shot.shotId]}
+                                alt={shot.title}
+                                className="mt-3 max-h-64 w-full rounded-md object-contain"
+                              />
+                            ) : null}
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <Button
+                                size="sm"
+                                variant="gold"
+                                disabled={Boolean(busy) || imagineOff || !beat}
+                                onClick={() => beat && void generateBeat(ladder, shot, beat)}
+                              >
+                                {busy === shot.shotId
+                                  ? "Generating…"
+                                  : status
+                                    ? "Reroll this shot"
+                                    : "Generate this shot"}
+                              </Button>
+                              {shot.isVideoSlot && (status === "ok" || status === "nudged") ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={Boolean(busy) || imagineOff || !beat}
+                                  onClick={() => beat && void clipFor(ladder, shot, beat)}
+                                >
+                                  {busy === `clip-${shot.shotId}` ? "Clipping…" : "Generate clip"}
+                                </Button>
+                              ) : null}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                );
+              })}
+            </section>
+          ) : null}
+        </>
+      ) : (
+        <LikenessStudio
+          models={models}
+          modelId={modelId}
+          setModelId={setModelId}
+          imagineOff={imagineOff}
+          busy={busy}
+          setBusy={setBusy}
+          plan={likenessPlan}
+          setPlan={setLikenessPlan}
+          ladderId={likenessLadderId}
+          setLadderId={setLikenessLadderId}
+          onLadders={onLadders}
+        />
+      )}
     </div>
+  );
+}
+
+function LikenessStudio({
+  models,
+  modelId,
+  setModelId,
+  imagineOff,
+  busy,
+  setBusy,
+  plan,
+  setPlan,
+  ladderId,
+  setLadderId,
+  onLadders,
+}: {
+  models: MuseModel[];
+  modelId: string;
+  setModelId: (v: string) => void;
+  imagineOff: boolean;
+  busy: string | null;
+  setBusy: (v: string | null) => void;
+  plan: StudioPlan | null;
+  setPlan: (p: StudioPlan | null) => void;
+  ladderId: string | null;
+  setLadderId: (v: string | null) => void;
+  onLadders?: () => void;
+}) {
+  const [theme, setTheme] = useState("frontal");
+  const [brief, setBrief] = useState("");
+
+  async function author() {
+    if (!modelId) {
+      toast.error("Pick a muse.");
+      return;
+    }
+    setBusy("author");
+    try {
+      const res = await authorLikenessSet({ data: { modelId, theme, brief } });
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      setPlan(res.plan);
+      setLadderId(null);
+      toast.success(`Likeness locked from ${res.framesRead} frames. Review, then onboard.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Author failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function commit() {
+    if (!plan) return;
+    setBusy("commit");
+    try {
+      const res = await commitStudioPlan({ data: { plan } });
+      if (!res.ok) {
+        toast.error("Could not onboard.");
+        return;
+      }
+      setLadderId(res.ladderId);
+      onLadders?.();
+      toast.success(`${res.modelName} · ${res.slug} onboarded.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not onboard.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-border bg-surface p-5">
+      <p className="kicker">Likeness</p>
+      <h2 className="mt-1 font-display text-3xl text-fg">New night, same woman</h2>
+      <p className="mt-2 max-w-xl text-sm text-muted">
+        Reverse-engineers looks from her existing frames, then authors one new set.
+        Prefer New muse + Image 0 lock when you are starting from scratch.
+      </p>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <label className="text-xs text-subtle">
+          Muse
+          <select value={modelId} onChange={(e) => setModelId(e.target.value)} className="field-input">
+            {models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.stageName}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-xs text-subtle">
+          Photoset type
+          <select value={theme} onChange={(e) => setTheme(e.target.value)} className="field-input">
+            <option value="frontal">The Reveal · frontal</option>
+            <option value="worship">The Curve · back</option>
+            <option value="feet">The Pedestal · feet</option>
+          </select>
+        </label>
+      </div>
+      <label className="mt-3 block text-xs text-subtle">
+        New night
+        <textarea
+          value={brief}
+          onChange={(e) => setBrief(e.target.value)}
+          rows={3}
+          className="field-input"
+          placeholder="Same woman, new garment story."
+        />
+      </label>
+      <div className="mt-5 flex flex-wrap gap-2">
+        <Button variant="gold" disabled={Boolean(busy) || imagineOff} onClick={() => void author()}>
+          {busy === "author" ? "Reading frames…" : "Lock likeness + author set"}
+        </Button>
+        {plan ? (
+          <Button disabled={Boolean(busy) || Boolean(ladderId)} onClick={() => void commit()}>
+            {busy === "commit" ? "Onboarding…" : ladderId ? "Onboarded" : "Onboard this set"}
+          </Button>
+        ) : null}
+      </div>
+    </section>
   );
 }
