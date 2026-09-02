@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { GROK_PROVIDERS, authClient, authEnabled, signIn } from "@/lib/auth/client";
+import { authClient } from "@/lib/auth/client";
 import { Button } from "@/components/ui/button";
 import { Field, Kicker } from "@/components/ui/chrome";
 import { getPsychology } from "@/lib/server/transporter";
@@ -132,23 +132,6 @@ function Login() {
             {mode === "in" ? AUTH.switchToUp : AUTH.switchToIn}
           </button>
 
-          {authEnabled ? (
-            <div className="mt-8 space-y-2">
-              <p className="text-center text-xs tracking-[0.18em] text-subtle uppercase">
-                or continue
-              </p>
-              {GROK_PROVIDERS.map((p) => (
-                <Button
-                  key={p.providerId}
-                  variant="outline"
-                  size="xl"
-                  onClick={() => signIn(p.providerId, { callbackURL: "/" })}
-                >
-                  Continue with {p.label}
-                </Button>
-              ))}
-            </div>
-          ) : null}
 
           <p className="mt-8 text-center text-xs text-subtle">
             By entering you confirm you are 18 or older.{" "}

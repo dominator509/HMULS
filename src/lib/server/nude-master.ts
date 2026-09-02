@@ -5,7 +5,6 @@ import { ensureCatalog, ensureProfile } from "./catalog";
 import { slugify } from "./muse-lookup";
 import { ensureLegal, regenerateAll, upsertMuseModel } from "./legal";
 import type { MuseModel } from "@/lib/legal-types";
-import { STUDIO_PRICES } from "@/lib/studio-types";
 import {
   type LadderTheme,
   type NudeMasterBeat,
@@ -209,7 +208,7 @@ export const commitNudeMasterPlan = createServerFn({ method: "POST" })
         const prompt = paidShotPrompt(identityLock, beat);
         const tease = `${beat.title}. The next shot is still hers to give.`;
         const grant = `${beat.title} is unlocked.`;
-        const price = STUDIO_PRICES[beat.step - 1] ?? 999;
+        const price = 25; // keep test pricing; restore STUDIO_PRICES when live
         await sql`
           insert into shots (
             id, ladder_id, step_index, title, tease, grant_copy, media_type,

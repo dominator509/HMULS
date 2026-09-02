@@ -84,7 +84,7 @@ function parseShots(raw: unknown): StudioShotPlan[] {
       title: asString(row.title, `Shot ${i + 1}`),
       visualBeat: asString(row.visualBeat || row.visual_beat),
       imaginePrompt: asString(row.imaginePrompt || row.imagine_prompt),
-      priceCents: Math.max(99, asInt(row.priceCents ?? row.price_cents, STUDIO_PRICES[i] ?? 999)),
+      priceCents: Math.max(25, asInt(row.priceCents ?? row.price_cents, 25)),
       isClimax: i === 8 || row.isClimax === true || row.is_climax === true,
     });
   }

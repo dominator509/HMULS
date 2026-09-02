@@ -113,7 +113,7 @@ export function LegalPanel() {
       <p className="text-sm text-muted">
         Modeled on Fanvue (Shift Holdings), OnlyFans (Fenix International), and
         synthetic vaults (exemption when no actual person is depicted). Templates
-        always write the statutes. Grok only writes portrayal copy, operator-initiated.
+        always write the statutes. Portrayal rewrite needs an xAI key on this Worker.
       </p>
       {!ready ? (
         <p className="rounded-md border border-gold/40 bg-gold/10 px-4 py-3 text-sm text-gold">

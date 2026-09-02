@@ -11,7 +11,7 @@ import { toast } from "sonner";
 
 export function ConnectorsPanel() {
   const [keys, setKeys] = useState<AgentKey[]>([]);
-  const [label, setLabel] = useState("n8n production");
+  const [label, setLabel] = useState("operator key");
   const [scope, setScope] = useState<KeyScope>("operator");
   const [fresh, setFresh] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -58,7 +58,7 @@ export function ConnectorsPanel() {
         REST at <span className="text-fg">/api/v1</span> · MCP at{" "}
         <span className="text-fg">/api/mcp</span>. Scopes: read (catalog,
         analytics, legal), write (shots, models, prices), operator (dials,
-        Grok transporter, legal regen). There is no default key. Mint one
+        copy rewrite, legal regen). There is no default key. Mint one
         below; the secret is shown once.
       </p>
       <p className="text-sm">
