@@ -1,5 +1,5 @@
-/** Operator inbox. Override with INITIAL_ADMIN_EMAIL. Not a secret. */
-export const DESIGNATED_OPERATOR_EMAIL = "doministic@gmail.com";
+/** Operator inbox comes from INITIAL_ADMIN_EMAIL on the Worker. Never commit an address. */
+export const DESIGNATED_OPERATOR_EMAIL = "";
 
 export function ownerEmailFromEnv() {
   return (process.env.INITIAL_ADMIN_EMAIL || DESIGNATED_OPERATOR_EMAIL).trim().toLowerCase();

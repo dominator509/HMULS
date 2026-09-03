@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  DESIGNATED_OPERATOR_EMAIL,
   emailMatchesOwner,
   firstUserAdminAllowed,
   userIdMatchesOwner,
@@ -13,14 +12,14 @@ describe("owner bootstrap", () => {
     assert.equal(userIdMatchesOwner("user_attacker"), false);
   });
 
-  it("matches the designated operator inbox case-insensitively", () => {
+  it("matches INITIAL_ADMIN_EMAIL case-insensitively", () => {
     const prev = process.env.INITIAL_ADMIN_EMAIL;
     try {
       delete process.env.INITIAL_ADMIN_EMAIL;
-      assert.equal(emailMatchesOwner(DESIGNATED_OPERATOR_EMAIL.toUpperCase()), true);
+      assert.equal(emailMatchesOwner("ops@example.com"), false);
       process.env.INITIAL_ADMIN_EMAIL = "ops@example.com";
-      assert.equal(emailMatchesOwner("ops@example.com"), true);
-      assert.equal(emailMatchesOwner(DESIGNATED_OPERATOR_EMAIL), false);
+      assert.equal(emailMatchesOwner("OPS@example.com"), true);
+      assert.equal(emailMatchesOwner("other@example.com"), false);
     } finally {
       if (prev === undefined) delete process.env.INITIAL_ADMIN_EMAIL;
       else process.env.INITIAL_ADMIN_EMAIL = prev;
