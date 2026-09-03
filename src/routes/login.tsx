@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { authClient } from "@/lib/auth/client";
+import { getMyRole } from "@/lib/server/catalog";
 import { Button } from "@/components/ui/button";
 import { Field, Kicker } from "@/components/ui/chrome";
 import { getPsychology } from "@/lib/server/transporter";
@@ -33,21 +34,36 @@ function Login() {
     e.preventDefault();
     setBusy(true);
     try {
-      if (mode === "up") {
-        const { error } = await authClient.signUp.email({
-          email,
-          password,
-          name: name || email.split("@")[0],
-        });
-        if (error) throw new Error(error.message);
-      } else {
-        const { error } = await authClient.signIn.email({ email, password });
-        if (error) throw new Error(error.message);
+      const run = () =>
+        mode === "up"
+          ? authClient.signUp.email({
+              email,
+              password,
+              name: name || email.split("@")[0],
+            })
+          : authClient.signIn.email({ email, password });
+      let result = await run();
+      if (result.error) {
+        await new Promise((r) => setTimeout(r, 700));
+        result = await run();
+      }
+      if (result.error) {
+        throw new Error(result.error.message?.trim() || AUTH.refused);
+      }
+      let role = "buyer";
+      for (let i = 0; i < 3; i++) {
+        try {
+          role = (await getMyRole()).role;
+          break;
+        } catch {
+          await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+        }
       }
       toast.success(AUTH.granted);
-      void nav({ to: "/" });
+      void nav({ to: role === "admin" ? "/admin" : "/" });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : AUTH.refused);
+      const msg = err instanceof Error ? err.message.trim() : "";
+      toast.error(msg || AUTH.refused);
     } finally {
       setBusy(false);
     }

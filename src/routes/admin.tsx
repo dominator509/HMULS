@@ -47,16 +47,30 @@ function AdminPage() {
   const [stats, setStats] = useState<AnalyticsSnapshot | null>(null);
   const [ladders, setLadders] = useState<AdminLadder[]>([]);
   const [bootstrap, setBootstrap] = useState("");
+  const [roleTick, setRoleTick] = useState(0);
   const [tab, setTab] = useState<
     "stats" | "studio" | "muses" | "ladders" | "dials" | "theme" | "stamps" | "legal" | "connectors"
   >("stats");
 
   useEffect(() => {
     if (!user) return;
-    getMyRole()
-      .then((r) => setRole(r.role))
-      .catch(() => setRole("buyer"));
-  }, [user]);
+    let cancelled = false;
+    (async () => {
+      for (let i = 0; i < 3; i++) {
+        try {
+          const r = await getMyRole();
+          if (!cancelled) setRole(r.role);
+          return;
+        } catch {
+          await new Promise((res) => setTimeout(res, 400 * (i + 1)));
+        }
+      }
+      if (!cancelled) setRole("unknown");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, roleTick]);
 
   useEffect(() => {
     if (role !== "admin") return;
@@ -72,6 +86,26 @@ function AdminPage() {
     return <div className="px-5 py-24 text-center text-muted">Checking operator access…</div>;
   }
   if (!user) return <RedirectToSignIn />;
+  if (role === "unknown") {
+    return (
+      <div className="mx-auto max-w-md px-5 py-24 text-center">
+        <p className="text-muted">
+          Could not verify operator access. The Worker often drops the first
+          auth call. Retry.
+        </p>
+        <Button
+          className="mt-6"
+          size="xl"
+          onClick={() => {
+            setRole(null);
+            setRoleTick((n) => n + 1);
+          }}
+        >
+          Retry
+        </Button>
+      </div>
+    );
+  }
   if (role !== "admin") {
     return (
       <div className="mx-auto max-w-md px-5 py-24 text-center">
