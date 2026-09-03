@@ -234,7 +234,7 @@ export const authorLikenessSet = createServerFn({ method: "POST" })
     const { frames } = await loadMuseFrames(sql, muse.id);
     let looks = (row?.looks || muse.looks || "").trim();
     let frameNotes = "";
-    if (frames.length) {
+    if (frames.length && looks.length < 40) {
       const { seeShotFrames } = await import("./vision.server");
       const vision = await seeShotFrames({
         museName: muse.stageName,
