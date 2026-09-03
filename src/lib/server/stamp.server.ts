@@ -9,6 +9,55 @@ import { privateMediaDir, runtimeDataDir, materializeOriginal, readPrivateOrigin
 const exec = promisify(execFile);
 const FFMPEG = "/usr/local/bin/ffmpeg";
 const FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
+
+function remoteStamp() {
+  const url = (process.env.STAMP_URL || "https://stamps.sheundresses.com").replace(/\/$/, "");
+  const secret = (process.env.STAMP_SECRET || "").trim();
+  if (!secret) return null;
+  return { url, secret };
+}
+
+export function stampSidecarConfigured() {
+  return Boolean(remoteStamp());
+}
+
+export async function stampStillRemote(bytes: Buffer, token: string, visible: boolean): Promise<Buffer> {
+  const r = remoteStamp();
+  if (!r) throw new Error("STAMP_SECRET is not set on this Worker.");
+  const res = await fetch(`${r.url}/v1/stamp`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${r.secret}`,
+      "Content-Type": "application/octet-stream",
+      "X-Stamp-Token": token,
+      "X-Stamp-Visible": visible ? "true" : "false",
+    },
+    body: new Uint8Array(bytes),
+  });
+  if (!res.ok) {
+    const msg = await res.text().catch(() => "");
+    throw new Error(`stamp sidecar ${res.status}${msg ? `: ${msg.slice(0, 180)}` : ""}`);
+  }
+  return Buffer.from(await res.arrayBuffer());
+}
+
+export async function extractRemote(bytes: Buffer): Promise<string | null> {
+  const r = remoteStamp();
+  if (!r) return null;
+  const res = await fetch(`${r.url}/v1/trace`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${r.secret}`,
+      "Content-Type": "application/octet-stream",
+    },
+    body: new Uint8Array(bytes),
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) return null;
+  const json = (await res.json().catch(() => null)) as { token?: unknown } | null;
+  return typeof json?.token === "string" && json.token ? json.token : null;
+}
+
 const MAGIC = Buffer.from("SHE1");
 const TOKEN_LEN = 10;
 const ALPHA = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -265,6 +314,12 @@ export async function extractFromFile(path: string) {
 }
 
 export async function extractFromBuffer(bytes: Buffer) {
+  if (remoteStamp()) {
+    const token = await extractRemote(bytes);
+    if (token) return token;
+    // sidecar 404 / no payload
+    return null;
+  }
   const tmp = join(tmpdir(), `leak_${randomBytes(6).toString("hex")}${guessExt(bytes)}`);
   await writeFile(tmp, bytes);
   try {
