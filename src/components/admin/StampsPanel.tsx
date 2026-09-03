@@ -70,10 +70,9 @@ export function StampsPanel() {
         <p className="kicker kicker-accent">Forensic</p>
         <h2 className="mt-1 font-display text-3xl text-fg">Grant stamps</h2>
         <p className="mt-2 max-w-xl text-sm text-muted">
-          These flags save. Pixel stamping (LSB / visible corner mark) and leak
-          tracing need Node + ffmpeg, which this Cloudflare Worker does not run.
-          Unlocked media is still served from the private original. Do not expect
-          a forensic token on this deploy.
+          Flags save here. Pixel stamps and leak tracing run on the ffmpeg sidecar
+          (stamps.sheundresses.com) when STAMP_SECRET is set on this Worker. Videos
+          are not pixel-stamped. Stamped PNGs stay in private Blob, not on the VPS.
         </p>
         <label className="mt-5 flex items-start gap-3 text-sm text-fg">
           <input
