@@ -116,29 +116,43 @@ export async function grokJson(system: string, user: string, maxTokens: number) 
   if (!apiKey) {
     return { ok: false as const, error: "Grok is not available in this environment." };
   }
-  const res = await fetch("https://api.x.ai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: "grok-4.5",
-      temperature: 0.8,
-      max_tokens: maxTokens,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
+  const payload = JSON.stringify({
+    model: "grok-4.5",
+    temperature: 0.8,
+    max_tokens: maxTokens,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
   });
-  if (!res.ok) {
-    return { ok: false as const, error: `Grok transporter error ${res.status}` };
+  const transient = new Set([408, 425, 429, 500, 502, 503, 504]);
+  let lastStatus = 0;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch("https://api.x.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: payload,
+    });
+    lastStatus = res.status;
+    if (res.ok) {
+      const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+      const text = body.choices?.[0]?.message?.content ?? "";
+      return { ok: true as const, text };
+    }
+    if (!transient.has(res.status) || attempt === 2) break;
+    await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
   }
-  const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-  const text = body.choices?.[0]?.message?.content ?? "";
-  return { ok: true as const, text };
+  if (lastStatus === 503) {
+    return {
+      ok: false as const,
+      error: "Grok is overloaded (503). Wait a minute and try again. No photoset images were generated.",
+    };
+  }
+  return { ok: false as const, error: `Grok transporter error ${lastStatus}` };
 }
 
 export const getPsychology = createServerFn({ method: "GET" }).handler(async () => {
