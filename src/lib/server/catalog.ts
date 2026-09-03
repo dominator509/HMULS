@@ -175,13 +175,6 @@ async function syncLiveCounts(sql: Sql) {
 }
 
 export async function ensureProfile(sql: Sql, userId: string) {
-  await sql`
-    create table if not exists vault_bootstrap (
-      slot text primary key,
-      user_id text not null,
-      claimed_at timestamptz not null default now()
-    )
-  `;
   const emailRows = await sql<{ email: string }>`
     select email from "user" where id = ${userId}
   `;
