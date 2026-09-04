@@ -50,21 +50,34 @@ export async function createNowpaymentsPayment(opts: {
   if (!key || !ipn) {
     throw new Error("NOWPayments is not fully configured.");
   }
-  const res = await fetch("https://api.nowpayments.io/v1/payment", {
-    method: "POST",
-    headers: {
-      "x-api-key": key,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      price_amount: opts.amountCents / 100,
-      price_currency: "usd",
-      pay_currency: nowPayCurrency(opts.asset),
-      order_id: opts.invoiceId,
-      order_description: "SHE UNDRESSES grant",
-      ipn_callback_url: ipn,
-    }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20_000);
+  let res: Response;
+  try {
+    res = await fetch("https://api.nowpayments.io/v1/payment", {
+      method: "POST",
+      headers: {
+        "x-api-key": key,
+        "Content-Type": "application/json",
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        price_amount: opts.amountCents / 100,
+        price_currency: "usd",
+        pay_currency: nowPayCurrency(opts.asset),
+        order_id: opts.invoiceId,
+        order_description: "SHE UNDRESSES grant",
+        ipn_callback_url: ipn,
+      }),
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error("NOWPayments timed out. Try again in a minute.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   const body = (await res.json()) as {
     payment_id?: string | number;
     pay_address?: string;
