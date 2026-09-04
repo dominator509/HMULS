@@ -84,9 +84,22 @@ export function StudioPanel({ onLadders }: { onLadders?: () => void }) {
     }
     setBusy("lock");
     try {
-      const res = await generateLockMaster({
-        data: { identityLock, stageName },
-      });
+      const res = await Promise.race([
+        generateLockMaster({
+          data: { identityLock, stageName },
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () =>
+              reject(
+                new Error(
+                  "Image 0 timed out waiting on Grok Imagine. If Grok is under heavy load, wait a minute and try once more.",
+                ),
+              ),
+            90_000,
+          ),
+        ),
+      ]);
       if (!res.ok) {
         toast.error(res.error);
         return;
