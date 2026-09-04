@@ -5,7 +5,7 @@ import { ensureCatalog, ensureProfile } from "./catalog";
 import { loadDials } from "./transporter";
 import { continueHours, invoiceMinutes, priceBumpPct } from "@/lib/psychology";
 import { CRYPTO_ASSETS, giftCode, invoiceId } from "@/lib/crypto";
-import { createNowpaymentsPayment, paymentsLive } from "./payments";
+import { createNowpaymentsPayment, paymentsLive, paymentsMissing } from "./payments";
 import { entityComplete } from "@/lib/legal-types";
 import { ensureLegal, loadEntity } from "./legal";
 import { grantVaultReady } from "./catalog";
@@ -85,6 +85,17 @@ function priceFor(kind: InvoiceKind, shots: ShotRow[], bundleDiscount: number) {
   return sum;
 }
 
+
+export const getPaymentStatus = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async () => {
+    const missing = paymentsMissing();
+    return {
+      nowpayments: paymentsLive(),
+      missing,
+    };
+  });
+
 export const createInvoice = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
@@ -125,8 +136,13 @@ export const createInvoice = createServerFn({ method: "POST" })
     if (!grantVaultReady && role !== "admin") {
       throw new Error("Paid media vault is not ready.");
     }
-    if (!paymentsLive() && role !== "admin") {
-      throw new Error("Checkout is closed until NOWPayments is fully configured.");
+    if (!paymentsLive()) {
+      const missing = paymentsMissing();
+      throw new Error(
+        missing.length
+          ? `Checkout is closed until NOWPayments is fully configured on Worker hmuls (missing: ${missing.join(", ")}).`
+          : "Checkout is closed until NOWPayments is fully configured on Worker hmuls.",
+      );
     }
 
     const shots = await resolvePayableShots(
@@ -179,8 +195,6 @@ export const createInvoice = createServerFn({ method: "POST" })
       payCurrency = pay.payCurrency;
       priceAmount = String(pay.priceAmount);
       providerExpires = pay.expiresAt;
-    } else if (role !== "admin") {
-      throw new Error("Checkout is closed until NOWPayments is fully configured.");
     }
     const gift = Boolean(data.isGift);
     const code = gift ? giftCode(id) : null;
