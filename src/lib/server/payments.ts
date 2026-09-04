@@ -3,13 +3,18 @@ import { ipnCanonicalJson, normalizePaymentId, type IpnPayment } from "@/lib/now
 import { nowPayCurrency } from "@/lib/crypto";
 import type { CryptoAsset } from "@/lib/types";
 
-/** Explicit IPN URL, else PUBLIC_SITE_URL / BETTER_AUTH_URL + /api/payments/ipn. */
+/**
+ * Prefer NOWPAYMENTS_IPN_URL, else PUBLIC_SITE_URL / BETTER_AUTH_URL + path,
+ * else production apex. CF plain-text vars may not reach Nitro process.env on
+ * Workers (encrypted secrets do); public apex fallback unblocks payments.
+ */
 export function nowpaymentsIpnUrl() {
   const explicit = process.env.NOWPAYMENTS_IPN_URL?.trim();
   if (explicit) return explicit;
   const base = (process.env.PUBLIC_SITE_URL || process.env.BETTER_AUTH_URL || "").trim().replace(/\/$/, "");
-  if (!base) return "";
-  return `${base}/api/payments/ipn`;
+  if (base) return `${base}/api/payments/ipn`;
+  // Last resort: public IPN callback (not a secret). Env derive failed on Worker.
+  return "https://sheundresses.com/api/payments/ipn";
 }
 
 export function paymentsLive() {
@@ -28,6 +33,7 @@ export function paymentsMissing() {
   const missing: string[] = [];
   if (!process.env.NOWPAYMENTS_API_KEY?.trim()) missing.push("NOWPAYMENTS_API_KEY");
   if (!process.env.NOWPAYMENTS_IPN_SECRET?.trim()) missing.push("NOWPAYMENTS_IPN_SECRET");
+  // Only if helper is empty (should be impossible after apex fallback).
   if (!nowpaymentsIpnUrl()) missing.push("NOWPAYMENTS_IPN_URL");
   return missing;
 }
