@@ -116,7 +116,7 @@ export function PayWallet({
         ) : (
           <p className="mt-4 rounded-lg border border-blood/40 bg-blood/10 px-3 py-2 text-sm text-fg">
             No live payment address from NOWPayments. Wallets cannot connect until Worker hmuls has
-            NOWPAYMENTS_API_KEY, NOWPAYMENTS_IPN_SECRET, and NOWPAYMENTS_IPN_URL. Operator can still grant from Ops.
+            NOWPAYMENTS_API_KEY and NOWPAYMENTS_IPN_SECRET (IPN URL derives from PUBLIC_SITE_URL when unset). Operator can still grant from Ops.
           </p>
         )}
 
