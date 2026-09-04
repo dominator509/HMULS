@@ -19,7 +19,7 @@ After the domain is attached to this app's Vercel project:
    - `www` → `CNAME` `cname.vercel-dns.com`
 2. On the host, add both `sheundresses.com` and `www.sheundresses.com`, and redirect www → apex.
 3. Set `BETTER_AUTH_URL=https://sheundresses.com`, `VITE_PUBLIC_HOSTNAME=sheundresses.com`, `PUBLIC_SITE_URL=https://sheundresses.com`.
-4. Set `NOWPAYMENTS_IPN_URL=https://sheundresses.com/api/payments/ipn` once payments are live.
+4. Optional: set `NOWPAYMENTS_IPN_URL=https://sheundresses.com/api/payments/ipn` once payments are live (derived from `PUBLIC_SITE_URL` / `BETTER_AUTH_URL` if omitted).
 5. Ops → Legal: Public URL should read `https://sheundresses.com`. Save and regenerate the legal pack. Use `legal@sheundresses.com` / `dmca@sheundresses.com` once those mailboxes exist.
 
 SEO, sitemap, robots, and JSON-LD use that origin. Empty legal `website_url` is filled with the apex on boot.
@@ -45,7 +45,7 @@ Owner: set `INITIAL_ADMIN_EMAIL` or claim with `BOOTSTRAP_SECRET`. Preview witho
 
 ## Payments
 
-Public checkout requires `NOWPAYMENTS_API_KEY`, `NOWPAYMENTS_IPN_SECRET`, and `NOWPAYMENTS_IPN_URL`. The browser cannot grant. Settlement requires HMAC plus finished status, amount, currency, payment id (string or number), pay address, and pay currency match. Operator grant is explicit and labeled.
+Public checkout requires `NOWPAYMENTS_API_KEY` and `NOWPAYMENTS_IPN_SECRET`. `NOWPAYMENTS_IPN_URL` is optional when `PUBLIC_SITE_URL` or `BETTER_AUTH_URL` is set (derived as `{site}/api/payments/ipn`). The browser cannot grant. Settlement requires HMAC plus finished status, amount, currency, payment id (string or number), pay address, and pay currency match. Operator grant is explicit and labeled.
 
 USDT is modeled as ERC-20 (`usdterc20` on NOWPayments).
 

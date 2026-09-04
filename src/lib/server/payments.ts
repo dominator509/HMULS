@@ -3,11 +3,20 @@ import { ipnCanonicalJson, normalizePaymentId, type IpnPayment } from "@/lib/now
 import { nowPayCurrency } from "@/lib/crypto";
 import type { CryptoAsset } from "@/lib/types";
 
+/** Explicit IPN URL, else PUBLIC_SITE_URL / BETTER_AUTH_URL + /api/payments/ipn. */
+export function nowpaymentsIpnUrl() {
+  const explicit = process.env.NOWPAYMENTS_IPN_URL?.trim();
+  if (explicit) return explicit;
+  const base = (process.env.PUBLIC_SITE_URL || process.env.BETTER_AUTH_URL || "").trim().replace(/\/$/, "");
+  if (!base) return "";
+  return `${base}/api/payments/ipn`;
+}
+
 export function paymentsLive() {
   return Boolean(
     process.env.NOWPAYMENTS_IPN_SECRET?.trim() &&
       process.env.NOWPAYMENTS_API_KEY?.trim() &&
-      process.env.NOWPAYMENTS_IPN_URL?.trim(),
+      nowpaymentsIpnUrl(),
   );
 }
 
@@ -19,7 +28,7 @@ export function paymentsMissing() {
   const missing: string[] = [];
   if (!process.env.NOWPAYMENTS_API_KEY?.trim()) missing.push("NOWPAYMENTS_API_KEY");
   if (!process.env.NOWPAYMENTS_IPN_SECRET?.trim()) missing.push("NOWPAYMENTS_IPN_SECRET");
-  if (!process.env.NOWPAYMENTS_IPN_URL?.trim()) missing.push("NOWPAYMENTS_IPN_URL");
+  if (!nowpaymentsIpnUrl()) missing.push("NOWPAYMENTS_IPN_URL");
   return missing;
 }
 
@@ -55,7 +64,7 @@ export async function createNowpaymentsPayment(opts: {
   amountCents: number;
 }): Promise<ProviderPayment> {
   const key = nowpaymentsApiKey();
-  const ipn = process.env.NOWPAYMENTS_IPN_URL?.trim();
+  const ipn = nowpaymentsIpnUrl();
   if (!key || !ipn) {
     throw new Error("NOWPayments is not fully configured.");
   }
