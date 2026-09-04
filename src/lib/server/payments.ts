@@ -15,6 +15,15 @@ export function nowpaymentsApiKey() {
   return process.env.NOWPAYMENTS_API_KEY?.trim() || "";
 }
 
+export function paymentsMissing() {
+  const missing: string[] = [];
+  if (!process.env.NOWPAYMENTS_API_KEY?.trim()) missing.push("NOWPAYMENTS_API_KEY");
+  if (!process.env.NOWPAYMENTS_IPN_SECRET?.trim()) missing.push("NOWPAYMENTS_IPN_SECRET");
+  if (!process.env.NOWPAYMENTS_IPN_URL?.trim()) missing.push("NOWPAYMENTS_IPN_URL");
+  return missing;
+}
+
+
 export function verifyNowpaymentsSignature(rawBody: string, signature: string, secret: string) {
   if (!signature || !secret) return false;
   let payload: unknown;
