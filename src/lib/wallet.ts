@@ -57,20 +57,59 @@ export function ensureVaultWallet(): VaultWallet {
   return loadVaultWallet() ?? createVaultWallet();
 }
 
-export function detectInjected(): { name: string } | null {
+type EthProvider = {
+  request: (a: { method: string; params?: unknown[] }) => Promise<unknown>;
+  isMetaMask?: boolean;
+  isRainbow?: boolean;
+  isCoinbaseWallet?: boolean;
+  isTrust?: boolean;
+  isBase?: boolean;
+  providers?: EthProvider[];
+};
+
+function readEthereum(): EthProvider | null {
   if (typeof window === "undefined") return null;
-  const eth = (window as unknown as { ethereum?: Record<string, unknown> }).ethereum;
-  if (!eth) return null;
-  if (eth.isMetaMask) return { name: "MetaMask" };
-  if (eth.isRainbow) return { name: "Rainbow" };
-  if (eth.isCoinbaseWallet) return { name: "Coinbase Wallet" };
-  if (eth.isTrust) return { name: "Trust Wallet" };
-  return { name: "Browser wallet" };
+  return (window as unknown as { ethereum?: EthProvider }).ethereum ?? null;
 }
 
-export async function connectInjected(): Promise<string> {
-  const eth = (window as unknown as { ethereum?: { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> } }).ethereum;
-  if (!eth) throw new Error("No browser wallet found.");
+function providerName(eth: EthProvider) {
+  if (eth.isMetaMask) return "MetaMask";
+  if (eth.isRainbow) return "Rainbow";
+  if (eth.isCoinbaseWallet || eth.isBase) return "Coinbase / Base Wallet";
+  if (eth.isTrust) return "Trust Wallet";
+  return "Browser wallet";
+}
+
+export function listInjectedProviders(): { name: string; provider: EthProvider }[] {
+  const eth = readEthereum();
+  if (!eth) return [];
+  const raw = Array.isArray(eth.providers) && eth.providers.length ? eth.providers : [eth];
+  const seen = new Set<string>();
+  const out: { name: string; provider: EthProvider }[] = [];
+  for (const p of raw) {
+    const name = providerName(p);
+    const key = name + String(Boolean(p.isMetaMask)) + String(Boolean(p.isCoinbaseWallet));
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ name, provider: p });
+  }
+  return out;
+}
+
+export function detectInjected(): { name: string } | null {
+  const list = listInjectedProviders();
+  return list[0] ? { name: list[0].name } : null;
+}
+
+export async function connectInjected(preferred?: EthProvider): Promise<string> {
+  const list = listInjectedProviders();
+  const eth =
+    preferred ||
+    list.find((p) => p.provider.isMetaMask)?.provider ||
+    list.find((p) => p.provider.isCoinbaseWallet || p.provider.isBase)?.provider ||
+    list[0]?.provider ||
+    null;
+  if (!eth) throw new Error("No browser wallet found. Install MetaMask, Coinbase Wallet, or Trust and refresh.");
   const accounts = (await eth.request({ method: "eth_requestAccounts" })) as string[];
   const addr = accounts?.[0];
   if (!addr) throw new Error("Wallet returned no account.");
@@ -141,7 +180,10 @@ export function walletDeepLink(
 }
 
 export async function sendInjectedEth(from: string, to: string, amountEth: string): Promise<string> {
-  const eth = (window as unknown as { ethereum?: { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> } }).ethereum;
+  const eth =
+    listInjectedProviders().find((p) => p.provider.isMetaMask)?.provider ||
+    listInjectedProviders()[0]?.provider ||
+    null;
   if (!eth) throw new Error("No browser wallet found.");
   const hash = (await eth.request({
     method: "eth_sendTransaction",
@@ -189,6 +231,13 @@ export const WALLET_OPTIONS: WalletOption[] = [
     hint: "Send from Trust with amount and address set.",
     kind: "deeplink",
     assets: ["ETH", "BTC", "USDT"],
+  },
+  {
+    id: "coinbase",
+    name: "Coinbase / Base Wallet",
+    hint: "Opens Coinbase Wallet with the pay link.",
+    kind: "deeplink",
+    assets: ["ETH", "USDT"],
   },
   {
     id: "phantom",
