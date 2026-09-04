@@ -8,7 +8,7 @@ import {
   getMyUnlocks,
   withBundle,
 } from "@/lib/server/catalog";
-import { createInvoice } from "@/lib/server/purchases";
+import { createInvoice, getPaymentStatus } from "@/lib/server/purchases";
 import { getPsychology } from "@/lib/server/transporter";
 import type { CryptoAsset, InvoiceKind, LadderPublic, ShotPublic } from "@/lib/types";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -100,6 +100,7 @@ function LadderPage() {
   const [asset, setAsset] = useState<CryptoAsset>("ETH");
   const [gift, setGift] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [payStatus, setPayStatus] = useState<{ nowpayments: boolean; missing: string[] } | null>(null);
   const [clock, setClock] = useState<number | null>(null);
   const [dials, setDials] = useState<Dials>(DEFAULT_DIALS);
   const [surfaces, setSurfaces] = useState<Surfaces>(() => fallbackSurfaces(DEFAULT_DIALS));
@@ -186,6 +187,13 @@ function LadderPage() {
     return () => window.clearInterval(t);
   }, []);
 
+  useEffect(() => {
+    if (!payOpen || !user) return;
+    getPaymentStatus()
+      .then(setPayStatus)
+      .catch(() => setPayStatus({ nowpayments: false, missing: ["NOWPAYMENTS_API_KEY"] }));
+  }, [payOpen, user]);
+
   if (raw === undefined) {
     return (
       <div className="mx-auto max-w-6xl px-5 py-20">
@@ -255,8 +263,17 @@ function LadderPage() {
     setPayOpen(true);
   }
 
+
   async function submitPay() {
     if (!ladder) return;
+    if (payStatus && !payStatus.nowpayments) {
+      toast.error(
+        payStatus.missing.length
+          ? `NOWPayments is not live on the Worker (missing: ${payStatus.missing.join(", ")}). No wallet can open without a pay address.`
+          : "NOWPayments is not live on the Worker. No wallet can open without a pay address.",
+      );
+      return;
+    }
     setBusy(true);
     try {
       const inv = await Promise.race([
@@ -771,7 +788,14 @@ function LadderPage() {
               />
               {PAY_SHEET.giftLabel}
             </label>
-            <Button className="mt-5" size="xl" disabled={busy} onClick={() => void submitPay()}>
+            {payStatus && !payStatus.nowpayments ? (
+              <p className="mt-4 rounded-lg border border-blood/40 bg-blood/10 px-3 py-2 text-sm text-fg">
+                NOWPayments is not configured on Worker hmuls
+                {payStatus.missing.length ? ` (missing: ${payStatus.missing.join(", ")})` : ""}.
+                Set those vars, then pay again — wallets only appear after a live pay address exists.
+              </p>
+            ) : null}
+            <Button className="mt-5" size="xl" disabled={busy || (payStatus != null && !payStatus.nowpayments)} onClick={() => void submitPay()}>
               {busy ? "Opening invoice…" : PAY_SHEET.pay(asset)}
             </Button>
             <p className="mt-3 text-center text-xs text-subtle">
