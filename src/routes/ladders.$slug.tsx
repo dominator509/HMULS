@@ -259,16 +259,29 @@ function LadderPage() {
     if (!ladder) return;
     setBusy(true);
     try {
-      const inv = await createInvoice({
-        data: {
-          ladderId: ladder.id,
-          kind,
-          asset,
-          shotId: kind === "shot" ? next?.id : undefined,
-          upsellCount: kind === "upsell" ? upsellN : undefined,
-          isGift: gift,
-        },
-      });
+      const inv = await Promise.race([
+        createInvoice({
+          data: {
+            ladderId: ladder.id,
+            kind,
+            asset,
+            shotId: kind === "shot" ? next?.id : undefined,
+            upsellCount: kind === "upsell" ? upsellN : undefined,
+            isGift: gift,
+          },
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () =>
+              reject(
+                new Error(
+                  "Opening the invoice timed out. Try again — if this keeps happening, NOWPayments may be slow or the Worker is cold.",
+                ),
+              ),
+            35_000,
+          ),
+        ),
+      ]);
       void nav({
         to: "/checkout/$invoiceId",
         params: { invoiceId: inv.id },

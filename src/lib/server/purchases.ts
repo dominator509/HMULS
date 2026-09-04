@@ -12,19 +12,9 @@ import { grantVaultReady } from "./catalog";
 import { climaxOccupied, writeClimaxOccupancy } from "./inventory";
 import type { CryptoAsset, InvoiceKind, InvoiceView, VaultItem } from "@/lib/types";
 
-let payColsReady = false;
-async function ensurePayCols(sql: Sql) {
-  if (payColsReady) return;
-  await sql`alter table invoices add column if not exists pay_method text`;
-  await sql`alter table invoices add column if not exists wallet_address text`;
-  await sql`alter table invoices add column if not exists tx_hash text`;
-  await sql`alter table invoices add column if not exists provider text`;
-  await sql`alter table invoices add column if not exists provider_payment_id text`;
-  await sql`alter table invoices add column if not exists pay_currency text`;
-  await sql`alter table invoices add column if not exists price_amount text`;
-  await sql`alter table invoices add column if not exists provider_expires_at timestamptz`;
-  await sql`alter table gifts add column if not exists reserved_climax boolean not null default false`;
-  payColsReady = true;
+async function ensurePayCols(_sql: Sql) {
+  // Columns live in migrations 0012 + operator-applied pay_method/wallet/tx_hash.
+  // Do not ALTER on the Workers hot path — cold isolates re-run DDL and hang unlocks.
 }
 
 type ShotRow = {

@@ -31,6 +31,7 @@ export function MusesPanel({ onLadders }: { onLadders?: () => void }) {
   const [models, setModels] = useState<MuseModel[]>([]);
   const [draft, setDraft] = useState<MuseModel>(EMPTY);
   const [busy, setBusy] = useState(false);
+  const [ageText, setAgeText] = useState(String(EMPTY.portrayedAgeMin));
   const [setTitle, setSetTitle] = useState("");
   const [theme, setTheme] = useState("frontal");
   const [tagline, setTagline] = useState("");
@@ -51,11 +52,17 @@ export function MusesPanel({ onLadders }: { onLadders?: () => void }) {
       toast.error("She needs a stage name.");
       return;
     }
+    const age = Math.max(21, Number(ageText) || 0);
+    if (!Number.isFinite(age) || age < 21) {
+      toast.error("Portrayed age must be 21 or older.");
+      return;
+    }
     setBusy(true);
     try {
       const saved = await saveModel({
         data: {
           ...draft,
+          portrayedAgeMin: age,
           slug: draft.slug || draft.stageName,
           isFictional: draft.contentKind === "synthetic" ? true : draft.isFictional,
         },
@@ -165,10 +172,16 @@ export function MusesPanel({ onLadders }: { onLadders?: () => void }) {
           </label>
           <Field
             label="Portrayed age (21+)"
-            value={String(draft.portrayedAgeMin)}
-            onChange={(v) =>
-              setDraft({ ...draft, portrayedAgeMin: Math.max(21, Number(v) || 21) })
-            }
+            value={ageText}
+            onChange={(v) => {
+              const cleaned = v.replace(/[^0-9]/g, "").slice(0, 3);
+              setAgeText(cleaned);
+              if (cleaned === "") return;
+              const n = Number(cleaned);
+              if (Number.isFinite(n)) {
+                setDraft({ ...draft, portrayedAgeMin: n });
+              }
+            }}
           />
         </div>
         <label className="mt-3 block text-xs text-subtle">

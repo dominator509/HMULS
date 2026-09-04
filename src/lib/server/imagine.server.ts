@@ -14,6 +14,23 @@ const IMAGE_MODEL = "grok-imagine-image-2.0";
 const VIDEO_MODEL = "grok-imagine-video-1.5";
 const MAX_RUNGS = 3;
 
+async function fetchWithTimeout(url: string, init: RequestInit, ms: number) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      return new Response(JSON.stringify({ error: { message: "timed out" } }), { status: 504 });
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+
+
 export type ImagineResult =
   | { ok: true; bytes: Buffer; mime: "image/jpeg" | "video/mp4" }
   | { ok: false; error: string; blocked: boolean; detail?: string };
@@ -202,35 +219,55 @@ async function withModerationNudge(
 async function imagineGenerateRaw(prompt: string): Promise<ImagineResult> {
   const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) return { ok: false, error: "Grok Imagine is not available in this environment.", blocked: false };
-  const res = await fetch("https://api.x.ai/v1/images/generations", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: IMAGE_MODEL,
-      prompt,
-      n: 1,
-      aspect_ratio: "2:3",
-      resolution: "1k",
-      quality: "medium",
-      response_format: "b64_json",
-    }),
+  const payload = JSON.stringify({
+    model: IMAGE_MODEL,
+    prompt,
+    n: 1,
+    aspect_ratio: "2:3",
+    resolution: "1k",
+    quality: "medium",
+    response_format: "b64_json",
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    const blocked = blockedFrom(res.status, text);
-    return {
-      ok: false,
-      error: blocked
-        ? "Imagine declined this frame."
-        : `Imagine error ${res.status}`,
-      blocked,
-      detail: text.slice(0, 400),
-    };
+  const transient = new Set([408, 425, 429, 500, 502, 503, 504]);
+  let lastStatus = 0;
+  let lastText = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetchWithTimeout(
+      "https://api.x.ai/v1/images/generations",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: payload,
+      },
+      55_000,
+    );
+    lastStatus = res.status;
+    if (res.ok) return readImageBody(res);
+    lastText = await res.text().catch(() => "");
+    const blocked = blockedFrom(res.status, lastText);
+    if (blocked || !transient.has(res.status) || attempt === 2) {
+      return {
+        ok: false,
+        error: blocked
+          ? "Imagine declined this frame."
+          : res.status === 503 || res.status === 504
+            ? "Grok Imagine is overloaded or timed out. Wait a minute and try Image 0 again."
+            : `Imagine error ${res.status}`,
+        blocked,
+        detail: lastText.slice(0, 400),
+      };
+    }
+    await sleep(800 * (attempt + 1));
   }
-  return readImageBody(res);
+  return {
+    ok: false,
+    error: `Imagine error ${lastStatus}`,
+    blocked: false,
+    detail: lastText.slice(0, 400),
+  };
 }
 
 async function imagineEditRaw(prompt: string, dataUris: string[]): Promise<ImagineResult> {

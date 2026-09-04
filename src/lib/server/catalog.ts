@@ -58,14 +58,8 @@ let voiceColsReady = false;
 let grantVaultSynced = false;
 export let grantVaultReady = false;
 
-async function ensureVoiceColumns(sql: Sql) {
-  if (voiceColsReady) return;
-  await sql`alter table ladders add column if not exists model_id text not null default 'mod_liora'`;
-  await sql`alter table ladders add column if not exists photoset_hook text not null default ''`;
-  await sql`alter table ladders add column if not exists photoset_tease text not null default ''`;
-  await sql`alter table shots add column if not exists visual_beat text not null default ''`;
-  await sql`alter table shots add column if not exists teaser_url text not null default ''`;
-  await sql`alter table shots add column if not exists imagine_prompt text not null default ''`;
+async function ensureVoiceColumns(_sql: Sql) {
+  // Voice columns already applied via migrations. Skipping ALTER on Workers.
   voiceColsReady = true;
 }
 
