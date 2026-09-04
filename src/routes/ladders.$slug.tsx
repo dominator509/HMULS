@@ -187,6 +187,13 @@ function LadderPage() {
     return () => window.clearInterval(t);
   }, []);
 
+  useEffect(() => {
+    if (!payOpen || !user) return;
+    getPaymentStatus()
+      .then(setPayStatus)
+      .catch(() => setPayStatus({ nowpayments: false, missing: ["NOWPAYMENTS_API_KEY"] }));
+  }, [payOpen, user]);
+
   if (raw === undefined) {
     return (
       <div className="mx-auto max-w-6xl px-5 py-20">
@@ -256,13 +263,6 @@ function LadderPage() {
     setPayOpen(true);
   }
 
-  
-  useEffect(() => {
-    if (!payOpen || !user) return;
-    getPaymentStatus()
-      .then(setPayStatus)
-      .catch(() => setPayStatus({ nowpayments: false, missing: ["NOWPAYMENTS_API_KEY"] }));
-  }, [payOpen, user]);
 
   async function submitPay() {
     if (!ladder) return;
