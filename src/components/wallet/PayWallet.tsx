@@ -6,6 +6,7 @@ import {
   WALLET_OPTIONS,
   connectInjected,
   detectInjected,
+  listInjectedProviders,
   paymentUri,
   sendInjectedEth,
   shortAddr,
@@ -26,6 +27,7 @@ export function PayWallet({
   onSubmitted: (info: { method: string; wallet: string; txHash: string }) => Promise<void>;
 }) {
   const injected = useMemo(() => detectInjected(), []);
+  const injectedList = useMemo(() => listInjectedProviders(), []);
   const [open, setOpen] = useState(false);
   const [account, setAccount] = useState<string | null>(null);
   const [method, setMethod] = useState<string>("injected");
@@ -112,8 +114,9 @@ export function PayWallet({
             </button>
           </div>
         ) : (
-          <p className="mt-4 text-sm text-muted">
-            No live payment address. Operator can grant this invoice from Ops.
+          <p className="mt-4 rounded-lg border border-blood/40 bg-blood/10 px-3 py-2 text-sm text-fg">
+            No live payment address from NOWPayments. Wallets cannot connect until Worker hmuls has
+            NOWPAYMENTS_API_KEY, NOWPAYMENTS_IPN_SECRET, and NOWPAYMENTS_IPN_URL. Operator can still grant from Ops.
           </p>
         )}
 
@@ -128,23 +131,46 @@ export function PayWallet({
         ) : null}
 
         <div className="mt-5 flex flex-col gap-2">
-          {inv.asset === "ETH" && injected ? (
+          {inv.asset === "ETH" && injectedList.length && inv.paymentReady && !account ? (
+            injectedList.map((p) => (
+              <Button
+                key={p.name}
+                size="xl"
+                disabled={disabled || phase === "signing" || phase === "broadcast"}
+                onClick={() => {
+                  void (async () => {
+                    try {
+                      const addr = await connectInjected(p.provider);
+                      setAccount(addr);
+                      setMethod("injected");
+                      setPhase("confirm");
+                      toast.success(`${p.name} connected.`);
+                    } catch (err) {
+                      toast.error(err instanceof Error ? err.message : "Could not connect.");
+                    }
+                  })();
+                }}
+              >
+                Connect {p.name}
+              </Button>
+            ))
+          ) : null}
+          {inv.asset === "ETH" && account ? (
             <Button
               size="xl"
               disabled={disabled || !inv.paymentReady || phase === "signing" || phase === "broadcast"}
-              onClick={() => {
-                if (!account) {
-                  void pick("injected");
-                  return;
-                }
-                void pay();
-              }}
+              onClick={() => void pay()}
             >
               {phase === "signing" || phase === "broadcast" ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : null}
-              {account ? `Send ${inv.cryptoAmount} ETH` : "Connect wallet and send"}
+              Send {inv.cryptoAmount} ETH
             </Button>
+          ) : null}
+          {inv.asset === "ETH" && !injectedList.length && inv.paymentReady ? (
+            <p className="text-xs text-subtle">
+              No browser wallet detected. Use Open a mobile wallet below (MetaMask / Trust / Coinbase).
+            </p>
           ) : null}
           <Button
             size={inv.asset === "ETH" && injected ? "lg" : "xl"}
