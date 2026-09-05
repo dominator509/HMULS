@@ -112,7 +112,13 @@ export async function createNowpaymentsPayment(opts: {
     message?: string;
   };
   if (!res.ok || !body.pay_address || body.payment_id == null) {
-    throw new Error(body.message || "NOWPayments did not return a payment.");
+    const raw = body.message || "NOWPayments did not return a payment.";
+    if (/less than minimal/i.test(raw)) {
+      throw new Error(
+        "This amount is below NOWPayments minimum for that coin — try a larger unlock or another asset.",
+      );
+    }
+    throw new Error(raw);
   }
   const paymentId = normalizePaymentId(body.payment_id);
   if (!paymentId) throw new Error("NOWPayments omitted payment_id.");
