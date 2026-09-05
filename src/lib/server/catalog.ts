@@ -166,6 +166,12 @@ async function syncLiveCounts(sql: Sql) {
         )
       )
   `;
+  // Roll expired/null scarcity windows forward so homepage clocks don't rot.
+  await sql`
+    update ladders
+    set scarcity_ends_at = now() + interval '18 hours'
+    where scarcity_ends_at is null or scarcity_ends_at < now()
+  `;
 }
 
 export async function ensureProfile(sql: Sql, userId: string) {
