@@ -78,7 +78,20 @@ export const Route = createFileRoute("/api/media/$shotId")({
           }
         }
 
-        const bytes = await stamp.readPrivateOriginal(row.media_url);
+        let bytes = await stamp.readPrivateOriginal(row.media_url);
+        if (!bytes && row.media_url.startsWith("grant:")) {
+          // Cold deploy: seed may still be only in git private-media/. Try once.
+          try {
+            const { syncBundledVaultOriginalToBlob } = await import(
+              "@/lib/server/object-store"
+            );
+            const name = row.media_url.slice("grant:".length);
+            await syncBundledVaultOriginalToBlob(name);
+            bytes = await stamp.readPrivateOriginal(row.media_url);
+          } catch (err) {
+            console.error("[media] seed vault sync retry failed", err);
+          }
+        }
         if (bytes) {
           const type = stamp.isVideoUrl(row.media_url, row.media_type)
             ? "video/mp4"

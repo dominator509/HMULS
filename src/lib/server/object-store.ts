@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { createHmac } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
@@ -244,6 +244,102 @@ export function resolveBundledOriginal(key: string) {
   const name = safeKey(key);
   const bundled = join(privateMediaDir(), name);
   return isInside(privateMediaDir(), bundled) ? bundled : null;
+}
+
+
+/** Known seed grant filenames shipped in private-media/ (rev/crv/ped ladders). */
+export function seedVaultOriginalFilenames(): string[] {
+  const out: string[] = [];
+  for (const prefix of ["rev", "crv", "ped"] as const) {
+    for (let i = 1; i <= 9; i++) {
+      if (prefix === "rev" && i === 6) out.push("rev_6.mp4");
+      else out.push(`${prefix}_${i}.jpg`);
+    }
+  }
+  return out;
+}
+
+async function readDiskBundledOriginal(name: string): Promise<Buffer | null> {
+  const key = safeKey(name);
+  const bundled = join(privateMediaDir(), key);
+  return readFileIfInside(privateMediaDir(), bundled);
+}
+
+async function listSeedVaultCandidates(): Promise<string[]> {
+  const set = new Set(seedVaultOriginalFilenames());
+  try {
+    const names = await readdir(privateMediaDir());
+    for (const n of names) {
+      if (!/\.(jpe?g|png|webp|mp4|webm)$/i.test(n)) continue;
+      if (n.includes("..") || n.includes("/") || n.includes("\\")) continue;
+      set.add(n);
+    }
+  } catch {
+    /* Cloudflare Worker / read-only deploy may have no private-media disk. */
+  }
+  return [...set].sort();
+}
+
+/**
+ * Bootstrap git private-media/ seed originals into private Vercel Blob.
+ * Idempotent: if the vault blob already exists, skip (never overwrite studio uploads).
+ * No-ops without BLOB_READ_WRITE_TOKEN. Does not throw on per-file failures.
+ */
+export async function syncBundledVaultOriginalsToBlob(): Promise<{
+  uploaded: string[];
+  skipped: string[];
+  missing: string[];
+}> {
+  const uploaded: string[] = [];
+  const skipped: string[] = [];
+  const missing: string[] = [];
+  if (!blobToken()) {
+    return { uploaded, skipped, missing };
+  }
+  const names = await listSeedVaultCandidates();
+  for (const name of names) {
+    try {
+      const inBlob = await blobRead("vault", name);
+      if (inBlob) {
+        skipped.push(name);
+        continue;
+      }
+      const bytes = await readDiskBundledOriginal(name);
+      if (!bytes || bytes.length < 32) {
+        missing.push(name);
+        continue;
+      }
+      await putPrivateOriginal(name, bytes);
+      uploaded.push(name);
+    } catch (err) {
+      console.error("[vault-sync] file failed", name, err);
+      missing.push(name);
+    }
+  }
+  return { uploaded, skipped, missing };
+}
+
+/** Sync a single bundled seed original (e.g. first /api/media miss after deploy). */
+export async function syncBundledVaultOriginalToBlob(
+  filename: string,
+): Promise<"uploaded" | "skipped" | "missing" | "noop"> {
+  if (!blobToken()) return "noop";
+  let name: string;
+  try {
+    name = safeKey(filename);
+  } catch {
+    return "missing";
+  }
+  try {
+    if (await blobRead("vault", name)) return "skipped";
+    const bytes = await readDiskBundledOriginal(name);
+    if (!bytes || bytes.length < 32) return "missing";
+    await putPrivateOriginal(name, bytes);
+    return "uploaded";
+  } catch (err) {
+    console.error("[vault-sync] single file failed", name, err);
+    return "missing";
+  }
 }
 
 /** Materialize a paid original to a local path FFmpeg can read. */
