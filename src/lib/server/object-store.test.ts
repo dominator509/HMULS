@@ -181,6 +181,10 @@ describe("paid blob privacy", () => {
     const src = readFileSync(fileURLToPath(new URL("./object-store.ts", import.meta.url)), "utf8");
     assert.match(src, /blobWriteOptions\(access\)/);
     assert.doesNotMatch(src, /sdk\.put\([\s\S]{0,240}access:\s*"public"/);
-    assert.match(src, /sdk\.get\(pathname, \{[\s\S]*access,/);
+    assert.match(src, /sdk\.get\(pathname,/);
+    // Workers cannot use @vercel/blob's undici fetch (ALPNProtocols). Native fetch only.
+    assert.doesNotMatch(src, /import\(["']@vercel\/blob["']\)/);
+    assert.match(src, /globalThis\.fetch/);
+    assert.match(src, /x-vercel-blob-access/);
   });
 });

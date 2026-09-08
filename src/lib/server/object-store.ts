@@ -91,10 +91,90 @@ export function installBlobSdkForTests(sdk: BlobSdk | null) {
   testBlobSdk = sdk;
 }
 
+/**
+ * Cloudflare Workers' nodejs_compat does not implement undici's ALPNProtocols.
+ * @vercel/blob's Node build imports undici fetch, so get()/put() fail at runtime with:
+ *   "The options.ALPNProtocols option is not implemented"
+ * Use globalThis.fetch against the public Blob HTTP API instead (Workers-safe).
+ */
+function storeIdFromBlobToken(token: string) {
+  // vercel_blob_rw_<STORE_ID>_<SECRET>
+  return token.split("_")[3] || "";
+}
+
+function constructBlobUrl(storeId: string, pathname: string, access: BlobAccess) {
+  const path = pathname.replace(/^\/+/, "");
+  return `https://${storeId}.${access}.blob.vercel-storage.com/${path}`;
+}
+
+function guessBlobContentType(pathname: string) {
+  const lower = pathname.toLowerCase();
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".mp4")) return "video/mp4";
+  if (lower.endsWith(".webm")) return "video/webm";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  return "application/octet-stream";
+}
+
+const nativeBlobSdk: BlobSdk = {
+  async put(pathname, body, opts) {
+    const token = opts.token || blobToken();
+    if (!token) throw new Error("BLOB_READ_WRITE_TOKEN required for blob put.");
+    const storeId = storeIdFromBlobToken(token);
+    if (!storeId) throw new Error("Invalid BLOB_READ_WRITE_TOKEN (missing store id).");
+    const url = `https://vercel.com/api/blob/?pathname=${encodeURIComponent(pathname)}`;
+    const res = await globalThis.fetch(url, {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "x-api-version": "12",
+        "x-vercel-blob-access": opts.access,
+        "x-add-random-suffix": opts.addRandomSuffix ? "1" : "0",
+        "x-allow-overwrite": opts.allowOverwrite === false ? "0" : "1",
+        "x-content-type": guessBlobContentType(pathname),
+        "x-vercel-blob-store-id": storeId,
+        "x-api-blob-request-id": `${storeId}:${Date.now()}:${Math.random().toString(16).slice(2)}`,
+        "x-api-blob-request-attempt": "0",
+      },
+      body: new Uint8Array(body),
+    });
+    if (!res.ok) {
+      const msg = await res.text().catch(() => "");
+      throw new Error(`Blob put failed ${res.status}${msg ? `: ${msg.slice(0, 180)}` : ""}`);
+    }
+    const json = (await res.json().catch(() => null)) as { url?: string; pathname?: string } | null;
+    return {
+      url: json?.url || constructBlobUrl(storeId, pathname, opts.access),
+      pathname: json?.pathname || pathname,
+    };
+  },
+  async get(pathname, opts) {
+    const token = opts.token || blobToken();
+    if (!token) return null;
+    const storeId = storeIdFromBlobToken(token);
+    if (!storeId) return null;
+    let fetchUrl = constructBlobUrl(storeId, pathname, opts.access);
+    if (opts.useCache === false && opts.access === "private") {
+      const u = new URL(fetchUrl);
+      u.searchParams.set("cache", "0");
+      fetchUrl = u.toString();
+    }
+    const res = await globalThis.fetch(fetchUrl, {
+      method: "GET",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (res.status === 404) return null;
+    if (res.status === 304) return { statusCode: 304 as const, stream: null };
+    if (!res.ok || !res.body) return null;
+    return { statusCode: 200 as const, stream: res.body };
+  },
+};
+
 async function loadBlobSdk(): Promise<BlobSdk> {
   if (testBlobSdk) return testBlobSdk;
-  const mod = await import("@vercel/blob");
-  return { put: mod.put as BlobSdk["put"], get: mod.get as BlobSdk["get"] };
+  return nativeBlobSdk;
 }
 
 async function blobPut(pathname: string, bytes: Buffer, access: BlobAccess) {
