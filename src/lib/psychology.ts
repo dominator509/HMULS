@@ -121,14 +121,21 @@ export function scarcityLine(
   collectors: number,
   clock: string | null,
 ) {
-  if (d.scarcity >= 8 && climaxLeft <= 12) {
+  // Real scarcity only: positive remaining and a tight leftover band.
+  if (d.scarcity >= 8 && climaxLeft > 0 && climaxLeft <= 12) {
     return clock
       ? `${climaxLeft} last-shot unlocks left · ${clock}`
       : `${climaxLeft} last-shot unlocks left tonight`;
   }
+  // Prefer a live clock over fabricated social proof.
   if (d.scarcity >= 5 && clock) return `This rate holds for ${clock}`;
-  if (d.socialProof >= 5) return `${collectors} collectors already inside`;
-  return clock ? clock : `${collectors} collectors`;
+  if (d.socialProof >= 5 && collectors > 0) {
+    return `${collectors} collectors already inside`;
+  }
+  if (clock) return clock;
+  if (collectors > 0) return `${collectors} collectors`;
+  // No fake zero counts — urgency-neutral fallback.
+  return "Pay to keep her in this pose";
 }
 
 export function addictionCta(d: Dials, remaining: number) {

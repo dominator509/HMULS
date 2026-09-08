@@ -150,11 +150,16 @@ function Home() {
             <p className="mt-6 text-xs tracking-[0.16em] text-gold uppercase">
               {statusLine(tier.label, totalUnlocked)}
             </p>
-          ) : ladders && ladders[0] && dials.socialProof >= 4 ? (
+          ) : ladders &&
+            ladders[0] &&
+            dials.socialProof >= 4 &&
+            ladders[0].collectorsCount > 0 ? (
             <p className="mt-6 text-sm text-subtle">
               {formatCompact(ladders[0].collectorsCount)} collectors are inside{" "}
-              {ladders[0].title}. {formatCompact(ladders[0].climaxCollectors)} have
-              the last frame.
+              {ladders[0].title}
+              {ladders[0].climaxCollectors > 0
+                ? `. ${formatCompact(ladders[0].climaxCollectors)} have the last frame.`
+                : "."}
             </p>
           ) : null}
         </div>
@@ -281,9 +286,14 @@ function Home() {
                         <span>
                           {have}/{total} unlocked
                         </span>
-                        <span>{formatCompact(lad.collectorsCount)} collectors</span>
+                        {lad.collectorsCount > 0 ? (
+                          <span>{formatCompact(lad.collectorsCount)} collectors</span>
+                        ) : null}
                       </div>
-                      {dials.scarcity >= 5 && climaxLeft <= 20 ? (
+                      {dials.scarcity >= 5 &&
+                      climaxLeft > 0 &&
+                      climaxLeft <= 12 &&
+                      lad.climaxCollectors > 0 ? (
                         <p className="text-xs text-gold">
                           {climaxLeft} last-frame unlocks left
                           {window ? ` · ${window}` : ""}

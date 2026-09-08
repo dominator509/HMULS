@@ -20,7 +20,7 @@ export function remainingLabel(endsAt: string | Date | null | undefined) {
   if (!endsAt) return null;
   const end = new Date(endsAt).getTime();
   const ms = end - Date.now();
-  if (ms <= 0) return "This rate is expiring";
+  if (ms <= 0) return null;
   const h = Math.floor(ms / 3_600_000);
   const m = Math.floor((ms % 3_600_000) / 60_000);
   const s = Math.floor((ms % 60_000) / 1000);

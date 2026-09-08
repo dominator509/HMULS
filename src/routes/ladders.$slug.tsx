@@ -414,8 +414,10 @@ function LadderPage() {
                 {waitingLine(pressure.expired, dials)}
                 {poseClock && !pressure.expired ? ` · ${poseClock}` : ""}
               </span>
-            ) : (
+            ) : ladder.climaxCollectors > 0 ? (
               <span>{formatCompact(ladder.climaxCollectors)} have the last frame</span>
+            ) : (
+              <span>Last frame still open</span>
             )}
           </div>
           {endowed ? <p className="mt-2 text-xs text-gold">{endowed}</p> : null}
