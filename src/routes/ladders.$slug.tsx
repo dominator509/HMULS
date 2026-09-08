@@ -266,12 +266,15 @@ function LadderPage() {
 
   async function submitPay() {
     if (!ladder) return;
-    if (payStatus && !payStatus.nowpayments) {
-      toast.error(
-        payStatus.missing.length
-          ? `NOWPayments is not live on the Worker (missing: ${payStatus.missing.join(", ")}). No wallet can open without a pay address.`
-          : "NOWPayments is not live on the Worker. No wallet can open without a pay address.",
-      );
+    // Defensive: ignore taps while status is still loading or payments are unavailable.
+    if (!payStatus?.nowpayments) {
+      if (payStatus) {
+        toast.error(
+          payStatus.missing.length
+            ? `NOWPayments is not live on the Worker (missing: ${payStatus.missing.join(", ")}). No wallet can open without a pay address.`
+            : "NOWPayments is not live on the Worker. No wallet can open without a pay address.",
+        );
+      }
       return;
     }
     setBusy(true);
@@ -797,8 +800,8 @@ function LadderPage() {
                 Set those vars, then pay again — wallets only appear after a live pay address exists.
               </p>
             ) : null}
-            <Button className="mt-5" size="xl" disabled={busy || (payStatus != null && !payStatus.nowpayments)} onClick={() => void submitPay()}>
-              {busy ? "Opening invoice…" : PAY_SHEET.pay(asset)}
+            <Button className="mt-5" size="xl" disabled={busy || payStatus == null || !payStatus.nowpayments} onClick={() => void submitPay()}>
+              {payStatus == null ? "Checking payments…" : busy ? "Opening invoice…" : PAY_SHEET.pay(asset)}
             </Button>
             <p className="mt-3 text-center text-xs text-subtle">
               Wallet checkout next — send from MetaMask, Rainbow, Trust, or Phantom.
