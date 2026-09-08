@@ -105,41 +105,55 @@ function createNeonSql(): Promise<Sql> {
     const conn = databaseUrl as string;
     const endpoint = neonHttpEndpoint(conn);
     return toSql(async <T>(text: string, params: unknown[]) => {
-      const ac = new AbortController();
-      const timer = setTimeout(() => ac.abort(), 8000);
-      let res: Response;
-      try {
-        res = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-            "Neon-Connection-String": conn,
-          },
-          body: JSON.stringify({ query: text, params }),
-          signal: ac.signal,
-        });
-      } finally {
-        clearTimeout(timer);
-      }
-      if (!res.ok) {
-        const err = await res.text();
-        throw new Error(`Neon HTTP ${res.status}: ${err.slice(0, 240)}`);
-      }
-      const payload = (await res.json()) as {
-        rows: Record<string, unknown>[];
-        fields?: { name: string; dataTypeID: number }[];
-      };
-      const fields = payload.fields ?? [];
-      return payload.rows.map((row) => {
-        const out = { ...row };
-        for (const f of fields) {
-          if (f.dataTypeID === OID_INT8 && out[f.name] != null) {
-            out[f.name] = Number(out[f.name]);
-          }
+      const backoffsMs = [150, 400, 900];
+      let lastErr: Error | undefined;
+      for (let attempt = 0; attempt <= backoffsMs.length; attempt += 1) {
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), 8000);
+        let res: Response;
+        try {
+          res = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+              "Neon-Connection-String": conn,
+            },
+            body: JSON.stringify({ query: text, params }),
+            signal: ac.signal,
+          });
+        } finally {
+          clearTimeout(timer);
         }
-        return out as T;
-      });
+        if (!res.ok) {
+          const errText = await res.text();
+          const err = new Error(`Neon HTTP ${res.status}: ${errText.slice(0, 240)}`);
+          const connectionStorm =
+            /too many connections/i.test(errText) ||
+            /too many connections/i.test(err.message);
+          if (connectionStorm && attempt < backoffsMs.length) {
+            lastErr = err;
+            await new Promise((r) => setTimeout(r, backoffsMs[attempt]));
+            continue;
+          }
+          throw err;
+        }
+        const payload = (await res.json()) as {
+          rows: Record<string, unknown>[];
+          fields?: { name: string; dataTypeID: number }[];
+        };
+        const fields = payload.fields ?? [];
+        return payload.rows.map((row) => {
+          const out = { ...row };
+          for (const f of fields) {
+            if (f.dataTypeID === OID_INT8 && out[f.name] != null) {
+              out[f.name] = Number(out[f.name]);
+            }
+          }
+          return out as T;
+        });
+      }
+      throw lastErr ?? new Error("Neon HTTP: exhausted connection-storm retries");
     });
   })().catch((err) => {
     globalRef.__pgSqlPromise__ = undefined;
