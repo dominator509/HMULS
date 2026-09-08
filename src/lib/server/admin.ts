@@ -372,3 +372,34 @@ export const createLadder = createServerFn({ method: "POST" })
     `;
     return { id, slug, modelId: muse.id, modelName: muse.stageName };
   });
+
+export const syncVaultOriginals = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const sql = await getSql();
+    await ensureCatalog(sql);
+    await requireAdmin(sql, context.userId);
+    const { syncBundledVaultOriginalsToBlob, blobToken } = await import("./object-store");
+    if (!blobToken()) {
+      return {
+        ok: false as const,
+        error: "BLOB_READ_WRITE_TOKEN is not set.",
+        uploaded: 0,
+        skipped: 0,
+        missing: 0,
+        uploadedNames: [] as string[],
+        skippedNames: [] as string[],
+        missingNames: [] as string[],
+      };
+    }
+    const result = await syncBundledVaultOriginalsToBlob();
+    return {
+      ok: true as const,
+      uploaded: result.uploaded.length,
+      skipped: result.skipped.length,
+      missing: result.missing.length,
+      uploadedNames: result.uploaded,
+      skippedNames: result.skipped,
+      missingNames: result.missing,
+    };
+  });

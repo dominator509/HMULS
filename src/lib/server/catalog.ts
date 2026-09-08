@@ -53,6 +53,7 @@ type ShotRow = {
 };
 
 let seedPromise: Promise<void> | null = null;
+let vaultBlobSyncPromise: Promise<void> | null = null;
 let copySynced = false;
 let voiceColsReady = false;
 let grantVaultSynced = false;
@@ -92,6 +93,30 @@ async function syncCatalogCopy(sql: Sql) {
       `;
     }
   }
+}
+
+
+/** Once per isolate: push missing seed originals from private-media/ into private Blob. */
+async function ensureVaultBlobSeedSync() {
+  if (!vaultBlobSyncPromise) {
+    vaultBlobSyncPromise = (async () => {
+      try {
+        const { syncBundledVaultOriginalsToBlob } = await import("./object-store");
+        const result = await syncBundledVaultOriginalsToBlob();
+        if (result.uploaded.length || result.missing.length) {
+          console.info("[vault-sync]", {
+            uploaded: result.uploaded.length,
+            skipped: result.skipped.length,
+            missing: result.missing.length,
+          });
+        }
+      } catch (err) {
+        // Never take down catalog / the site if Blob sync fails.
+        console.error("[vault-sync] failed", err);
+      }
+    })();
+  }
+  await vaultBlobSyncPromise;
 }
 
 export async function ensureCatalog(sql: Sql) {
@@ -135,11 +160,13 @@ export async function ensureCatalog(sql: Sql) {
   await seedPromise;
   copySynced = true;
   if (!grantVaultSynced) {
-    // Do not await vault/fs/blob on the request path. Cloudflare Workers 1101
-    // when vaultShotMedia/privateOriginalExists hang; teasers are already in DB.
+    // Teaser/SEO vault sweeps stay off the hot path (Workers 1101 risk).
+    // Seed → private Blob sync is memoized once per isolate and awaited so
+    // unlocks work after cold start when BLOB_READ_WRITE_TOKEN is set.
     grantVaultSynced = true;
     grantVaultReady = true;
   }
+  await ensureVaultBlobSeedSync();
   await syncLiveCounts(sql);
 }
 

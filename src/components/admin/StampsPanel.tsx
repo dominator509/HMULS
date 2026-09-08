@@ -6,6 +6,7 @@ import {
   traceLeak,
   type LeakHit,
 } from "@/lib/server/stamps";
+import { syncVaultOriginals } from "@/lib/server/admin";
 import { toast } from "sonner";
 
 export function StampsPanel() {
@@ -14,6 +15,7 @@ export function StampsPanel() {
   const [busy, setBusy] = useState(false);
   const [hit, setHit] = useState<LeakHit | null>(null);
   const [miss, setMiss] = useState<string | null>(null);
+  const [vaultSyncNote, setVaultSyncNote] = useState<string | null>(null);
 
   useEffect(() => {
     getStampSettings()
@@ -37,6 +39,26 @@ export function StampsPanel() {
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not save.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+
+  async function syncVault() {
+    setBusy(true);
+    setVaultSyncNote(null);
+    try {
+      const res = await syncVaultOriginals();
+      if (!res.ok) {
+        toast.error(res.error || "Vault sync failed.");
+        return;
+      }
+      const note = `Uploaded ${res.uploaded}, skipped ${res.skipped}, missing ${res.missing}.`;
+      setVaultSyncNote(note);
+      toast.success(note);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Vault sync failed.");
     } finally {
       setBusy(false);
     }
@@ -97,6 +119,24 @@ export function StampsPanel() {
           Save stamp settings
         </Button>
       </section>
+
+      <section className="rounded-xl border border-border bg-surface p-5">
+        <p className="kicker kicker-accent">Vault</p>
+        <h2 className="mt-1 font-display text-3xl text-fg">Seed originals</h2>
+        <p className="mt-2 max-w-xl text-sm text-muted">
+          Paid unlocks read private Blob (Worker has no durable private-media disk).
+          Studio ingest already vaults new shots. This pushes git seed files
+          (rev_/crv_/ped_) into private Blob if missing — never overwrites existing
+          Blob objects.
+        </p>
+        <Button className="mt-5" variant="gold" disabled={busy} onClick={() => void syncVault()}>
+          Sync seed vault to Blob
+        </Button>
+        {vaultSyncNote ? (
+          <p className="mt-3 text-xs text-muted">{vaultSyncNote}</p>
+        ) : null}
+      </section>
+
 
       <section className="rounded-xl border border-border bg-surface p-5">
         <p className="kicker">Trace a leak</p>
