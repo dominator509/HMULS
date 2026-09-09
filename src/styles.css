@@ -272,3 +272,12 @@ textarea.field-input {
   filter: blur(var(--next-blur, 4px)) saturate(0.9) brightness(0.78);
   transform: scale(1.04);
 }
+
+/* Lightbox / detail: blur without scale so object-contain can show the full frame. */
+.locked-media-contain {
+  filter: blur(var(--locked-blur, 10px)) saturate(0.75) brightness(0.62);
+}
+
+.next-media-contain {
+  filter: blur(var(--next-blur, 4px)) saturate(0.9) brightness(0.78);
+}
