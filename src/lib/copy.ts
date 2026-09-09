@@ -91,8 +91,19 @@ export const AUTH = {
   upCta: "Create account",
   switchToUp: "New here? Make an account.",
   switchToIn: "Already have an account? Sign in.",
+  forgotLink: "Forgot password?",
+  forgotTitle: "Reset password.",
+  forgotHint: "We'll email a reset link if that inbox has a vault.",
+  forgotCta: "Send reset link",
+  forgotSent: "If that inbox has an account, a reset link is on the way.",
+  forgotBack: "Back to sign in",
+  resetTitle: "Choose a new password.",
+  resetCta: "Update password",
+  resetDone: "Password updated. Sign in.",
+  resetMissing: "This reset link is missing or expired.",
   granted: "You're in.",
   refused: "Couldn't sign you in.",
+  refusedTransient: "Sign-in timed out — try again.",
 };
 
 export const VAULT_COPY = {
