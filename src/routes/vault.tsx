@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { listVault } from "@/lib/server/purchases";
 import { getPsychology } from "@/lib/server/transporter";
 import type { VaultItem } from "@/lib/types";
@@ -20,7 +20,9 @@ function VaultPage() {
   const { user, isPending } = useCurrentUserState();
   const [items, setItems] = useState<VaultItem[] | null>(null);
   const [active, setActive] = useState<VaultItem | null>(null);
+  const [mediaEpoch, setMediaEpoch] = useState(0);
   const [surfaces, setSurfaces] = useState<Surfaces>(() => fallbackSurfaces(DEFAULT_DIALS));
+  const userId = user?.id ?? null;
 
   useEffect(() => {
     getPsychology()
@@ -28,12 +30,42 @@ function VaultPage() {
       .catch(() => undefined);
   }, []);
 
-  useEffect(() => {
-    if (!user) return;
+  const loadVault = useCallback((opts?: { clearOnError?: boolean }) => {
+    if (!userId) return;
     listVault()
       .then(setItems)
-      .catch(() => setItems([]));
-  }, [user]);
+      .catch(() => {
+        if (opts?.clearOnError) setItems([]);
+      });
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) {
+      if (!isPending) setItems(null);
+      return;
+    }
+    loadVault({ clearOnError: true });
+  }, [userId, isPending, loadVault]);
+
+  useEffect(() => {
+    if (!userId) return;
+    const reassert = () => {
+      if (document.visibilityState === "hidden") return;
+      setMediaEpoch((n) => n + 1);
+      loadVault({ clearOnError: false });
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") reassert();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pageshow", reassert);
+    window.addEventListener("focus", reassert);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pageshow", reassert);
+      window.removeEventListener("focus", reassert);
+    };
+  }, [userId, loadVault]);
 
   if (isPending) {
     return <div className="px-5 py-24 text-center text-muted">Opening vault…</div>;
@@ -85,6 +117,7 @@ function VaultPage() {
                 <div className="relative aspect-[2/3] overflow-hidden">
                   {item.mediaType === "video" ? (
                     <video
+                      key={`vault-vid-${item.shotId}-${mediaEpoch}`}
                       src={item.mediaUrl}
                       className="h-full w-full object-cover"
                       style={{ objectPosition: item.objectPosition }}
@@ -93,6 +126,7 @@ function VaultPage() {
                     />
                   ) : (
                     <img
+                      key={`vault-${item.shotId}-${mediaEpoch}`}
                       src={item.mediaUrl}
                       alt=""
                       className="h-full w-full object-cover"
@@ -114,11 +148,12 @@ function VaultPage() {
         <Overlay onClose={() => setActive(null)} wide labelledBy="vault-title">
           <div className="relative">
             <OverlayClose onClick={() => setActive(null)} />
-            <div className="aspect-[2/3] overflow-hidden">
+            <div className="relative flex max-h-[70dvh] items-center justify-center overflow-hidden bg-raised">
               {active.mediaType === "video" ? (
                 <video
+                  key={`vault-detail-vid-${active.shotId}-${mediaEpoch}`}
                   src={active.mediaUrl}
-                  className="h-full w-full object-cover"
+                  className="max-h-[70dvh] w-full object-contain"
                   style={{ objectPosition: active.objectPosition }}
                   controls
                   autoPlay
@@ -126,9 +161,10 @@ function VaultPage() {
                 />
               ) : (
                 <img
+                  key={`vault-detail-${active.shotId}-${mediaEpoch}`}
                   src={active.mediaUrl}
                   alt=""
-                  className="h-full w-full object-cover"
+                  className="max-h-[70dvh] w-full object-contain"
                   style={{ objectPosition: active.objectPosition }}
                 />
               )}
