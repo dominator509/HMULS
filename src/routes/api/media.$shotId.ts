@@ -9,53 +9,108 @@ const ROBOTS = {
   "Cache-Control": "private, max-age=120",
 };
 
+type ShotRow = {
+  id: string;
+  media_url: string;
+  media_type: string;
+};
+
+async function authorizeShot(shotId: string, request: Request) {
+  const k = new URL(request.url).searchParams.get("k") ?? "";
+  const sql = await getSql();
+  const settings = await loadStampSettings(sql);
+  const shot = await sql<ShotRow>`select id, media_url, media_type from shots where id = ${shotId}`;
+  const row = shot[0];
+  if (!row) return { ok: false as const, status: 404 as const, body: "Not found" };
+
+  const grant = await authorizeMediaGrant({
+    shotId,
+    mediaToken: k,
+    lookup: {
+      userIdForStamp: async (token, id) => {
+        const st = await sql<{ user_id: string }>`
+          select user_id from media_stamps where token = ${token} and shot_id = ${id}
+        `;
+        return st[0]?.user_id ?? null;
+      },
+      sessionUser: async () => {
+        const session = await getSessionUser();
+        return session ? { id: session.id } : null;
+      },
+      hasUnlock: async (userId, id) => {
+        const un = await sql<{ c: number }>`
+          select count(*)::int as c from unlocks
+          where user_id = ${userId} and shot_id = ${id}
+        `;
+        return (un[0]?.c ?? 0) > 0;
+      },
+      isAdmin: async (userId) => {
+        const { ensureProfile } = await import("@/lib/server/catalog");
+        return (await ensureProfile(sql, userId)) === "admin";
+      },
+    },
+  });
+  if (!grant.ok) {
+    return { ok: false as const, status: 403 as const, body: "Granted collectors only." };
+  }
+  return { ok: true as const, sql, settings, row, userId: grant.userId };
+}
+
+function mediaContentType(
+  row: ShotRow,
+  stamp: { isVideoUrl: (url: string, type: string) => boolean },
+  pathHint?: string | null,
+) {
+  if (stamp.isVideoUrl(row.media_url, row.media_type)) return "video/mp4";
+  const hint = pathHint ?? row.media_url;
+  if (hint.endsWith(".png")) return "image/png";
+  return "image/jpeg";
+}
+
+function dispositionHeaders(request: Request, contentType: string) {
+  const want = new URL(request.url).searchParams.get("download");
+  if (want !== "1" && want !== "true") return {};
+  const ext =
+    contentType === "video/mp4"
+      ? "mp4"
+      : contentType === "image/png"
+        ? "png"
+        : contentType === "video/webm"
+          ? "webm"
+          : "jpg";
+  return {
+    "Content-Disposition": `attachment; filename="shot.${ext}"`,
+  };
+}
+
 export const Route = createFileRoute("/api/media/$shotId")({
   server: {
     handlers: {
-      GET: async ({ params, request }) => {
-        const shotId = params.shotId;
-        const k = new URL(request.url).searchParams.get("k") ?? "";
-        const sql = await getSql();
-        const settings = await loadStampSettings(sql);
-        const shot = await sql<{
-          id: string;
-          media_url: string;
-          media_type: string;
-        }>`select id, media_url, media_type from shots where id = ${shotId}`;
-        const row = shot[0];
-        if (!row) return new Response("Not found", { status: 404, headers: ROBOTS });
-
-        const grant = await authorizeMediaGrant({
-          shotId,
-          mediaToken: k,
-          lookup: {
-            userIdForStamp: async (token, id) => {
-              const st = await sql<{ user_id: string }>`
-                select user_id from media_stamps where token = ${token} and shot_id = ${id}
-              `;
-              return st[0]?.user_id ?? null;
-            },
-            sessionUser: async () => {
-              const session = await getSessionUser();
-              return session ? { id: session.id } : null;
-            },
-            hasUnlock: async (userId, id) => {
-              const un = await sql<{ c: number }>`
-                select count(*)::int as c from unlocks
-                where user_id = ${userId} and shot_id = ${id}
-              `;
-              return (un[0]?.c ?? 0) > 0;
-            },
-            isAdmin: async (userId) => {
-              const { ensureProfile } = await import("@/lib/server/catalog");
-              return (await ensureProfile(sql, userId)) === "admin";
-            },
+      HEAD: async ({ params, request }) => {
+        const auth = await authorizeShot(params.shotId, request);
+        if (!auth.ok) {
+          return new Response(null, { status: auth.status, headers: ROBOTS });
+        }
+        const stamp = await import("@/lib/server/stamp.server");
+        // Extension / media_type only — avoid loading stamp cache bytes on probe.
+        // Client refines labels from GET Content-Type when the collector downloads.
+        const type = mediaContentType(auth.row, stamp);
+        return new Response(null, {
+          status: 200,
+          headers: {
+            ...ROBOTS,
+            "Content-Type": type,
+            "Cache-Control": "private, max-age=120",
           },
         });
-        if (!grant.ok) {
-          return new Response("Granted collectors only.", { status: 403, headers: ROBOTS });
+      },
+      GET: async ({ params, request }) => {
+        const auth = await authorizeShot(params.shotId, request);
+        if (!auth.ok) {
+          return new Response(auth.body, { status: auth.status, headers: ROBOTS });
         }
-        const userId = grant.userId;
+        const { sql, settings, row, userId } = auth;
+        const shotId = params.shotId;
 
         const stamp = await import("@/lib/server/stamp.server");
         const { grantMediaUrl } = await import("@/lib/server/stamps");
@@ -68,11 +123,13 @@ export const Route = createFileRoute("/api/media/$shotId")({
           }).catch((err) => console.error("[media] stamp mint failed", err));
           const cached = await stamp.readStampCache(userId, shotId);
           if (cached) {
+            const type = "image/png";
             return new Response(new Uint8Array(cached), {
               headers: {
                 ...ROBOTS,
-                "Content-Type": "image/png",
+                "Content-Type": type,
                 "Cache-Control": "private, max-age=3600",
+                ...dispositionHeaders(request, type),
               },
             });
           }
@@ -93,15 +150,12 @@ export const Route = createFileRoute("/api/media/$shotId")({
           }
         }
         if (bytes) {
-          const type = stamp.isVideoUrl(row.media_url, row.media_type)
-            ? "video/mp4"
-            : row.media_url.endsWith(".png")
-              ? "image/png"
-              : "image/jpeg";
+          const type = mediaContentType(row, stamp);
           return new Response(new Uint8Array(bytes), {
             headers: {
               ...ROBOTS,
               "Content-Type": type,
+              ...dispositionHeaders(request, type),
             },
           });
         }
@@ -112,15 +166,12 @@ export const Route = createFileRoute("/api/media/$shotId")({
           const { readFile, stat } = await import("node:fs/promises");
           await stat(path);
           const fileBytes = await readFile(path);
-          const type = stamp.isVideoUrl(row.media_url, row.media_type)
-            ? "video/mp4"
-            : path.endsWith(".png")
-              ? "image/png"
-              : "image/jpeg";
+          const type = mediaContentType(row, stamp, path);
           return new Response(new Uint8Array(fileBytes), {
             headers: {
               ...ROBOTS,
               "Content-Type": type,
+              ...dispositionHeaders(request, type),
             },
           });
         } catch {
