@@ -13,6 +13,7 @@ import { getPsychology } from "@/lib/server/transporter";
 import type { CryptoAsset, InvoiceKind, LadderPublic, ShotPublic } from "@/lib/types";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { Button } from "@/components/ui/button";
+import { DownloadMediaButtons } from "@/components/ui/download-media";
 import { Kicker, Overlay, OverlayClose, ProgressBar } from "@/components/ui/chrome";
 import { collectorTier, formatCompact, formatUsd, remainingLabel } from "@/lib/utils";
 import {
@@ -484,16 +485,20 @@ function LadderPage() {
             const locked = !shot.unlocked;
             return (
               <li key={shot.id}>
-                <button
-                  type="button"
-                  onClick={() => setActive(shot)}
-                  className={`group w-full overflow-hidden rounded-lg border bg-raised text-left transition-[border-color,box-shadow] duration-150 ${
+                <div
+                  className={`group relative w-full overflow-hidden rounded-lg border bg-raised text-left transition-[border-color,box-shadow] duration-150 ${
                     isNext
                       ? "border-gold/50 shadow-[var(--shadow-border-hover)]"
                       : "border-border hover:border-gold/30"
                   }`}
                 >
-                  <div className="relative aspect-[2/3] overflow-hidden">
+                  <button
+                    type="button"
+                    className="absolute inset-0 z-0"
+                    aria-label={`Open shot ${shot.title}`}
+                    onClick={() => setActive(shot)}
+                  />
+                  <div className="relative z-[1] aspect-[2/3] overflow-hidden pointer-events-none">
                     {shot.mediaType === "video" && shot.unlocked ? (
                       <video
                         key={`grant-vid-${shot.id}-${mediaEpoch}`}
@@ -530,11 +535,26 @@ function LadderPage() {
                       <div className="absolute inset-0 grid place-items-center bg-bg/20">
                         <Lock className="size-5 text-gold" />
                       </div>
-                    ) : shot.mediaType === "video" ? (
-                      <div className="absolute right-2 top-2 rounded-full bg-bg/70 p-1">
-                        <Play className="size-3 text-gold" />
-                      </div>
-                    ) : null}
+                    ) : (
+                      <>
+                        {shot.mediaType === "video" ? (
+                          <div className="absolute right-2 top-2 rounded-full bg-bg/70 p-1">
+                            <Play className="size-3 text-gold" />
+                          </div>
+                        ) : null}
+                        {shot.mediaUrl ? (
+                          <div className="pointer-events-auto absolute bottom-2 left-2 z-[2]">
+                            <DownloadMediaButtons
+                              compact
+                              mediaUrl={shot.mediaUrl}
+                              mediaType={shot.mediaType}
+                              title={shot.title}
+                              unlocked={shot.unlocked}
+                            />
+                          </div>
+                        ) : null}
+                      </>
+                    )}
                     {isNext ? (
                       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-bg to-transparent p-2">
                         <p className="text-xs tracking-[0.16em] text-gold uppercase">
@@ -557,7 +577,7 @@ function LadderPage() {
                           : formatUsd(shot.priceCents)}
                     </p>
                   </div>
-                </button>
+                </div>
               </li>
             );
           })}
@@ -736,6 +756,17 @@ function LadderPage() {
                   ? active.grantCopy
                   : active.story || active.tease}
               </p>
+              {active.unlocked && active.mediaUrl ? (
+                <DownloadMediaButtons
+                  className="mt-5"
+                  mediaUrl={active.mediaUrl}
+                  mediaType={active.mediaType}
+                  title={active.title}
+                  unlocked
+                  variant="gold"
+                  size="lg"
+                />
+              ) : null}
               {!active.unlocked ? (
                 active.id === progress.nextShotId ? (
                   <Button

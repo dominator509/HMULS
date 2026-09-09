@@ -6,6 +6,7 @@ import type { VaultItem } from "@/lib/types";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { RedirectToSignIn } from "@/lib/auth/gates";
 import { Button } from "@/components/ui/button";
+import { DownloadMediaButtons } from "@/components/ui/download-media";
 import { Overlay, OverlayClose, PageHeader } from "@/components/ui/chrome";
 import { DEFAULT_DIALS, fallbackSurfaces, type Surfaces } from "@/lib/psychology";
 import { VAULT_COPY } from "@/lib/copy";
@@ -109,12 +110,14 @@ function VaultPage() {
         <ul className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
           {items.map((item) => (
             <li key={item.shotId}>
-              <button
-                type="button"
-                onClick={() => setActive(item)}
-                className="panel w-full overflow-hidden text-left transition-[box-shadow] duration-150 hover:shadow-[var(--shadow-border-hover)]"
-              >
-                <div className="relative aspect-[2/3] overflow-hidden">
+              <div className="panel relative w-full overflow-hidden text-left transition-[box-shadow] duration-150 hover:shadow-[var(--shadow-border-hover)]">
+                <button
+                  type="button"
+                  className="absolute inset-0 z-0"
+                  aria-label={`Open ${item.title}`}
+                  onClick={() => setActive(item)}
+                />
+                <div className="relative z-[1] aspect-[2/3] overflow-hidden pointer-events-none">
                   {item.mediaType === "video" ? (
                     <video
                       key={`vault-vid-${item.shotId}-${mediaEpoch}`}
@@ -133,12 +136,22 @@ function VaultPage() {
                       style={{ objectPosition: item.objectPosition }}
                     />
                   )}
+                  {item.mediaUrl ? (
+                    <div className="pointer-events-auto absolute bottom-2 left-2 z-[2]">
+                      <DownloadMediaButtons
+                        compact
+                        mediaUrl={item.mediaUrl}
+                        mediaType={item.mediaType}
+                        title={item.title}
+                      />
+                    </div>
+                  ) : null}
                 </div>
                 <div className="p-3">
                   <p className="text-xs text-subtle">{item.ladderTitle}</p>
                   <p className="font-display text-base text-fg">{item.title}</p>
                 </div>
-              </button>
+              </div>
             </li>
           ))}
         </ul>
@@ -175,6 +188,16 @@ function VaultPage() {
                 {active.title}
               </h2>
               <p className="mt-2 text-sm text-muted">{active.grantCopy}</p>
+              {active.mediaUrl ? (
+                <DownloadMediaButtons
+                  className="mt-5"
+                  mediaUrl={active.mediaUrl}
+                  mediaType={active.mediaType}
+                  title={active.title}
+                  variant="gold"
+                  size="lg"
+                />
+              ) : null}
               <Link
                 to="/ladders/$slug"
                 params={{ slug: active.ladderSlug }}
