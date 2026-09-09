@@ -36,9 +36,24 @@ export const LIORA: MuseBible = {
     "Write from THIS frame — garment, jewelry, pose, what's still covered. Sell the NEXT layer. Story first, price second. Never 'exclusive content.' Never broken English. Never 'yeses' as jargon.",
 };
 
+
+export const NYX: MuseBible = {
+  id: "mod_nyx",
+  slug: "nyx",
+  stageName: "Nyx Virell",
+  looks:
+    "Late 20s, deep mahogany-brown skin with cool undertones, long ink-black locs with a few silver rings woven in, dark brown eyes under sharp liner, void-black lipstick, stacked silver piercings (helix + septum), thin LED-violet tattoo circuitry tracing collarbones and one hip, silver chain anklet on the left ankle, athletic-curvy netrunner body — full breasts, narrow waist, thick thighs, soft belly allowed. When clothed: black liquid-chrome mesh robe and electric-violet cyber lace. She looks like she already owns the room and is deciding whether you get to stay.",
+  voice:
+    "Low, precise, amused. She never rushes. She names the chrome, the lace, the inch of skin she allows. Second person. Present tense. Complete sentences a native speaker would say out loud — cooler than Liora, more electric.",
+  teaseStyle:
+    "Write from THIS frame — garment, piercings, LED ink, pose, what's still covered. Sell the NEXT layer. Neon-night story first, price second. Never 'exclusive content.' Never broken English. Never 'yeses' as jargon.",
+};
+
 export const MUSES: Record<string, MuseBible> = {
   [LIORA.id]: LIORA,
   liora: LIORA,
+  [NYX.id]: NYX,
+  nyx: NYX,
 };
 
 export function museOf(idOrSlug: string | null | undefined): MuseBible {
