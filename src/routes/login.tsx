@@ -15,9 +15,47 @@ export const Route = createFileRoute("/login")({
   head: () => privateHead("/login", "Enter | SHE UNDRESSES"),
 });
 
+/** Better Auth / Worker flakiness — retry only these, not bad credentials. */
+function isTransientAuthError(err: { message?: string | null; status?: number } | null | undefined) {
+  if (!err) return false;
+  const status = err.status;
+  if (status === 401 || status === 403 || status === 400 || status === 422) return false;
+  if (status === 500 || status === 502 || status === 503 || status === 504 || status === 408) {
+    return true;
+  }
+  const msg = (err.message ?? "").toLowerCase();
+  if (
+    msg.includes("invalid") ||
+    msg.includes("credential") ||
+    msg.includes("password") ||
+    msg.includes("unauthorized") ||
+    msg.includes("not found")
+  ) {
+    return false;
+  }
+  // Empty / generic Worker banners ("Could not log in") — treat as flaky.
+  if (!msg.trim()) return true;
+  return (
+    msg.includes("1101") ||
+    msg.includes("timeout") ||
+    msg.includes("timed out") ||
+    msg.includes("network") ||
+    msg.includes("fetch failed") ||
+    msg.includes("too many connections") ||
+    msg.includes("econnreset") ||
+    msg.includes("connection") ||
+    msg.includes("worker threw") ||
+    msg.includes("internal server") ||
+    msg.includes("could not log") ||
+    msg.includes("couldn't sign") ||
+    msg.includes("could not sign") ||
+    msg.includes("failed")
+  );
+}
+
 function Login() {
   const nav = useNavigate();
-  const [mode, setMode] = useState<"in" | "up">("in");
+  const [mode, setMode] = useState<"in" | "up" | "forgot">("in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -29,6 +67,28 @@ function Login() {
       .then((p) => setPromise(p.surfaces.loginPromise))
       .catch(() => undefined);
   }, []);
+
+  async function onForgot(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const redirectTo = `${window.location.origin}/reset-password`;
+      const { error } = await authClient.requestPasswordReset({
+        email,
+        redirectTo,
+      });
+      if (error) {
+        throw new Error(error.message?.trim() || AUTH.refused);
+      }
+      toast.success(AUTH.forgotSent);
+      setMode("in");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message.trim() : "";
+      toast.error(msg || AUTH.refused);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function onEmail(e: React.FormEvent) {
     e.preventDefault();
@@ -42,13 +102,23 @@ function Login() {
               name: name || email.split("@")[0],
             })
           : authClient.signIn.email({ email, password });
+
       let result = await run();
-      if (result.error) {
+      // Workers often 1101 / Neon-pool the first pg hit (see PR #11 / #18).
+      if (result.error && isTransientAuthError(result.error)) {
         await new Promise((r) => setTimeout(r, 700));
         result = await run();
       }
+      // One more backoff for stubborn connection storms.
+      if (result.error && isTransientAuthError(result.error)) {
+        await new Promise((r) => setTimeout(r, 1200));
+        result = await run();
+      }
       if (result.error) {
-        throw new Error(result.error.message?.trim() || AUTH.refused);
+        const transient = isTransientAuthError(result.error);
+        throw new Error(
+          (result.error.message?.trim() || (transient ? AUTH.refusedTransient : AUTH.refused)),
+        );
       }
       let role = "buyer";
       for (let i = 0; i < 3; i++) {
@@ -68,6 +138,10 @@ function Login() {
       setBusy(false);
     }
   }
+
+  const title =
+    mode === "forgot" ? AUTH.forgotTitle : mode === "in" ? AUTH.inTitle : AUTH.upTitle;
+  const blurb = mode === "forgot" ? AUTH.forgotHint : promise;
 
   return (
     <div className="mx-auto grid min-h-[calc(100dvh-4rem)] max-w-6xl lg:grid-cols-2">
@@ -98,56 +172,85 @@ function Login() {
       <div className="flex items-center px-5 py-12">
         <div className="mx-auto w-full max-w-sm">
           <Kicker>{AUTH.kicker}</Kicker>
-          <h1 className="mt-2 font-display text-4xl text-fg">
-            {mode === "in" ? AUTH.inTitle : AUTH.upTitle}
-          </h1>
-          <p className="mt-3 text-sm text-muted">{promise}</p>
+          <h1 className="mt-2 font-display text-4xl text-fg">{title}</h1>
+          <p className="mt-3 text-sm text-muted">{blurb}</p>
 
-          <form className="mt-8 space-y-4" onSubmit={onEmail}>
-            {mode === "up" ? (
-              <Field label="Name">
+          {mode === "forgot" ? (
+            <form className="mt-8 space-y-4" onSubmit={onForgot}>
+              <Field label="Email">
                 <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="field-input"
-                  autoComplete="name"
+                  autoComplete="email"
                 />
               </Field>
-            ) : null}
-            <Field label="Email">
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="field-input"
-                autoComplete="email"
-              />
-            </Field>
-            <Field label="Password">
-              <input
-                type="password"
-                required
-                minLength={8}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="field-input"
-                autoComplete={mode === "up" ? "new-password" : "current-password"}
-              />
-            </Field>
-            <Button type="submit" size="xl" disabled={busy}>
-              {busy ? "Signing in…" : mode === "in" ? AUTH.inCta : AUTH.upCta}
-            </Button>
-          </form>
+              <Button type="submit" size="xl" disabled={busy}>
+                {busy ? "Sending…" : AUTH.forgotCta}
+              </Button>
+            </form>
+          ) : (
+            <form className="mt-8 space-y-4" onSubmit={onEmail}>
+              {mode === "up" ? (
+                <Field label="Name">
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="field-input"
+                    autoComplete="name"
+                  />
+                </Field>
+              ) : null}
+              <Field label="Email">
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="field-input"
+                  autoComplete="email"
+                />
+              </Field>
+              <Field label="Password">
+                <input
+                  type="password"
+                  required
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="field-input"
+                  autoComplete={mode === "up" ? "new-password" : "current-password"}
+                />
+              </Field>
+              <Button type="submit" size="xl" disabled={busy}>
+                {busy ? "Signing in…" : mode === "in" ? AUTH.inCta : AUTH.upCta}
+              </Button>
+            </form>
+          )}
+
+          {mode === "in" ? (
+            <button
+              type="button"
+              className="mt-3 inline-flex min-h-11 items-center text-sm text-muted hover:text-fg"
+              onClick={() => setMode("forgot")}
+            >
+              {AUTH.forgotLink}
+            </button>
+          ) : null}
 
           <button
             type="button"
             className="mt-4 inline-flex min-h-11 items-center text-sm text-muted hover:text-fg"
-            onClick={() => setMode(mode === "in" ? "up" : "in")}
+            onClick={() => setMode(mode === "forgot" ? "in" : mode === "in" ? "up" : "in")}
           >
-            {mode === "in" ? AUTH.switchToUp : AUTH.switchToIn}
+            {mode === "forgot"
+              ? AUTH.forgotBack
+              : mode === "in"
+                ? AUTH.switchToUp
+                : AUTH.switchToIn}
           </button>
-
 
           <p className="mt-8 text-center text-xs text-subtle">
             By entering you confirm you are 18 or older.{" "}

@@ -14,6 +14,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
 import { Route as LlmsDottxtRouteImport } from './routes/llms[.]txt'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as VaultRouteImport } from './routes/vault'
@@ -56,6 +57,11 @@ const LlmsDottxtRoute = LlmsDottxtRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
@@ -155,6 +161,7 @@ export interface FileRoutesByFullPath {
   '/connectors': typeof ConnectorsRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/vault': typeof VaultRoute
@@ -180,6 +187,7 @@ export interface FileRoutesByTo {
   '/connectors': typeof ConnectorsRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/vault': typeof VaultRoute
@@ -206,6 +214,7 @@ export interface FileRoutesById {
   '/connectors': typeof ConnectorsRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/vault': typeof VaultRoute
@@ -233,6 +242,7 @@ export interface FileRouteTypes {
     | '/connectors'
     | '/llms.txt'
     | '/login'
+    | '/reset-password'
     | '/robots.txt'
     | '/sitemap.xml'
     | '/vault'
@@ -258,6 +268,7 @@ export interface FileRouteTypes {
     | '/connectors'
     | '/llms.txt'
     | '/login'
+    | '/reset-password'
     | '/robots.txt'
     | '/sitemap.xml'
     | '/vault'
@@ -283,6 +294,7 @@ export interface FileRouteTypes {
     | '/connectors'
     | '/llms.txt'
     | '/login'
+    | '/reset-password'
     | '/robots.txt'
     | '/sitemap.xml'
     | '/vault'
@@ -309,6 +321,7 @@ export interface RootRouteChildren {
   ConnectorsRoute: typeof ConnectorsRoute
   LlmsDottxtRoute: typeof LlmsDottxtRoute
   LoginRoute: typeof LoginRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   VaultRoute: typeof VaultRoute
@@ -363,6 +376,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/robots.txt': {
@@ -510,6 +530,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectorsRoute: ConnectorsRoute,
   LlmsDottxtRoute: LlmsDottxtRoute,
   LoginRoute: LoginRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   VaultRoute: VaultRoute,
