@@ -67,7 +67,7 @@ function mediaContentType(
   return "image/jpeg";
 }
 
-function dispositionHeaders(request: Request, contentType: string) {
+function dispositionHeaders(request: Request, contentType: string): Record<string, string> {
   const want = new URL(request.url).searchParams.get("download");
   if (want !== "1" && want !== "true") return {};
   const ext =
