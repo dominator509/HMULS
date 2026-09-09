@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   applyUnlocks,
   getAtmosphere,
@@ -93,6 +93,7 @@ function LadderPage() {
   const [raw, setRaw] = useState<LadderPublic | null | undefined>(loaded?.ladder ?? undefined);
   const [unlockIds, setUnlockIds] = useState<string[]>([]);
   const [unlockMedia, setUnlockMedia] = useState<Record<string, string>>({});
+  const [mediaEpoch, setMediaEpoch] = useState(0);
   const [active, setActive] = useState<ShotPublic | null>(null);
   const [payOpen, setPayOpen] = useState(false);
   const [kind, setKind] = useState<InvoiceKind>("shot");
@@ -111,6 +112,7 @@ function LadderPage() {
   const [feed, setFeed] = useState<{ kind: string; ladderTitle: string; at: string }[]>([]);
   const [feedI, setFeedI] = useState(0);
   const autoOpened = useRef(false);
+  const userId = user?.id ?? null;
 
   useEffect(() => {
     setClock(0);
@@ -137,20 +139,17 @@ function LadderPage() {
   }, []);
 
   useEffect(() => {
-    if (!user || !raw) {
+    if (!userId || !raw) {
       setPressure({ continueBy: null, expired: false });
       return;
     }
     getMyPressure({ data: { ladderId: raw.id } })
       .then(setPressure)
       .catch(() => setPressure({ continueBy: null, expired: false }));
-  }, [user, raw]);
+  }, [userId, raw]);
 
-  useEffect(() => {
-    if (!user) {
-      setUnlockIds([]);
-      return;
-    }
+  const loadUnlocks = useCallback((opts?: { clearOnError?: boolean }) => {
+    if (!userId) return;
     getMyUnlocks()
       .then((rows) => {
         setUnlockIds(rows.map((r) => r.shot_id));
@@ -161,15 +160,65 @@ function LadderPage() {
         setUnlockMedia(urls);
       })
       .catch(() => {
+        // Keep prior ownership on transient resume/network failures so clear
+        // grant media does not flash back to locked teasers.
+        if (opts?.clearOnError) {
+          setUnlockIds([]);
+          setUnlockMedia({});
+        }
+      });
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) {
+      // Only drop ownership once the session has fully resolved signed-out.
+      // Brief null-during-isPending on mobile focus/resume must not clear unlocks.
+      if (!isPending) {
         setUnlockIds([]);
         setUnlockMedia({});
-      });
-  }, [user]);
+      }
+      return;
+    }
+    loadUnlocks({ clearOnError: true });
+  }, [userId, isPending, loadUnlocks]);
+
+  // Mobile Safari / bfcache: CSS filter layers on the old locked <img> can stick
+  // after unlock, and decoded grant bitmaps get discarded. Remount clear media and
+  // re-assert owned grant URLs without wiping unlock flags on error.
+  useEffect(() => {
+    if (!userId) return;
+    const reassertOwnedMedia = () => {
+      if (document.visibilityState === "hidden") return;
+      setMediaEpoch((n) => n + 1);
+      loadUnlocks({ clearOnError: false });
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") reassertOwnedMedia();
+    };
+    const onPageShow = () => reassertOwnedMedia();
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("focus", reassertOwnedMedia);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("focus", reassertOwnedMedia);
+    };
+  }, [userId, loadUnlocks]);
 
   const ladder = useMemo(() => {
     if (!raw) return null;
     return applyUnlocks(raw, new Set(unlockIds), unlockMedia);
   }, [raw, unlockIds, unlockMedia]);
+
+  // Keep the open lightbox shot in sync with ownership / grant URLs.
+  useEffect(() => {
+    if (!active || !ladder) return;
+    const fresh = ladder.shots.find((s) => s.id === active.id);
+    if (fresh && (fresh.unlocked !== active.unlocked || fresh.mediaUrl !== active.mediaUrl)) {
+      setActive(fresh);
+    }
+  }, [ladder, active]);
 
   const progress = ladder ? withBundle(ladder) : null;
   const next = ladder && progress ? (ladder.shots.find((s) => s.id === progress.nextShotId) ?? null) : null;
@@ -447,6 +496,7 @@ function LadderPage() {
                   <div className="relative aspect-[2/3] overflow-hidden">
                     {shot.mediaType === "video" && shot.unlocked ? (
                       <video
+                        key={`grant-vid-${shot.id}-${mediaEpoch}`}
                         src={shot.mediaUrl ?? shot.teaserUrl}
                         className="h-full w-full object-cover"
                         style={{ objectPosition: shot.objectPosition }}
@@ -455,16 +505,23 @@ function LadderPage() {
                         loop
                         autoPlay
                       />
+                    ) : shot.unlocked ? (
+                      <img
+                        key={`grant-${shot.id}-${mediaEpoch}`}
+                        src={shot.mediaUrl ?? shot.teaserUrl}
+                        alt={modelAlt(ladder.modelName, shot.title)}
+                        className="h-full w-full object-cover"
+                        style={{ objectPosition: shot.objectPosition }}
+                      />
                     ) : (
                       <img
-                        src={shot.unlocked ? (shot.mediaUrl ?? shot.teaserUrl) : shot.teaserUrl}
+                        key={`lock-${shot.id}`}
+                        src={shot.teaserUrl}
                         alt={modelAlt(ladder.modelName, shot.title)}
                         className={
-                          shot.unlocked
-                            ? "h-full w-full object-cover"
-                            : isNext
-                              ? "next-media h-full w-full object-cover"
-                              : "locked-media h-full w-full object-cover"
+                          isNext
+                            ? "next-media h-full w-full object-cover"
+                            : "locked-media h-full w-full object-cover"
                         }
                         style={{ objectPosition: shot.objectPosition }}
                       />
@@ -633,26 +690,34 @@ function LadderPage() {
         <Overlay onClose={() => setActive(null)} wide labelledBy="shot-title">
           <div className="relative grid sm:grid-cols-2">
             <OverlayClose onClick={() => setActive(null)} />
-            <div className="relative h-[42dvh] overflow-hidden bg-raised sm:h-auto sm:min-h-[28rem] sm:max-h-[82dvh]">
+            <div className="relative flex max-h-[70dvh] items-center justify-center overflow-hidden bg-raised sm:max-h-[82dvh] sm:min-h-[28rem]">
               {active.unlocked && active.mediaType === "video" ? (
                 <video
+                  key={`detail-vid-${active.id}-${mediaEpoch}`}
                   src={active.mediaUrl ?? active.teaserUrl}
-                  className="h-full w-full object-cover"
+                  className="max-h-[70dvh] w-full object-contain sm:max-h-[82dvh]"
                   style={{ objectPosition: active.objectPosition }}
                   controls
                   autoPlay
                   playsInline
                 />
+              ) : active.unlocked ? (
+                <img
+                  key={`detail-grant-${active.id}-${mediaEpoch}`}
+                  src={active.mediaUrl ?? active.teaserUrl}
+                  alt={modelAlt(ladder.modelName, active.title)}
+                  className="max-h-[70dvh] w-full object-contain sm:max-h-[82dvh]"
+                  style={{ objectPosition: active.objectPosition }}
+                />
               ) : (
                 <img
-                  src={active.unlocked ? (active.mediaUrl ?? active.teaserUrl) : active.teaserUrl}
+                  key={`detail-lock-${active.id}`}
+                  src={active.teaserUrl}
                   alt={modelAlt(ladder.modelName, active.title)}
                   className={
-                    active.unlocked
-                      ? "h-full w-full object-cover"
-                      : active.id === progress.nextShotId
-                        ? "next-media h-full w-full object-cover"
-                        : "locked-media h-full w-full object-cover"
+                    active.id === progress.nextShotId
+                      ? "next-media-contain max-h-[70dvh] w-full object-contain sm:max-h-[82dvh]"
+                      : "locked-media-contain max-h-[70dvh] w-full object-contain sm:max-h-[82dvh]"
                   }
                   style={{ objectPosition: active.objectPosition }}
                 />
