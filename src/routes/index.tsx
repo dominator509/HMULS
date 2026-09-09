@@ -72,15 +72,16 @@ function Home() {
       .catch(() => undefined);
   }, []);
 
+  const userId = user?.id ?? null;
   useEffect(() => {
-    if (!user) {
-      setUnlocks([]);
+    if (!userId) {
+      // Keep prior unlock counts while auth is still resolving after resume.
       return;
     }
     getMyUnlocks()
       .then(setUnlocks)
       .catch(() => setUnlocks([]));
-  }, [user]);
+  }, [userId]);
 
   const unlockedByLadder = new Map<string, number>();
   for (const u of unlocks) {
