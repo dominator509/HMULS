@@ -40,8 +40,8 @@ export const NYX_SEED_LADDERS: SeedLadder[] = [
         step: 1,
         title: "The Invitation",
         tease:
-          "Nyx in the doorway, liquid-chrome mesh robe tied closed, void lipstick catching neon. Cheapest beat. Shot 2 is the first time the mesh moves.",
-        grant: "Shot 1 unlocked. She already decided whether you stay.",
+          "Nyx Virell on nyx-the-reveal — liquid-chrome mesh tied, void lipstick, doorway neon. Cyberpunk AI muse sequential unlock; Shot 2 is the first mesh move. Covered editorial from beat one.",
+        grant: "Shot 1 unlocked on nyx-the-reveal. Netrunner doorway — she already decided whether you stay.",
         story:
           "The look is how she lets you in. The robe only slips for collectors who pay to watch chrome move. That's Shot 2.",
         drop: "",
@@ -71,7 +71,7 @@ export const NYX_SEED_LADDERS: SeedLadder[] = [
         title: "Lace",
         tease:
           "Electric-violet cyber lace. Hands in her lap. No smile. Piercings catch light. Shot 4 she sits on the bed.",
-        grant: "You have the lace. Most men stop here.",
+        grant: "You have the lace on nyx-the-reveal. Most men stop here. Chrome still has rules.",
         story:
           "Lace is the test, not the gift. Shot 4 she sits for collectors who don't rush the neon.",
         drop: "51% never make it past lace. That's a filter.",
@@ -146,7 +146,7 @@ export const NYX_SEED_LADDERS: SeedLadder[] = [
         title: "Chrome Fail",
         tease:
           "Covered editorial densest frame before climax — mesh failing, LED tattoos and anklet stay. Not a nude promise. Shot 9 is the vault close.",
-        grant: "Chrome failing for you. Still her rules.",
+        grant: "Chrome failing for you on nyx-the-reveal. Still her rules. Still covered cyber editorial.",
         story:
           "This is the save-frame before climax. Shot 9 is the last frontal she cleared — covered cyber charge, eyes owning the lens.",
         drop: "89% never get this denser fail.",
@@ -161,7 +161,7 @@ export const NYX_SEED_LADDERS: SeedLadder[] = [
         title: "Climax — Vault Close",
         tease:
           "Last frontal. Maximum cyber charge she cleared for the vault — covered editorial, eyes owning the lens. She doesn't reshoot a climax.",
-        grant: "Vault close. You finished her frontal set. Covered. Exact.",
+        grant: "Vault close on nyx-the-reveal. You finished her frontal set — covered, exact, sequential.",
         story:
           "You didn't buy a nude dump. You finished a chrome-mesh night she designed so the last frame still feels like ownership.",
         drop: "93% who start never see the vault close.",
