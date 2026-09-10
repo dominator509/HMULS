@@ -463,13 +463,13 @@ export function StudioPanel({ onLadders }: { onLadders?: () => void }) {
                 >
                   Generate remaining stills
                 </Button>
-                  <Button
-                    variant="outline"
-                    disabled={Boolean(busy)}
-                    onClick={() => void writeNarrativeFromLooks()}
-                  >
-                    {busy === "narrative" ? "Writing narrative…" : "Generate narrative"}
-                  </Button>
+                <Button
+                  variant="outline"
+                  disabled={Boolean(busy)}
+                  onClick={() => void writeNarrativeFromLooks()}
+                >
+                  {busy === "narrative" ? "Writing narrative…" : "Generate narrative"}
+                </Button>
                 <p className="text-sm text-muted">
                   {packs.length} set{packs.length === 1 ? "" : "s"} · source is always Image 0
                 </p>

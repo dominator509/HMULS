@@ -39,6 +39,7 @@ export function LegalPanel() {
     voice: "",
     looks: "",
     teaseStyle: "",
+    ownerBrief: "",
   });
 
   useEffect(() => {

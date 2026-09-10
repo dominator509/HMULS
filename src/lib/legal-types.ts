@@ -38,7 +38,7 @@ export type MuseModel = {
   looks: string;
   teaseStyle: string;
   /** Operator-only brief for generate/respin; not shown on public pages. */
-  ownerBrief: string;
+  ownerBrief?: string;
 };
 
 export type LegalDoc = {

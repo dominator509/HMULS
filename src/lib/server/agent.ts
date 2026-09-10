@@ -628,6 +628,7 @@ async function dispatch(sql: Sql, op: string, p: Params): Promise<unknown> {
         voice: row.voice ?? "",
         looks: row.looks ?? "",
         teaseStyle: row.tease_style ?? "",
+        ownerBrief: (row as { owner_brief?: string | null }).owner_brief ?? "",
       };
       const entity = await loadEntity(sql);
       const prompt = modelCardPrompt(model, entity);
