@@ -131,7 +131,7 @@ export const CHECKOUT_COPY = {
   softError: "Could not refresh this invoice. Your pay address is still valid — retry.",
   retry: "Retry",
   underpaid: (paid: string, due: string, cur: string) =>
-    `Underpaid: received ${paid} ${cur}, need ${due} ${cur} (within 2% is accepted). Send the shortfall to the same address or open a new invoice.`,
+    `Payment short: received ${paid} ${cur}, invoice needs ${due} ${cur}. Send the rest to the same address, open a new invoice, or contact support with your tx id.`,
 };
 
 export const PAY_SHEET = {

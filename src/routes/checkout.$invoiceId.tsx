@@ -213,7 +213,7 @@ function CheckoutPage() {
         toast.error(msg);
         return;
       }
-      toast.message("Payment recorded. The shot unlocks after the chain confirms.");
+      toast.message("Payment recorded. The shot unlocks after payment confirms.");
     } catch (err) {
       // Stay on wait if we already flipped — soft retry rather than bouncing to empty pay.
       setPhase((p) => (p === "done" ? p : "wait"));
@@ -357,10 +357,8 @@ function CheckoutPage() {
         </Button>
       ) : null}
       <p className="mt-4 text-center text-xs leading-relaxed text-subtle">
-        Sending a transaction or signing a message does not unlock. The shot
-        waits for NOWPayments finished or an underpay within 2% of{" "}
-        <span className="text-fg">pay_amount</span> (HMAC + amount/currency match), or an
-        operator unlock. Public checkout requires API key, IPN secret, and IPN URL.
+        Sending a transaction does not unlock by itself. The shot unlocks after
+        payment confirms on this invoice.
       </p>
     </div>
   );

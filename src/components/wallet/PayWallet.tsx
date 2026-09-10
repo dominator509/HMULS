@@ -92,7 +92,7 @@ export function PayWallet({
               {inv.cryptoAmount} {inv.asset}
             </p>
             <p className="text-sm text-muted">
-              Send this amount to the invoice address. Access grants after NOWPayments confirms (finished or underpay within 2%).
+              Send this exact amount to the invoice address. Access unlocks after payment confirms.
             </p>
           </div>
           <Wallet className="size-5 text-gold" />
@@ -115,8 +115,7 @@ export function PayWallet({
           </div>
         ) : (
           <p className="mt-4 rounded-lg border border-blood/40 bg-blood/10 px-3 py-2 text-sm text-fg">
-            No live payment address from NOWPayments. Wallets cannot connect until Worker hmuls has
-            NOWPAYMENTS_API_KEY and NOWPAYMENTS_IPN_SECRET (IPN URL derives from PUBLIC_SITE_URL when unset). Operator can still grant from Ops.
+            Payment address is unavailable right now. Refresh in a moment or contact support.
           </p>
         )}
 
@@ -126,7 +125,7 @@ export function PayWallet({
 
         {phase === "signing" || phase === "broadcast" ? (
           <p className="mt-4 text-sm text-gold">
-            {phase === "signing" ? "Confirm the transfer in your wallet…" : "Waiting for chain verification…"}
+            {phase === "signing" ? "Confirm the transfer in your wallet…" : "Waiting for confirmation…"}
           </p>
         ) : null}
 
@@ -192,8 +191,7 @@ export function PayWallet({
               Open a wallet with this invoice
             </h3>
             <p className="mt-2 text-sm text-muted">
-              Deeplinks fill the address and amount. A signature is not payment. The grant waits for NOWPayments
-              status finished (or underpay within 2%).
+              Deeplinks fill the address and amount. A wallet signature is not payment — unlock waits until this invoice confirms.
             </p>
             <ul className="mt-5 space-y-2">
               {options.map((w) => (

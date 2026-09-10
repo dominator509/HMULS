@@ -321,9 +321,7 @@ function LadderPage() {
     if (!payStatus?.nowpayments) {
       if (payStatus) {
         toast.error(
-          payStatus.missing.length
-            ? `NOWPayments is not live on the Worker (missing: ${payStatus.missing.join(", ")}). No wallet can open without a pay address.`
-            : "NOWPayments is not live on the Worker. No wallet can open without a pay address.",
+          "Payments are unavailable right now. Refresh in a moment or contact support.",
         );
       }
       return;
@@ -346,7 +344,7 @@ function LadderPage() {
             () =>
               reject(
                 new Error(
-                  "Opening the invoice timed out. Try again — if this keeps happening, NOWPayments may be slow or the Worker is cold.",
+                  "Opening the invoice timed out. Try again in a moment, or contact support if this keeps happening.",
                 ),
               ),
             35_000,
@@ -889,9 +887,7 @@ function LadderPage() {
             </label>
             {payStatus && !payStatus.nowpayments ? (
               <p className="mt-4 rounded-lg border border-blood/40 bg-blood/10 px-3 py-2 text-sm text-fg">
-                NOWPayments is not configured on Worker hmuls
-                {payStatus.missing.length ? ` (missing: ${payStatus.missing.join(", ")})` : ""}.
-                Set those vars, then pay again — wallets only appear after a live pay address exists.
+                Payments are unavailable right now. Refresh in a moment or contact support.
               </p>
             ) : null}
             <Button className="mt-5" size="xl" disabled={busy || payStatus == null || !payStatus.nowpayments} onClick={() => void submitPay()}>
