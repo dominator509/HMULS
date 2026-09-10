@@ -125,11 +125,12 @@ export function MusesPanel({ onLadders }: { onLadders?: () => void }) {
     }
     if (narrMode === "manual") return;
     const mode: NarrativeMode = narrMode;
+    const isRespin = narrMode === "respin";
 
-    const overwrite = mode === "respin" || hasFilledNarrative(draft);
-    if (overwrite && narrMode !== "manual") {
+    const overwrite = isRespin || hasFilledNarrative(draft);
+    if (overwrite) {
       const ok = window.confirm(
-        mode === "respin"
+        isRespin
           ? "Respin will overwrite muse narrative fields (looks/voice/teaseStyle/bio) and selected photoset copy. Continue?"
           : "Narrative fields already have copy. Generate will overwrite them. Continue? (Cancel keeps your manual edits.)",
       );
@@ -169,11 +170,11 @@ export function MusesPanel({ onLadders }: { onLadders?: () => void }) {
             .split(",")
             .map((s) => s.trim())
             .filter(Boolean),
-          respinNote: mode === "respin" ? respinNote : undefined,
+          respinNote: isRespin ? respinNote : undefined,
           portrayedAgeMin: Math.max(24, Math.min(34, Number(ageText) || 24)),
           ladderIds: selectedLadderId ? [selectedLadderId] : undefined,
           persist: true,
-          overwrite: overwrite || mode === "respin",
+          overwrite,
         },
       });
       if (!res.ok) {
@@ -189,7 +190,7 @@ export function MusesPanel({ onLadders }: { onLadders?: () => void }) {
       const b = await getLegalBundle();
       setModels(b.models);
       toast.success(
-        mode === "respin"
+        isRespin
           ? `Respun ${draft.stageName} (${res.ladderCount} photoset${res.ladderCount === 1 ? "" : "s"}).`
           : `Narrative generated for ${draft.stageName}. Review, then Save if you tweak manually.`,
       );
