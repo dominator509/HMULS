@@ -389,7 +389,7 @@ function normalizeShot(s: Partial<ShotNarrative> | null | undefined): ShotNarrat
 }
 
 function normalizePhotoset(p: Partial<PhotosetNarrative>): PhotosetNarrative {
-  let shots: Record<string, ShotNarrative> = {};
+  const shots: Record<string, ShotNarrative> = {};
   if (Array.isArray(p.shots)) {
     p.shots.forEach((s, i) => {
       shots[`step_${i + 1}`] = normalizeShot(s);
