@@ -128,6 +128,10 @@ export const CHECKOUT_COPY = {
   expiredTitle: "She dropped the pose.",
   expiredCta: "Open a new invoice",
   seeUnlocked: "See what you unlocked",
+  softError: "Could not refresh this invoice. Your pay address is still valid — retry.",
+  retry: "Retry",
+  underpaid: (paid: string, due: string, cur: string) =>
+    `Underpaid: received ${paid} ${cur}, need ${due} ${cur} (within 2% is accepted). Send the shortfall to the same address or open a new invoice.`,
 };
 
 export const PAY_SHEET = {

@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { confirmInvoice, getInvoice, operatorGrantInvoice } from "@/lib/server/purchases";
 import { getLadderBySlug, getMyRole, getMyUnlocks, listLadders } from "@/lib/server/catalog";
 import { getPsychology } from "@/lib/server/transporter";
@@ -27,6 +27,20 @@ export const Route = createFileRoute("/checkout/$invoiceId")({
   head: () => privateHead("/checkout", "Checkout | SHE UNDRESSES"),
 });
 
+/** Keep pay_address / crypto amount stable across soft refresh failures. */
+function mergeInvoice(prev: InvoiceView | null | undefined, next: InvoiceView): InvoiceView {
+  if (!prev || prev.id !== next.id) return next;
+  return {
+    ...next,
+    payAddress: next.payAddress || prev.payAddress,
+    cryptoAmount:
+      next.cryptoAmount && next.cryptoAmount !== "0" ? next.cryptoAmount : prev.cryptoAmount,
+    paymentReady: Boolean(
+      (next.payAddress || prev.payAddress) && (next.paymentReady || prev.paymentReady),
+    ),
+  };
+}
+
 function CheckoutPage() {
   const { invoiceId } = Route.useParams();
   const nav = useNavigate();
@@ -40,6 +54,9 @@ function CheckoutPage() {
   const [surfaces, setSurfaces] = useState<Surfaces>(() => fallbackSurfaces(DEFAULT_DIALS));
   const [licenseOk, setLicenseOk] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [softError, setSoftError] = useState<string | null>(null);
+  const [underpaidMsg, setUnderpaidMsg] = useState<string | null>(null);
+  const loadedRef = useRef(false);
 
   useEffect(() => {
     setClock(0);
@@ -63,46 +80,93 @@ function CheckoutPage() {
       .catch(() => setIsAdmin(false));
   }, [user]);
 
+  const applyRow = useCallback((row: InvoiceView) => {
+    loadedRef.current = true;
+    setInv((prev) => mergeInvoice(prev, row));
+    setSoftError(null);
+    if (row.status === "paid") {
+      setPhase("done");
+      setGiftCode(row.giftCode);
+      setUnderpaidMsg(null);
+    } else if (row.status === "confirming") {
+      setPhase((p) => (p === "done" ? p : "wait"));
+    }
+  }, []);
+
+  const loadInvoice = useCallback(
+    async (opts?: { quiet?: boolean }) => {
+      if (!user) return;
+      try {
+        const row = await getInvoice({ data: { id: invoiceId } });
+        if (row) {
+          applyRow(row);
+          setSlug((prev) => {
+            if (prev) return prev;
+            void listLadders()
+              .then((ladders) => {
+                const lad = ladders.find((l) => l.id === row.ladderId);
+                if (lad?.slug) setSlug(lad.slug);
+              })
+              .catch(() => undefined);
+            return prev;
+          });
+          return;
+        }
+        // True empty result: only hard-not-found if we never successfully loaded.
+        if (!loadedRef.current) {
+          setInv(null);
+          setSoftError(null);
+        } else {
+          setSoftError(CHECKOUT_COPY.softError);
+        }
+      } catch {
+        if (!opts?.quiet) {
+          setSoftError(CHECKOUT_COPY.softError);
+        } else if (loadedRef.current) {
+          setSoftError(CHECKOUT_COPY.softError);
+        }
+        // Never clear a loaded invoice on transient Worker/Neon/auth blips.
+      }
+    },
+    [user, invoiceId, applyRow],
+  );
+
   useEffect(() => {
     if (!user) return;
-    getInvoice({ data: { id: invoiceId } })
-      .then(async (row) => {
-        setInv(row);
-        if (!row) return;
-        const ladders = await listLadders();
-        const lad = ladders.find((l) => l.id === row.ladderId);
-        setSlug(lad?.slug ?? null);
-        if (row.status === "paid") {
-          setPhase("done");
-          setGiftCode(row.giftCode);
-        }
-      })
-      .catch(() => setInv(null));
-  }, [invoiceId, user]);
+    void loadInvoice();
+  }, [user, invoiceId, loadInvoice]);
 
   useEffect(() => {
     if (phase !== "wait" || !user) return;
     const t = window.setInterval(() => {
-      getInvoice({ data: { id: invoiceId } })
-        .then((row) => {
-          if (row?.status === "paid") {
-            setInv(row);
-            setGiftCode(row.giftCode);
-            setPhase("done");
-          }
-        })
-        .catch(() => undefined);
+      void loadInvoice({ quiet: true });
     }, 4000);
     return () => window.clearInterval(t);
-  }, [phase, invoiceId, user]);
+  }, [phase, invoiceId, user, loadInvoice]);
 
-  if (isPending) {
+  // Auth still resolving and we have no invoice yet — don't flash not-found.
+  if (isPending && inv === undefined) {
     return <div className="px-5 py-24 text-center text-muted">Checking your session…</div>;
   }
-  if (!user) return <RedirectToSignIn />;
+  // Soft: if we already have an invoice, keep showing it even if session briefly flickers.
+  if (!user && !inv) return <RedirectToSignIn />;
+
   if (inv === undefined) {
-    return <div className="px-5 py-24 text-center text-muted">Opening invoice…</div>;
+    return (
+      <div className="mx-auto max-w-md px-5 py-24 text-center">
+        <p className="text-muted">Opening invoice…</p>
+        {softError ? (
+          <>
+            <p className="mt-4 text-sm text-blood">{softError}</p>
+            <Button className="mt-4" variant="outline" onClick={() => void loadInvoice()}>
+              {CHECKOUT_COPY.retry}
+            </Button>
+          </>
+        ) : null}
+      </div>
+    );
   }
+
   if (!inv) {
     return (
       <div className="px-5 py-24 text-center">
@@ -122,6 +186,7 @@ function CheckoutPage() {
 
   async function markSent(info?: { method: string; wallet: string; txHash: string }) {
     setPhase("wait");
+    setUnderpaidMsg(null);
     try {
       const res = await confirmInvoice({
         data: {
@@ -134,12 +199,25 @@ function CheckoutPage() {
       if (res.settled) {
         setGiftCode(res.giftCode);
         setPhase("done");
+        setUnderpaidMsg(null);
         toast.success("Unlocked.");
+        return;
+      }
+      if (res.underpaid) {
+        const msg = CHECKOUT_COPY.underpaid(
+          String(res.underpaid.paid),
+          String(res.underpaid.due),
+          res.underpaid.currency.toUpperCase(),
+        );
+        setUnderpaidMsg(msg);
+        toast.error(msg);
         return;
       }
       toast.message("Payment recorded. The shot unlocks after the chain confirms.");
     } catch (err) {
-      setPhase("pay");
+      // Stay on wait if we already flipped — soft retry rather than bouncing to empty pay.
+      setPhase((p) => (p === "done" ? p : "wait"));
+      setSoftError(err instanceof Error ? err.message : "Could not record payment.");
       toast.error(err instanceof Error ? err.message : "Could not record payment.");
     }
   }
@@ -216,6 +294,21 @@ function CheckoutPage() {
         <p className="mt-4 text-center text-sm text-gold">{surfaces.checkoutUrge}</p>
       )}
 
+      {softError ? (
+        <div className="mt-4 rounded-xl border border-blood/40 bg-blood/10 px-4 py-3 text-sm text-fg">
+          <p>{softError}</p>
+          <Button className="mt-2" size="sm" variant="outline" onClick={() => void loadInvoice()}>
+            {CHECKOUT_COPY.retry}
+          </Button>
+        </div>
+      ) : null}
+
+      {underpaidMsg ? (
+        <div className="mt-4 rounded-xl border border-blood/40 bg-blood/10 px-4 py-3 text-sm text-fg">
+          {underpaidMsg}
+        </div>
+      ) : null}
+
       <div className="mt-6">
         <label className="mb-4 flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-surface p-4 text-sm text-muted">
           <input
@@ -265,9 +358,9 @@ function CheckoutPage() {
       ) : null}
       <p className="mt-4 text-center text-xs leading-relaxed text-subtle">
         Sending a transaction or signing a message does not unlock. The shot
-        waits for NOWPayments status <span className="text-fg">finished</span>{" "}
-        (HMAC + amount/currency match) or an operator unlock. Public checkout
-        requires API key, IPN secret, and IPN URL.
+        waits for NOWPayments finished or an underpay within 2% of{" "}
+        <span className="text-fg">pay_amount</span> (HMAC + amount/currency match), or an
+        operator unlock. Public checkout requires API key, IPN secret, and IPN URL.
       </p>
     </div>
   );

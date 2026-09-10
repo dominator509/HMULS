@@ -92,7 +92,7 @@ export function PayWallet({
               {inv.cryptoAmount} {inv.asset}
             </p>
             <p className="text-sm text-muted">
-              Send exactly this amount to the invoice address. Access grants after NOWPayments confirms finished.
+              Send this amount to the invoice address. Access grants after NOWPayments confirms (finished or underpay within 2%).
             </p>
           </div>
           <Wallet className="size-5 text-gold" />
@@ -193,7 +193,7 @@ export function PayWallet({
             </h3>
             <p className="mt-2 text-sm text-muted">
               Deeplinks fill the address and amount. A signature is not payment. The grant waits for NOWPayments
-              status finished.
+              status finished (or underpay within 2%).
             </p>
             <ul className="mt-5 space-y-2">
               {options.map((w) => (
