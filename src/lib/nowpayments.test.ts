@@ -102,6 +102,23 @@ describe("ipn economic match", () => {
       false,
     );
   });
+
+  it("settles partially_paid when actually_paid is within 98% of pay_amount", () => {
+    const r = ipnFulfillsInvoice(
+      { ...finished, payment_status: "partially_paid", actually_paid: 0.00098 },
+      inv,
+    );
+    assert.equal(r.ok, true);
+  });
+
+  it("rejects partially_paid when under the 98% tolerance", () => {
+    const r = ipnFulfillsInvoice(
+      { ...finished, payment_status: "partially_paid", actually_paid: 0.0009 },
+      inv,
+    );
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.equal(r.reason, "underpaid");
+  });
 });
 
 describe("USDT network ticker", () => {

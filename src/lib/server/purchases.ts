@@ -5,7 +5,8 @@ import { ensureCatalog, ensureProfile } from "./catalog";
 import { loadDials } from "./transporter";
 import { continueHours, invoiceMinutes, priceBumpPct } from "@/lib/psychology";
 import { CRYPTO_ASSETS, giftCode, invoiceId } from "@/lib/crypto";
-import { createNowpaymentsPayment, paymentsLive, paymentsMissing } from "./payments";
+import { createNowpaymentsPayment, fetchNowpaymentsPayment, paymentsLive, paymentsMissing } from "./payments";
+import { ipnFulfillsInvoice } from "@/lib/nowpayments";
 import { entityComplete } from "@/lib/legal-types";
 import { ensureLegal, loadEntity } from "./legal";
 import { grantVaultReady } from "./catalog";
@@ -496,8 +497,8 @@ export const confirmInvoice = createServerFn({ method: "POST" })
       where id = ${data.id} and user_id = ${context.userId} and status = 'pending'
       returning id, gift_code, status
     `;
-    const row = bumped[0];
-    if (!row) {
+    let giftCode: string | null = bumped[0]?.gift_code ?? null;
+    if (!bumped[0]) {
       const cur = await sql<{ status: string; gift_code: string | null }>`
         select status, gift_code from invoices where id = ${data.id} and user_id = ${context.userId}
       `;
@@ -506,19 +507,60 @@ export const confirmInvoice = createServerFn({ method: "POST" })
         return { settled: true as const, already: true as const, giftCode: cur[0].gift_code, status: "paid" as const };
       }
       if (cur[0].status === "confirming" || cur[0].status === "settling") {
-        return {
-          settled: false as const,
-          already: false as const,
-          giftCode: cur[0].gift_code,
-          status: "confirming" as const,
-        };
+        giftCode = cur[0].gift_code;
+      } else {
+        throw new Error("This invoice cannot be confirmed.");
       }
-      throw new Error("This invoice cannot be confirmed.");
     }
+
+    // Poll NOWPayments on confirm so finished / near-full partially_paid settles
+    // without waiting solely on IPN delivery.
+    if (paymentsLive()) {
+      try {
+        const invRows = await sql<{
+          id: string;
+          amount_cents: number;
+          asset: string;
+          pay_currency: string | null;
+          provider_payment_id: string | null;
+          pay_address: string | null;
+          gift_code: string | null;
+        }>`
+          select id, amount_cents, asset, pay_currency, provider_payment_id, pay_address, gift_code
+          from invoices
+          where id = ${data.id} and user_id = ${context.userId}
+        `;
+        const inv = invRows[0];
+        giftCode = inv?.gift_code ?? giftCode;
+        if (inv?.provider_payment_id) {
+          const pay = await fetchNowpaymentsPayment(inv.provider_payment_id);
+          const match = ipnFulfillsInvoice(pay, {
+            id: inv.id,
+            amountCents: inv.amount_cents,
+            asset: inv.asset,
+            payCurrency: inv.pay_currency || undefined,
+            providerPaymentId: inv.provider_payment_id,
+            payAddress: inv.pay_address,
+          });
+          if (match.ok) {
+            const settled = await settleVerifiedInvoice(sql, data.id);
+            return {
+              settled: true as const,
+              already: settled.already,
+              giftCode: settled.giftCode,
+              status: "paid" as const,
+            };
+          }
+        }
+      } catch {
+        // IPN / later poll still settles — keep confirming.
+      }
+    }
+
     return {
       settled: false as const,
       already: false as const,
-      giftCode: row.gift_code,
+      giftCode,
       status: "confirming" as const,
     };
   });

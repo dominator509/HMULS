@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { confirmInvoice, getInvoice, operatorGrantInvoice } from "@/lib/server/purchases";
 import { getLadderBySlug, getMyRole, getMyUnlocks, listLadders } from "@/lib/server/catalog";
 import { getPsychology } from "@/lib/server/transporter";
@@ -27,11 +27,26 @@ export const Route = createFileRoute("/checkout/$invoiceId")({
   head: () => privateHead("/checkout", "Checkout | SHE UNDRESSES"),
 });
 
+/** Keep pay_address / crypto once seen — never clear them on a partial refetch. */
+function mergeInvoice(prev: InvoiceView | null | undefined, next: InvoiceView): InvoiceView {
+  if (!prev || prev.id !== next.id) return next;
+  const payAddress = next.payAddress || prev.payAddress;
+  const cryptoAmount = next.cryptoAmount || prev.cryptoAmount;
+  return {
+    ...next,
+    payAddress,
+    cryptoAmount,
+    paymentReady: Boolean(payAddress) && (next.paymentReady || prev.paymentReady),
+  };
+}
+
 function CheckoutPage() {
   const { invoiceId } = Route.useParams();
   const nav = useNavigate();
   const { user, isPending } = useCurrentUserState();
+  const userId = user?.id;
   const [inv, setInv] = useState<InvoiceView | null | undefined>(undefined);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [phase, setPhase] = useState<"pay" | "wait" | "done">("pay");
   const [giftCode, setGiftCode] = useState<string | null>(null);
   const [slug, setSlug] = useState<string | null>(null);
@@ -40,6 +55,7 @@ function CheckoutPage() {
   const [surfaces, setSurfaces] = useState<Surfaces>(() => fallbackSurfaces(DEFAULT_DIALS));
   const [licenseOk, setLicenseOk] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     setClock(0);
@@ -57,51 +73,106 @@ function CheckoutPage() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
     getMyRole()
       .then((r) => setIsAdmin(r.role === "admin"))
       .catch(() => setIsAdmin(false));
-  }, [user]);
+  }, [userId]);
+
+  const applyRow = useCallback(
+    async (row: InvoiceView | null, opts?: { initial?: boolean }) => {
+      if (!row) {
+        // True miss from the server — only hard-not-found when we have no last-good.
+        setInv((prev) => {
+          if (prev && prev.id === invoiceId) return prev;
+          return null;
+        });
+        setLoadError(null);
+        return;
+      }
+      setLoadError(null);
+      setInv((prev) => mergeInvoice(prev, row));
+      void listLadders()
+        .then((ladders) => {
+          const lad = ladders.find((l) => l.id === row.ladderId);
+          if (lad?.slug) setSlug((s) => s ?? lad.slug);
+        })
+        .catch(() => undefined);
+      if (row.status === "paid") {
+        setPhase("done");
+        setGiftCode(row.giftCode);
+      } else if (row.status === "confirming" && opts?.initial) {
+        // Soften: already confirming — stay on wait, don't bounce to pay.
+        setPhase((p) => (p === "done" ? p : "wait"));
+      }
+    },
+    [invoiceId],
+  );
 
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
+    let cancelled = false;
     getInvoice({ data: { id: invoiceId } })
       .then(async (row) => {
-        setInv(row);
-        if (!row) return;
-        const ladders = await listLadders();
-        const lad = ladders.find((l) => l.id === row.ladderId);
-        setSlug(lad?.slug ?? null);
-        if (row.status === "paid") {
-          setPhase("done");
-          setGiftCode(row.giftCode);
-        }
+        if (cancelled) return;
+        await applyRow(row, { initial: true });
       })
-      .catch(() => setInv(null));
-  }, [invoiceId, user]);
+      .catch(() => {
+        if (cancelled) return;
+        // Never replace a successfully loaded invoice with hard not-found on
+        // transient poll/network/5xx/auth-pending errors — keep last good + banner.
+        setLoadError(
+          "Couldn’t load this invoice right now. If you already saw it, your wallet address is still shown from the last good response.",
+        );
+        setInv((prev) => (prev ? prev : undefined));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [invoiceId, userId, reloadToken, applyRow]);
 
   useEffect(() => {
-    if (phase !== "wait" || !user) return;
+    if (phase !== "wait" || !userId) return;
     const t = window.setInterval(() => {
       getInvoice({ data: { id: invoiceId } })
         .then((row) => {
-          if (row?.status === "paid") {
-            setInv(row);
+          if (!row) return;
+          setInv((prev) => mergeInvoice(prev, row));
+          if (row.status === "paid") {
             setGiftCode(row.giftCode);
             setPhase("done");
           }
         })
-        .catch(() => undefined);
+        .catch(() => {
+          // Keep last good while confirming — do not navigate away / wipe UI.
+          setLoadError("Still waiting on confirmation — refresh hiccup, retrying…");
+        });
     }, 4000);
     return () => window.clearInterval(t);
-  }, [phase, invoiceId, user]);
+  }, [phase, invoiceId, userId]);
 
   if (isPending) {
     return <div className="px-5 py-24 text-center text-muted">Checking your session…</div>;
   }
-  if (!user) return <RedirectToSignIn />;
+  // Soften navigate-away while confirming/done: keep the page if we still have invoice state.
+  if (!user) {
+    if (inv && (phase === "wait" || phase === "done")) {
+      /* fall through with last-good inv */
+    } else {
+      return <RedirectToSignIn />;
+    }
+  }
   if (inv === undefined) {
-    return <div className="px-5 py-24 text-center text-muted">Opening invoice…</div>;
+    return (
+      <div className="px-5 py-24 text-center">
+        <p className="text-muted">{loadError ?? "Opening invoice…"}</p>
+        {loadError ? (
+          <Button className="mt-4" variant="outline" onClick={() => setReloadToken((n) => n + 1)}>
+            Retry
+          </Button>
+        ) : null}
+      </div>
+    );
   }
   if (!inv) {
     return (
@@ -139,7 +210,7 @@ function CheckoutPage() {
       }
       toast.message("Payment recorded. The shot unlocks after the chain confirms.");
     } catch (err) {
-      setPhase("pay");
+      // Soften: stay on wait so a transient confirm error doesn't yank the user back to pay.
       toast.error(err instanceof Error ? err.message : "Could not record payment.");
     }
   }
@@ -177,7 +248,7 @@ function CheckoutPage() {
     );
   }
 
-  if (expired) {
+  if (expired && phase !== "wait") {
     return (
       <div className="mx-auto max-w-md px-5 py-12 text-center">
         <Kicker>{CHECKOUT_COPY.expiredKicker}</Kicker>
@@ -207,6 +278,22 @@ function CheckoutPage() {
         title={CHECKOUT_COPY.title}
         body={`${inv.ladderTitle} · ${inv.shotTitles.join(", ")} · ${formatUsd(inv.amountCents)}`}
       />
+
+      {loadError ? (
+        <p className="mt-3 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-center text-sm text-fg">
+          {loadError}{" "}
+          <button
+            type="button"
+            className="underline text-gold"
+            onClick={() => {
+              setLoadError(null);
+              setReloadToken((n) => n + 1);
+            }}
+          >
+            Retry
+          </button>
+        </p>
+      ) : null}
 
       {clockLabel ? (
         <p className="mt-4 text-center font-display text-xl tabular-nums text-blood">

@@ -55,7 +55,8 @@ export function ipnFulfillsInvoice(
   inv: InvoiceExpect,
 ): { ok: true } | { ok: false; reason: string } {
   const status = String(ipn.payment_status || ipn.pay_status || "").toLowerCase();
-  if (status !== "finished") {
+  // finished = fully paid; partially_paid may still clear the 98% bar below.
+  if (status !== "finished" && status !== "partially_paid") {
     return { ok: false, reason: `status ${status || "missing"} is not finished` };
   }
   if (!ipn.order_id) return { ok: false, reason: "missing order_id" };

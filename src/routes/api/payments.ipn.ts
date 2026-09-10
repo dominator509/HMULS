@@ -6,7 +6,7 @@ import { ipnFulfillsInvoice, type IpnPayment } from "@/lib/nowpayments";
 
 /**
  * NOWPayments IPN. Access grants only after HMAC + economic match.
- * Status must be finished. Amount, currency, order, and payment id are checked.
+ * Status must be finished or partially_paid (≥98% paid). Amount, currency, order, and payment id are checked.
  */
 export const Route = createFileRoute("/api/payments/ipn")({
   server: {
