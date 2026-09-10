@@ -8,7 +8,7 @@ export const CANONICAL_HOST = "sheundresses.com";
 export const CANONICAL_ORIGIN = "https://sheundresses.com";
 
 export const DEFAULT_DESC =
-  "Sequential adult photosets. She starts dressed. You pay. One layer comes off. Not a nudify app. 18+.";
+  "18+ sequential unlock vault for collectors. AI muses start dressed; each payment peels one layer. Not a nudify app.";
 
 export const RTA = "RTA-5042-1996-1400-1577-RTA";
 
@@ -83,21 +83,23 @@ export function authorModelSeo(m: ModelSeoIn) {
   const bio = (m.bio || "").replace(/\s+/g, " ").trim();
   const kindLine =
     kind === "synthetic"
-      ? `${name} is a fictional adult character, portrayed ${age}+.`
+      ? `${name} is a fictional AI muse (adult OC), portrayed ${age}+.`
       : `${name} is portrayed ${age}+.`;
   const hook = bio || looks || `${name} undresses in order on ${BRAND}.`;
   const description = clipMeta(
-    `${name} sequential unlock photosets on ${BRAND}. ${kindLine} ${hook} She starts dressed. You pay. The next layer comes off. Not a clothes-remover. 18+.`,
+    `${name} AI muse sequential unlocks for collectors on ${BRAND}. ${kindLine} ${hook} She starts dressed. You pay. The next layer opens. Not a clothes-remover. 18+.`,
   );
-  const title = clipMeta(`${name} sequential unlock photosets | ${BRAND}`, 60);
+  const title = clipMeta(`${name} AI muse unlocks | ${BRAND}`, 60);
   const keywords = [
     name,
     BRAND,
     "sequential unlock",
+    "AI muse",
+    "collector vault",
     "adult photoset",
     "paid permission",
     "Nine-Yes",
-    kind === "synthetic" ? "AI muse" : "adult model",
+    kind === "synthetic" ? "synthetic muse" : "adult model",
     "18+",
   ].join(", ");
   const faqs: FaqItem[] = [
@@ -110,11 +112,17 @@ export function authorModelSeo(m: ModelSeoIn) {
     },
     {
       q: `How do ${name}'s photosets work?`,
-      a: `Pick a set. Pay for Shot 1. The next still or clip opens only after that payment. Progress saves to the account. Unlocks are a personal license — no sharing, editing, or redistribution.`,
+      a: `Pick a set. Pay for Shot 1. The next still or clip opens only after that payment. Progress saves to the account. Unlocks are a personal collector license — no sharing, editing, or redistribution.`,
     },
     {
       q: `Is ${name} 18 or older?`,
       a: `Yes. ${name} is portrayed ${age} or older. ${BRAND} does not host anyone under 18, and portrayed age on this vault is 21+.`,
+    },
+    {
+      q: `Is ${name} AI-generated?`,
+      a: kind === "synthetic"
+        ? `${name} is a fictional synthetic muse. See /legal/ai-disclosure and her model card for how AI content is labeled on ${BRAND}.`
+        : `${name}'s content kind is labeled on her model card and /legal/ai-disclosure. ${BRAND} discloses synthetic vs human performers.`,
     },
     {
       q: `Can I download and share ${name}'s unlocked frames?`,
@@ -140,9 +148,9 @@ export function authorLadderSeo(l: LadderSeoIn) {
   const theme = (l.theme || "sequential").trim();
   const hook = (l.photosetHook || l.tagline || "").trim();
   const tease = (l.photosetTease || l.description || "").trim();
-  const title = clipMeta(`${name} — ${titleName} | ${BRAND}`, 60);
+  const title = clipMeta(`${name} — ${titleName} unlock | ${BRAND}`, 60);
   const description = clipMeta(
-    `${name}'s ${titleName} (${theme}) sequential unlock photoset on ${BRAND}. ${hook} ${tease} Paid permissions in order. 18+.`,
+    `${name}'s ${titleName} (${theme}) sequential unlock for collectors on ${BRAND}. ${hook} ${tease} AI muse ladder — paid permissions in order. 18+.`,
   );
   const keywords = [
     name,
@@ -150,6 +158,8 @@ export function authorLadderSeo(l: LadderSeoIn) {
     theme,
     BRAND,
     "sequential unlock",
+    "AI muse",
+    "collector vault",
     "adult photoset",
     "Nine-Yes",
     "paid permission",
@@ -159,7 +169,7 @@ export function authorLadderSeo(l: LadderSeoIn) {
     {
       q: `What is ${titleName} by ${name}?`,
       a: clipMeta(
-        `${titleName} is ${name}'s ${theme} sequential photoset on ${BRAND}. ${hook || tease || "She starts dressed. Each payment peels one layer. You cannot skip."} You cannot skip shots.`,
+        `${titleName} is ${name}'s ${theme} sequential unlock ladder on ${BRAND}. ${hook || tease || "She starts dressed. Each payment peels one layer. You cannot skip."} Collectors climb shot by shot.`,
         280,
       ),
     },
@@ -186,19 +196,27 @@ export function homeFaqs(models: { stageName: string }[]): FaqItem[] {
   return [
     {
       q: `What is ${BRAND}?`,
-      a: `${BRAND} is an adults-only sequential unlock vault. Collectors pay (typically crypto) to unlock the next still or clip. She undresses FOR you, in order. This is not a nudify app, not a clothes-remover, and not a service that undresses uploaded photographs.`,
+      a: `${BRAND} is an adults-only sequential unlock vault for collectors. AI muses and labeled performers undress FOR you, in order — typically paid in crypto. This is not a nudify app, not a clothes-remover, and not a service that undresses uploaded photographs.`,
     },
     {
       q: "How does sequential unlock work?",
-      a: "Pick a muse, pick a photoset, pay for Shot 1. Shot 2 opens. Nine shots. No skipping. Progress is saved to the account. An unlock is a personal license.",
+      a: "Pick a muse, pick a photoset (ladder), pay for Shot 1. Shot 2 opens. Nine shots. No skipping. Progress is saved to the account. An unlock is a personal collector license.",
     },
     {
       q: "Who are the muses?",
       a: who,
     },
     {
+      q: "Who is this vault for?",
+      a: "Nerd, gamer, and crypto collectors who want limited sequential unlocks — character roster + ladders (The Reveal, The Curve, The Pedestal) — not infinite selfie spam or a clothes-remover toy.",
+    },
+    {
+      q: "Are the muses AI?",
+      a: `Synthetic muses are fictional adult OCs and are labeled as such. See /legal/ai-disclosure and each muse model card. Human performers (when onboarded) require 2257 records before explicit frames publish.`,
+    },
+    {
       q: "Are all models 18+?",
-      a: "Yes. Every muse is portrayed 21 or older. Human performers require 2257 records before explicit frames publish. Synthetic muses are fictional adults.",
+      a: "Yes. Every muse is portrayed 21 or older. Human performers require 2257 records before explicit frames publish. Synthetic muses are fictional adults. No under-21 framing.",
     },
     {
       q: "Can I share unlocked photos or videos?",
@@ -302,7 +320,7 @@ export function jsonLdGraph(input: {
     graph.push({
       "@type": "HowTo",
       name: `How sequential unlock works on ${BRAND}`,
-      description: "Pay for the next shot. She undresses in order. No skipping.",
+      description: "Collectors pay for the next shot. AI muses undress in order. No skipping.",
       step: [
         {
           "@type": "HowToStep",
