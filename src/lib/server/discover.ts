@@ -165,6 +165,7 @@ ${m.looks ? `Looks: ${m.looks}` : ""}`;
         title: l.title,
         modelName: l.modelName,
         theme: l.theme,
+        slug: l.slug,
         tagline: l.tagline,
         photosetHook: l.tagline,
       });

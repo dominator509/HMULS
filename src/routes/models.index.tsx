@@ -3,6 +3,7 @@ import { getDiscover } from "@/lib/server/discover";
 import { FaqList, JsonLd, Crumbs } from "@/components/seo/JsonLd";
 import {
   authorModelSeo,
+  authorModelsHubSeo,
   groupLadders,
   headTags,
   homeFaqs,
@@ -15,13 +16,13 @@ export const Route = createFileRoute("/models/")({
   loader: async () => getDiscover(),
   head: ({ loaderData }) => {
     const origin = loaderData?.origin || originOf();
+    const seo = authorModelsHubSeo();
     return headTags({
-      title: "Muses — sequential adult photosets | SHE UNDRESSES",
-      description:
-        "Every muse on SHE UNDRESSES undresses in order. Pick a woman, pick a hunger, pay for the next yes.",
+      title: seo.title,
+      description: seo.description,
       path: "/models",
       origin,
-      keywords: "SHE UNDRESSES, muses, sequential unlock, adult photosets",
+      keywords: seo.keywords,
     });
   },
   component: ModelsIndex,
@@ -38,8 +39,8 @@ function ModelsIndex() {
         data={jsonLdGraph({
           origin: d.origin,
           path: "/models",
-          title: "Muses | SHE UNDRESSES",
-          description: "Sequential adult photosets by muse.",
+          title: authorModelsHubSeo().title,
+          description: authorModelsHubSeo().description,
           faqs,
           crumbs: [
             { name: "Home", path: "/" },
@@ -57,10 +58,11 @@ function ModelsIndex() {
         <div className="mt-4">
           <Kicker accent>Muses</Kicker>
         </div>
-        <h1 className="mt-2 font-display text-5xl text-fg sm:text-6xl">She has a name</h1>
+        <h1 className="mt-2 font-display text-5xl text-fg sm:text-6xl">
+          {authorModelsHubSeo().h1}
+        </h1>
         <p className="mt-4 max-w-xl text-sm leading-relaxed text-muted sm:text-base">
-          Each woman is her own night. Looks, voice, and photosets do not recycle.
-          Pick her. Climb in order.
+          {authorModelsHubSeo().serviceBlurb}
         </p>
         <ul className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {(groups.length ? groups : d.models.map((m) => ({

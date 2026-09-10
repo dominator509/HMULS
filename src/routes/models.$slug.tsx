@@ -101,10 +101,10 @@ function ModelPage() {
             </Kicker>
           </div>
           <h1 className="mt-3 max-w-xl font-display text-5xl leading-[0.95] text-fg sm:text-7xl">
-            {model.stageName}
+            {seo.h1}
           </h1>
           <p className="mt-4 max-w-xl text-sm leading-relaxed text-muted sm:text-base">
-            {seo.description}
+            {seo.serviceBlurb}
           </p>
           {model.looks ? (
             <p className="mt-3 max-w-xl text-xs leading-relaxed text-subtle">{model.looks}</p>

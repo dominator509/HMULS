@@ -65,6 +65,7 @@ export const Route = createFileRoute("/ladders/$slug")({
       title: lad.title,
       modelName: lad.modelName,
       theme: lad.theme,
+      slug: lad.slug,
       tagline: lad.tagline,
       description: lad.description,
       photosetHook: lad.photosetHook,
@@ -366,6 +367,17 @@ function LadderPage() {
   const payAmount =
     kind === "shot" ? nextPrice : kind === "bundle" ? progress.bundleCents : upsellPrice;
 
+  const pageSeo = authorLadderSeo({
+    title: ladder.title,
+    modelName: ladder.modelName,
+    theme: ladder.theme,
+    slug: ladder.slug,
+    tagline: ladder.tagline,
+    description: ladder.description,
+    photosetHook: ladder.photosetHook,
+    photosetTease: ladder.photosetTease,
+  });
+
   return (
     <div
       className="pb-28"
@@ -380,18 +392,10 @@ function LadderPage() {
         data={jsonLdGraph({
           origin: loaded?.origin || "",
           path: `/ladders/${ladder.slug}`,
-          title: ladder.title,
-          description: ladder.photosetTease || ladder.description,
+          title: pageSeo.title,
+          description: pageSeo.description,
           image: ladder.coverUrl,
-          faqs: authorLadderSeo({
-            title: ladder.title,
-            modelName: ladder.modelName,
-            theme: ladder.theme,
-            tagline: ladder.tagline,
-            description: ladder.description,
-            photosetHook: ladder.photosetHook,
-            photosetTease: ladder.photosetTease,
-          }).faqs,
+          faqs: pageSeo.faqs,
           type: "product",
           name: `${ladder.modelName} — ${ladder.title}`,
           offers: {
@@ -434,13 +438,18 @@ function LadderPage() {
               {ladder.theme} · {tier.label}
             </Kicker>
           </div>
-          <h1 className="mt-2 font-display text-5xl text-fg sm:text-6xl">{ladder.title}</h1>
+          <h1 className="mt-2 font-display text-5xl text-fg sm:text-6xl">{pageSeo.h1}</h1>
           <p className="mt-3 max-w-xl font-display text-xl text-gold sm:text-2xl">
             {ladder.photosetHook || ladder.tagline}
           </p>
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted sm:text-base">
-            {ladder.photosetTease || ladder.description}
+            {pageSeo.serviceBlurb}
           </p>
+          {ladder.photosetTease || ladder.description ? (
+            <p className="mt-3 max-w-xl text-sm leading-relaxed text-subtle">
+              {ladder.photosetTease || ladder.description}
+            </p>
+          ) : null}
         </div>
       </section>
 
@@ -663,18 +672,7 @@ function LadderPage() {
         )}
       </div>
 
-      <FaqList
-        title={`About ${ladder.title}`}
-        items={authorLadderSeo({
-          title: ladder.title,
-          modelName: ladder.modelName,
-          theme: ladder.theme,
-          tagline: ladder.tagline,
-          description: ladder.description,
-          photosetHook: ladder.photosetHook,
-          photosetTease: ladder.photosetTease,
-        }).faqs}
-      />
+      <FaqList title={`About ${ladder.title}`} items={pageSeo.faqs} />
 
       {next && !payOpen && !active ? (
         <div className="sticky-cta fixed inset-x-0 bottom-0 border-t border-border bg-bg/92 px-4 pt-3 backdrop-blur-md">

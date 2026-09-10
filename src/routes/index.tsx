@@ -19,6 +19,7 @@ import { getDiscover } from "@/lib/server/discover";
 import { FaqList, JsonLd } from "@/components/seo/JsonLd";
 import {
   DEFAULT_DESC,
+  authorHomeSeo,
   headTags,
   homeFaqs,
   jsonLdGraph,
@@ -29,16 +30,15 @@ export const Route = createFileRoute("/")({
   loader: () => getDiscover(),
   head: ({ loaderData }) => {
     const origin = loaderData?.origin || "";
-    const names = (loaderData?.models ?? []).map((m) => m.stageName).join(", ");
+    const names = (loaderData?.models ?? []).map((m) => m.stageName);
+    const seo = authorHomeSeo(names);
     return headTags({
-      title: "SHE UNDRESSES — sequential adult photosets",
-      description: names
-        ? `Sequential unlock photosets from ${names}. She starts dressed. You pay. One layer comes off. 18+.`
-        : DEFAULT_DESC,
+      title: seo.title,
+      description: seo.description,
       path: "/",
       origin,
       image: "/media/hero.jpg",
-      keywords: `SHE UNDRESSES, sequential unlock, Nine-Yes, ${names}`,
+      keywords: seo.keywords,
     });
   },
   component: Home,
@@ -100,7 +100,7 @@ function Home() {
         data={jsonLdGraph({
           origin: boot?.origin || "",
           path: "/",
-          title: "SHE UNDRESSES",
+          title: "SHE UNDRESSES — sequential unlock vault",
           description: DEFAULT_DESC,
           image: "/media/hero.jpg",
           faqs: homeFaqs(boot?.models ?? []),
