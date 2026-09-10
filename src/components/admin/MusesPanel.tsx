@@ -328,7 +328,7 @@ export function MusesPanel({ onLadders }: { onLadders?: () => void }) {
             onChange={(e) => setDraft({ ...draft, ownerBrief: e.target.value })}
             rows={3}
             className="field-input"
-            placeholder="Personality, setting, kinks-to-lean, what happened in the shoot, lines to hit/avoid, which psych levers to lean…"
+            placeholder="Personality, setting, wardrobe beats, kinks-to-lean, shoot notes, lines to hit/avoid — ban Engrish; lean Brazzers-scenario…"
           />
         </label>
 
@@ -372,7 +372,7 @@ export function MusesPanel({ onLadders }: { onLadders?: () => void }) {
             onChange={(e) => setDraft({ ...draft, voice: e.target.value })}
             rows={2}
             className="field-input"
-            placeholder="How she talks in a tease. Quiet, specific, in control…"
+            placeholder="Native American English. Dirty-smooth. Quiet/precise/in control — never ESL mush…"
           />
         </label>
         <label className="mt-3 block text-xs text-subtle">
@@ -382,17 +382,17 @@ export function MusesPanel({ onLadders }: { onLadders?: () => void }) {
             onChange={(e) => setDraft({ ...draft, teaseStyle: e.target.value })}
             rows={2}
             className="field-input"
-            placeholder="Write from the frame. Never generic nudes."
+            placeholder="From the frame + next unlock. Brazzers-scenario beats. Never Engrish."
           />
         </label>
         <label className="mt-3 block text-xs text-subtle">
-          Scenario / backstory (curiosity hook — stored as bio)
+          Scenario / backstory (Brazzers-scenario blurb — stored as bio)
           <textarea
             value={draft.bio}
             onChange={(e) => setDraft({ ...draft, bio: e.target.value })}
             rows={3}
             className="field-input"
-            placeholder="1 short paragraph, adult 24–34, second-person curiosity hook…"
+            placeholder="2–5 sentences: WHO + WHERE + tension + sexual promise. Fluent American English…"
           />
         </label>
 
@@ -557,7 +557,12 @@ export function MusesPanel({ onLadders }: { onLadders?: () => void }) {
 function PsychTips() {
   return (
     <details className="mt-4 rounded-lg border border-border bg-raised/40 p-3 text-xs text-muted">
-      <summary className="cursor-pointer text-gold">Psych tips (buyer levers)</summary>
+      <summary className="cursor-pointer text-gold">Psych tips + copyStyle (brazzers-scenario)</summary>
+      <p className="mt-2 text-muted">
+        Write fluent native American English — dirty-smooth scene blurbs, not Engrish. WHO / WHERE /
+        tension / sexual promise; leave the unlock ladder to deliver. Ban &quot;very sexy beautiful&quot;
+        and broken grammar.
+      </p>
       <ul className="mt-2 list-disc space-y-1 pl-4">
         {PSYCH_LEVERS.map((l) => (
           <li key={l.id}>

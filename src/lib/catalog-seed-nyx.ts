@@ -26,9 +26,9 @@ export const NYX_SEED_LADDERS: SeedLadder[] = [
     slug: "nyx-the-reveal",
     title: "The Reveal",
     theme: "frontal",
-    tagline: "Chrome mesh. Violet lace. She faces you — covered cyber editorial, in order.",
+    tagline: "Void Channel Invitation — chrome mesh, violet lace, she faces you covered.",
     description:
-      "Doorway neon. Liquid-chrome mesh robe. Electric-violet cyber lace. Nine frontal beats — covered editorial undress she cleared for the vault. No nude promise; the charge is the chrome failing on her terms.",
+      "Nyx Virell clears the doorway in liquid-chrome mesh, violet lace only hinted underneath, LED ink alive on her collarbones. Nine frontal beats of covered cyber editorial — she decides when the mesh stops being polite. No nude promise; the charge is the chrome failing on her terms.",
     cover: "/media/nyx-00-the-reveal-cover.jpg",
     sort: 4,
     collectors: 0,
@@ -180,7 +180,7 @@ export const NYX_SEED_LADDERS: SeedLadder[] = [
     theme: "worship",
     tagline: "She turns when you've earned the chrome back — covered cyber worship.",
     description:
-      "Ass worship, shot by shot, neon spill. Over the shoulder, mesh on her spine, then the close-ups collectors replay. Covered editorial — LED hip ink peeks; no nude climax promise.",
+      "She won't face you yet. Over the shoulder first, mesh on her spine, neon spill down the curve — then the close-ups collectors replay. Covered editorial worship; LED hip ink peeks. No nude climax promise; the hunger is the back she withholds.",
     cover: "/media/nyx-00-the-curve-cover.jpg",
     sort: 5,
     collectors: 0,
@@ -324,7 +324,7 @@ export const NYX_SEED_LADDERS: SeedLadder[] = [
     theme: "feet",
     tagline: "Chrome stilettos. Silver anklet. She looks down only when you pay.",
     description:
-      "Feet / anklet focus. Black chrome stilettos, silver chain anklet, bare soles — nine beats. Pedestal stays vault-honest; late frames are covered editorial studies, not a nude ladder.",
+      "Floor-first on purpose. Chrome stilettos, silver anklet, she recrosses and waits to see if you'll look down. Nine pedestal beats — soles, arches, inspection. Covered cyber ritual; she looks down only when you've paid for the privilege.",
     cover: "/media/nyx-00-the-pedestal-cover.jpg",
     sort: 6,
     collectors: 0,
