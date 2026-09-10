@@ -66,8 +66,8 @@ const R: Record<string, ShotVoice> = {
     visual:
       "Doorway. Cream silk robe tied. Gold moon at her throat. Dark eyes straight into the lens. She hasn't moved yet.",
     tease:
-      "Liora didn't pose. She stood in the doorway in that cream robe, moon on her throat, and looked at you like the night had already started. Shot 2 is the first time the silk moves.",
-    grant: "Shot 1 is unlocked. Liora knows your name now.",
+      "Liora's The Reveal opens dressed — cream silk, gold moon, doorway stillness. AI muse sequential unlock for collectors; Shot 2 is the first time the silk moves.",
+    grant: "Shot 1 unlocked on Liora's The Reveal. The frontal sequential climb just started — she knows your name now.",
     story:
       "The look is how she lets you in. The robe only slips for men who pay to watch it. That's Shot 2.",
     drop: "",
@@ -85,7 +85,7 @@ const R: Record<string, ShotVoice> = {
     visual: "Seated. Black lace. Hands in her lap. No smile. Curls forward. Measuring you.",
     tease:
       "Black lace. Hands in her lap. Liora isn't smiling. She's watching to see if you can sit with a delay without demanding the nude. Shot 4 she sits on the bed.",
-    grant: "You have the lace. Most men stop here. That's why she still has a last shot to give.",
+    grant: "You have the lace on Liora's The Reveal. Most men stop here. That's why the last frontal beat still exists.",
     story: "Lace is the test, not the gift. She sits down in Shot 4 for men who don't rush.",
     drop: "51% never make it past lace. That's not a coincidence. That's a filter.",
   },
@@ -134,7 +134,7 @@ const R: Record<string, ShotVoice> = {
     visual: "The last frontal close. Full body. No robe. The frame she will not reshoot.",
     tease:
       "The last frontal. Full body. The close Liora doesn't give the room. She will not reshoot this because you got cheap at the door.",
-    grant: "She let you see everything. This set is finished.",
+    grant: "She let you see everything on The Reveal. This sequential unlock set is finished — you didn't buy a folder; you finished her.",
     story: "This is the nude the photoset was built to make you buy. You didn't buy a folder. You finished her.",
     drop: "93% of men who start The Reveal never see the last frame. The ones who do don't come back hunting free nudes.",
   },
