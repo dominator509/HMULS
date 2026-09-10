@@ -31,9 +31,9 @@ export const LIORA: MuseBible = {
   looks:
     "Late 20s, warm caramel skin, tight dark-brown curls, dark brown eyes, gold crescent-moon necklace, small gold moon tattoo at the shoulder. Cream silk robe. Black lace. Gold anklet. She looks like she already decided whether you're staying.",
   voice:
-    "Quiet, specific, in control. She never begs. She names the garment, the pose, the inch she's giving. Second person. Present tense. Complete sentences a native speaker would say out loud.",
+    "Quiet, specific, in control. She never begs. She names the garment, the pose, the inch she's giving. Second person. Present tense. Fluent native American English — dirty-smooth, zero Engrish.",
   teaseStyle:
-    "Write from THIS frame — garment, jewelry, pose, what's still covered. Sell the NEXT layer. Story first, price second. Never 'exclusive content.' Never broken English. Never 'yeses' as jargon.",
+    "Brazzers-scenario beats: WHO + WHERE + tension + next-layer promise. Write from THIS frame — garment, jewelry, pose, what's still covered. Sell the NEXT unlock. Story first, price second. Never 'exclusive content.' Never broken English. Never 'very sexy beautiful.' Never 'yeses' as jargon.",
 };
 
 
@@ -44,9 +44,9 @@ export const NYX: MuseBible = {
   looks:
     "Late 20s, deep mahogany-brown skin with cool undertones, long ink-black locs with a few silver rings woven in, dark brown eyes under sharp liner, void-black lipstick, stacked silver piercings (helix + septum), thin LED-violet tattoo circuitry tracing collarbones and one hip, silver chain anklet on the left ankle, athletic-curvy netrunner body — full breasts, narrow waist, thick thighs, soft belly allowed. When clothed: black liquid-chrome mesh robe and electric-violet cyber lace. She looks like she already owns the room and is deciding whether you get to stay.",
   voice:
-    "Low, precise, amused. She never rushes. She names the chrome, the lace, the inch of skin she allows. Second person. Present tense. Complete sentences a native speaker would say out loud — cooler than Liora, more electric.",
+    "Low, precise, amused. She never rushes. She names the chrome, the lace, the inch of skin she allows. Second person. Present tense. Fluent native American English — cooler than Liora, more electric, zero Engrish.",
   teaseStyle:
-    "Write from THIS frame — garment, piercings, LED ink, pose, what's still covered. Sell the NEXT layer. Neon-night story first, price second. Never 'exclusive content.' Never broken English. Never 'yeses' as jargon.",
+    "Brazzers-scenario beats: WHO + neon WHERE + withhold tension + chrome promise. Write from THIS frame — garment, piercings, LED ink, pose, what's still covered. Sell the NEXT unlock. Neon-night story first, price second. Never 'exclusive content.' Never broken English. Never 'very sexy beautiful.' Never 'yeses' as jargon.",
 };
 
 export const MUSES: Record<string, MuseBible> = {
@@ -293,9 +293,9 @@ const P: Record<string, ShotVoice> = {
 export const PHOTOSETS: Record<string, PhotosetVoice> = {
   lad_reveal: {
     ladderId: "lad_reveal",
-    hook: "She kept the cream robe on until you paid to watch it lose.",
+    hook: "Private Room Protocol — cream silk stays on until you earn the slip.",
     tease:
-      "Liora's Reveal is a night, not a folder. Doorway. Gold moon at her throat. Cream silk that only moves when you pay. Lace is a test. The bed is a private room. The last frame is the frontal close she will not reshoot for men who quit at Shot 2.",
+      "Liora doesn't open the door for a crowd. Doorway. Gold moon at her throat. Cream silk that only moves when you pay. Lace is a test. The bed is a private room. The last frame is the frontal close she will not reshoot for men who quit at Shot 2.",
     shots: R,
   },
   lad_curve: {

@@ -51,9 +51,9 @@ export const SEED_LADDERS: SeedLadder[] = [
     slug: "the-reveal",
     title: "The Reveal",
     theme: "frontal",
-    tagline: "She faces you. Each layer comes off when you pay.",
+    tagline: "Private Room Protocol — she faces you; each layer comes off when you pay.",
     description:
-      "Doorway. Cream silk. Black lace. Then the bed. Nine frontal shots, in order — the last one is the nude she only gives men who stayed.",
+      "Liora doesn't open the door for a crowd. Doorway. Cream silk. Black lace. Then the bed. Nine frontal shots, in order — the last one is the nude she only gives men who stayed.",
     cover: "/media/liora-00-the-reveal-cover.jpg",
     sort: 1,
     collectors: 0,

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  BRAZZERS_SCENARIO_PATTERN,
+  COPY_STYLE,
   PSYCH_LEVERS,
   applyNarrativeToDraft,
   buildNarrativeUserMessage,
@@ -10,7 +12,13 @@ import {
 } from "./narrative-formula.ts";
 
 describe("narrative formula", () => {
-  it("encodes all ten psych levers in system prompt", () => {
+  it("defaults copyStyle to brazzers-scenario", () => {
+    assert.equal(COPY_STYLE, "brazzers-scenario");
+    assert.equal(BRAZZERS_SCENARIO_PATTERN.id, "brazzers-scenario");
+    assert.ok(BRAZZERS_SCENARIO_PATTERN.beats.length >= 4);
+  });
+
+  it("encodes all ten psych levers and Engrish ban in system prompt", () => {
     const sys = narrativeSystemPrompt();
     assert.match(sys, /Progressive revelation/);
     assert.match(sys, /Specificity/);
@@ -24,10 +32,15 @@ describe("narrative formula", () => {
     assert.match(sys, /Archetype congruence/);
     assert.match(sys, /24–34|24-34/);
     assert.match(sys, /Never minors/);
+    assert.match(sys, /brazzers-scenario/);
+    assert.match(sys, /BAN Engrish|Engrish/);
+    assert.match(sys, /very sexy beautiful/);
+    assert.match(sys, /native American English/);
+    assert.match(sys, /FEW-SHOT|Void Channel Invitation/);
     assert.equal(PSYCH_LEVERS.length, 10);
   });
 
-  it("builds from-identity user message with owner brief", () => {
+  it("builds from-identity user message with owner brief and copyStyle", () => {
     const msg = buildNarrativeUserMessage({
       mode: "from_identity",
       stageName: "Nyx",
@@ -40,6 +53,8 @@ describe("narrative formula", () => {
     assert.match(msg, /Owner brief/);
     assert.match(msg, /more dominant/);
     assert.match(msg, /The Reveal/);
+    assert.match(msg, /brazzers-scenario/);
+    assert.match(msg, /ZERO Engrish|Engrish/);
   });
 
   it("builds reverse-from-frames with FRAME notes", () => {
@@ -62,6 +77,7 @@ describe("narrative formula", () => {
     });
     assert.match(msg, /REVERSE FROM FRAMES/);
     assert.match(msg, /FRAME: Doorway/);
+    assert.match(msg, /brazzers-scenario/);
   });
 
   it("builds respin with identity lock note", () => {
@@ -82,6 +98,7 @@ describe("narrative formula", () => {
     assert.match(msg, /RESPIN/);
     assert.match(msg, /more cyber/);
     assert.match(msg, /age band/);
+    assert.match(msg, /brazzers-scenario/);
   });
 
   it("parses muse narrative JSON", () => {
