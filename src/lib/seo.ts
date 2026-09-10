@@ -138,6 +138,16 @@ export function authorModelSeo(m: ModelSeoIn) {
   return { title, description, keywords, faqs, kindLine, h1, serviceBlurb };
 }
 
+type LadderSeoIn = {
+  title: string;
+  modelName: string;
+  theme: string;
+  tagline?: string | null;
+  description?: string | null;
+  photosetHook?: string | null;
+  photosetTease?: string | null;
+};
+
 /** Theme money-query labels for ladder titles (deterministic; new themes fall back). */
 export function ladderThemeMoney(theme: string, titleName: string) {
   const t = (theme || "").toLowerCase().trim();
