@@ -1,4 +1,4 @@
-import { LIORA } from "./muses";
+import { LIORA, NYX } from "./muses";
 
 export type ContentKind = "synthetic" | "human" | "hybrid";
 
@@ -86,6 +86,27 @@ export const LIORA_SEED: MuseModel = {
   voice: LIORA.voice,
   looks: LIORA.looks,
   teaseStyle: LIORA.teaseStyle,
+};
+
+
+export const NYX_SEED: MuseModel = {
+  id: NYX.id,
+  slug: NYX.slug,
+  stageName: NYX.stageName,
+  contentKind: "synthetic",
+  portrayedAgeMin: 24,
+  aliases: "Nyx; the woman in chrome mesh",
+  bio: "Fictional adult netrunner OC. Sequential covered cyber-editorial ladders: The Reveal, The Curve, The Pedestal. Chrome mesh, violet lace, LED ink — vault-safe covered frames, not a nude promise.",
+  isFictional: true,
+  likenessOk: true,
+  recordsOnFile: false,
+  idTypeOnFile: "",
+  firstProduced: "2026-09-09",
+  ladderSlugs: "nyx-the-reveal,nyx-the-curve,nyx-the-pedestal",
+  cardPortrayal: "",
+  voice: NYX.voice,
+  looks: NYX.looks,
+  teaseStyle: NYX.teaseStyle,
 };
 
 export function entityComplete(e: LegalEntity) {

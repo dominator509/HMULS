@@ -5,6 +5,7 @@ import { ensureCatalog, ensureProfile } from "./catalog";
 import {
   DEFAULT_ENTITY,
   LIORA_SEED,
+  NYX_SEED,
   type ContentKind,
   type LegalDoc,
   type LegalEntity,
@@ -119,33 +120,39 @@ function mapDoc(r: DocRow): LegalDoc {
   };
 }
 
+async function upsertModelSeed(sql: Sql, m: MuseModel) {
+  await sql`
+    insert into models (
+      id, slug, stage_name, content_kind, portrayed_age_min, aliases, bio,
+      is_fictional, likeness_ok, records_on_file, id_type_on_file, first_produced,
+      ladder_slugs, card_portrayal, voice, looks, tease_style
+    ) values (
+      ${m.id}, ${m.slug}, ${m.stageName}, ${m.contentKind}, ${m.portrayedAgeMin},
+      ${m.aliases}, ${m.bio}, ${m.isFictional}, ${m.likenessOk}, ${m.recordsOnFile},
+      ${m.idTypeOnFile}, ${m.firstProduced}, ${m.ladderSlugs}, ${m.cardPortrayal},
+      ${m.voice}, ${m.looks}, ${m.teaseStyle}
+    )
+    on conflict (id) do update set
+      slug = excluded.slug,
+      stage_name = excluded.stage_name,
+      content_kind = excluded.content_kind,
+      portrayed_age_min = excluded.portrayed_age_min,
+      aliases = excluded.aliases,
+      bio = excluded.bio,
+      is_fictional = excluded.is_fictional,
+      likeness_ok = excluded.likeness_ok,
+      ladder_slugs = excluded.ladder_slugs,
+      voice = excluded.voice,
+      looks = excluded.looks,
+      tease_style = excluded.tease_style,
+      updated_at = now()
+  `;
+}
+
 export async function ensureLegal(sql: Sql) {
   if (legalReady) return;
-  const existing = await sql<{ c: number }>`select count(*)::int as c from models`;
-  if ((existing[0]?.c ?? 0) === 0) {
-    const m = LIORA_SEED;
-    await sql`
-      insert into models (
-        id, slug, stage_name, content_kind, portrayed_age_min, aliases, bio,
-        is_fictional, likeness_ok, records_on_file, id_type_on_file, first_produced,
-        ladder_slugs, card_portrayal, voice, looks, tease_style
-      ) values (
-        ${m.id}, ${m.slug}, ${m.stageName}, ${m.contentKind}, ${m.portrayedAgeMin},
-        ${m.aliases}, ${m.bio}, ${m.isFictional}, ${m.likenessOk}, ${m.recordsOnFile},
-        ${m.idTypeOnFile}, ${m.firstProduced}, ${m.ladderSlugs}, ${m.cardPortrayal},
-        ${m.voice}, ${m.looks}, ${m.teaseStyle}
-      )
-    `;
-  } else {
-    await sql`
-      update models
-      set voice = ${LIORA_SEED.voice},
-          looks = ${LIORA_SEED.looks},
-          tease_style = ${LIORA_SEED.teaseStyle},
-          bio = ${LIORA_SEED.bio}
-      where id = ${LIORA_SEED.id} and voice = ''
-    `;
-  }
+  await upsertModelSeed(sql, LIORA_SEED);
+  await upsertModelSeed(sql, NYX_SEED);
   const docs = await sql<{ c: number }>`select count(*)::int as c from legal_docs`;
   if ((docs[0]?.c ?? 0) === 0) {
     await regenerateAll(sql);

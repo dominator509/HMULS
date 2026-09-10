@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getSql, type Sql } from "@/lib/db";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { SEED_LADDERS } from "@/lib/catalog-seed";
+import { NYX_MODEL_ID, NYX_SEED_LADDERS } from "@/lib/catalog-seed-nyx";
 import { LIORA, photosetOf, type MuseBible } from "@/lib/muses";
 import { loadMuseBibles } from "./muse-lookup";
 import type { LadderPublic, ProgressState, ShotPublic } from "@/lib/types";
@@ -119,6 +120,45 @@ async function ensureVaultBlobSeedSync() {
   await vaultBlobSyncPromise;
 }
 
+
+/** Multi-muse: Nyx owns her own ladder rows (unique shot ids + model_id).
+ *  Idempotent — safe when Liora ladders already exist.
+ */
+async function ensureNyxCatalog(sql: Sql) {
+  for (const lad of NYX_SEED_LADDERS) {
+    const existing = await sql<{ c: number }>`
+      select count(*)::int as c from ladders where id = ${lad.id}
+    `;
+    if ((existing[0]?.c ?? 0) > 0) continue;
+    await sql`
+      insert into ladders (
+        id, slug, title, theme, tagline, description, cover_url, sort_order,
+        bundle_discount, collectors_count, climax_collectors, scarcity_ends_at,
+        model_id, photoset_hook, photoset_tease, published
+      ) values (
+        ${lad.id}, ${lad.slug}, ${lad.title}, ${lad.theme}, ${lad.tagline},
+        ${lad.description}, ${lad.cover}, ${lad.sort}, ${lad.discount},
+        ${lad.collectors}, ${lad.climax}, now() + interval '18 hours',
+        ${NYX_MODEL_ID}, ${lad.tagline}, ${lad.description}, true
+      )
+      on conflict (id) do nothing
+    `;
+    for (const s of lad.shots) {
+      await sql`
+        insert into shots (
+          id, ladder_id, step_index, title, tease, grant_copy, story, drop_line,
+          media_type, media_url, object_position, price_cents, is_climax
+        ) values (
+          ${s.id}, ${lad.id}, ${s.step}, ${s.title}, ${s.tease}, ${s.grant},
+          ${s.story}, ${s.drop}, ${s.type}, ${s.media}, ${s.pos}, ${s.price},
+          ${s.climax ?? false}
+        )
+        on conflict (id) do nothing
+      `;
+    }
+  }
+}
+
 export async function ensureCatalog(sql: Sql) {
   if (!seedPromise) {
     seedPromise = (async () => {
@@ -158,6 +198,7 @@ export async function ensureCatalog(sql: Sql) {
     });
   }
   await seedPromise;
+  await ensureNyxCatalog(sql);
   copySynced = true;
   if (!grantVaultSynced) {
     // Teaser/SEO vault sweeps stay off the hot path (Workers 1101 risk).
