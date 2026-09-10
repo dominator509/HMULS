@@ -44,20 +44,57 @@ export type InvoiceExpect = {
   payAddress?: string | null;
 };
 
+/** Accept underpays within 2% (Coinbase/rounding vs exact pay_amount). */
+export const PAY_TOLERANCE = 0.98;
+
+/**
+ * NOWPayments terminal / near-terminal statuses we may settle.
+ * - finished: full (or dashboard-forced) completion
+ * - partially_paid: completed underpay (funds received; may never become finished)
+ * - confirmed / sending: amount known on-chain / in flight to merchant
+ * Never settle waiting / confirming / expired / failed / refunded here.
+ */
+const TOLERANT_STATUSES = new Set(["partially_paid", "confirmed", "sending"]);
+
 function num(v: number | string | undefined) {
   if (v == null || v === "") return null;
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : null;
 }
 
-export function ipnFulfillsInvoice(
-  ipn: IpnPayment,
-  inv: InvoiceExpect,
-): { ok: true } | { ok: false; reason: string } {
-  const status = String(ipn.payment_status || ipn.pay_status || "").toLowerCase();
-  if (status !== "finished") {
-    return { ok: false, reason: `status ${status || "missing"} is not finished` };
+export type UnderpayDetail = {
+  paid: number;
+  due: number;
+  currency: string;
+};
+
+export type FulfillResult =
+  | { ok: true }
+  | { ok: false; reason: string; underpaid?: UnderpayDetail };
+
+export function paidWithinTolerance(paid: number, due: number) {
+  return paid + 1e-12 >= due * PAY_TOLERANCE;
+}
+
+/** Whether payment_status alone is eligible before amount checks. */
+export function settleablePaymentStatus(status: string) {
+  const s = status.toLowerCase().trim();
+  return s === "finished" || TOLERANT_STATUSES.has(s);
+}
+
+export function ipnFulfillsInvoice(ipn: IpnPayment, inv: InvoiceExpect): FulfillResult {
+  const status = String(ipn.payment_status || ipn.pay_status || "").toLowerCase().trim();
+  if (!status) return { ok: false, reason: "status missing" };
+  if (status === "waiting" || status === "expired" || status === "failed" || status === "refunded") {
+    return { ok: false, reason: `status ${status} is not settleable` };
   }
+  if (status === "confirming") {
+    return { ok: false, reason: "status confirming is not finished" };
+  }
+  if (!settleablePaymentStatus(status)) {
+    return { ok: false, reason: `status ${status} is not finished` };
+  }
+
   if (!ipn.order_id) return { ok: false, reason: "missing order_id" };
   if (ipn.order_id !== inv.id) return { ok: false, reason: "order_id mismatch" };
 
@@ -87,7 +124,17 @@ export function ipnFulfillsInvoice(
   if (due == null) return { ok: false, reason: "missing pay_amount" };
   const paid = num(ipn.actually_paid);
   if (paid == null) return { ok: false, reason: "missing actually_paid" };
-  if (paid + 1e-12 < due * 0.98) return { ok: false, reason: "underpaid" };
+
+  if (!paidWithinTolerance(paid, due)) {
+    return {
+      ok: false,
+      reason: "underpaid",
+      underpaid: { paid, due, currency: payCur },
+    };
+  }
+
+  // partially_paid / confirmed / sending only settle inside tolerance (checked above).
+  // finished also requires tolerance so dashboard-forced finished underpays stay gated.
 
   if (!ipn.pay_address) return { ok: false, reason: "missing pay_address" };
   if (!inv.payAddress) return { ok: false, reason: "invoice missing pay address" };

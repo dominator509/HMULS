@@ -5,7 +5,8 @@ import { ensureCatalog, ensureProfile } from "./catalog";
 import { loadDials } from "./transporter";
 import { continueHours, invoiceMinutes, priceBumpPct } from "@/lib/psychology";
 import { CRYPTO_ASSETS, giftCode, invoiceId } from "@/lib/crypto";
-import { createNowpaymentsPayment, paymentsLive, paymentsMissing } from "./payments";
+import { createNowpaymentsPayment, fetchNowpaymentsPayment, paymentsLive, paymentsMissing } from "./payments";
+import { ipnFulfillsInvoice, type UnderpayDetail } from "@/lib/nowpayments";
 import { entityComplete } from "@/lib/legal-types";
 import { ensureLegal, loadEntity } from "./legal";
 import { grantVaultReady } from "./catalog";
@@ -262,6 +263,7 @@ export const getInvoice = createServerFn({ method: "GET" })
       gift_code: string | null;
       created_at: string | Date;
       expires_at: string | Date | null;
+      provider_payment_id: string | null;
     }>`
       select * from invoices where id = ${data.id} and user_id = ${context.userId}
     `;
@@ -274,6 +276,18 @@ export const getInvoice = createServerFn({ method: "GET" })
     ) {
       await sql`update invoices set status = 'expired' where id = ${inv.id}`;
       inv.status = "expired";
+    }
+    // While confirming, poll NOWPayments and settle tolerant underpays so the
+    // checkout wait loop unlocks without requiring a finished-only IPN.
+    if (inv.status === "confirming" && inv.provider_payment_id && paymentsLive()) {
+      try {
+        const rec = await tryReconcileWithProvider(sql, inv.id, context.userId);
+        if (rec.settled) {
+          inv.status = "paid";
+        }
+      } catch {
+        // Soft: checkout keeps showing the invoice; next poll retries.
+      }
     }
     const lad = await sql<{ title: string }>`
       select title from ladders where id = ${inv.ladder_id}
@@ -299,7 +313,7 @@ export const getInvoice = createServerFn({ method: "GET" })
       giftCode: inv.gift_code,
       createdAt: new Date(inv.created_at).toISOString(),
       expiresAt: inv.expires_at ? new Date(inv.expires_at).toISOString() : null,
-      paymentReady: Boolean(inv.pay_address && (inv as { provider_payment_id?: string | null }).provider_payment_id),
+      paymentReady: Boolean(inv.pay_address && inv.provider_payment_id),
     };
     return view;
   });
@@ -466,6 +480,97 @@ async function settleInvoice(
   });
 }
 
+
+type ReconcileResult = {
+  settled: boolean;
+  already?: boolean;
+  giftCode?: string | null;
+  underpaid?: UnderpayDetail | null;
+  reason?: string;
+};
+
+/**
+ * Poll NOWPayments by this invoice's provider_payment_id only.
+ * Settles when finished or partially_paid/confirmed/sending within 98% tolerance.
+ * Never settles a twin invoice: order_id + payment_id must match this row.
+ */
+async function tryReconcileWithProvider(
+  sql: Sql,
+  invoiceId: string,
+  userId: string,
+): Promise<ReconcileResult> {
+  const rows = await sql<{
+    id: string;
+    user_id: string;
+    amount_cents: number;
+    asset: string;
+    pay_currency: string | null;
+    provider_payment_id: string | null;
+    pay_address: string | null;
+    status: string;
+    gift_code: string | null;
+    created_at: string | Date;
+  }>`
+    select id, user_id, amount_cents, asset, pay_currency, provider_payment_id,
+           pay_address, status, gift_code, created_at
+    from invoices
+    where id = ${invoiceId} and user_id = ${userId}
+  `;
+  const inv = rows[0];
+  if (!inv) return { settled: false, reason: "Invoice not found." };
+  if (inv.status === "paid") {
+    return { settled: true, already: true, giftCode: inv.gift_code };
+  }
+  if (inv.status !== "pending" && inv.status !== "confirming") {
+    return { settled: false, reason: "This invoice cannot be confirmed." };
+  }
+  if (!inv.provider_payment_id) {
+    return { settled: false, reason: "Invoice missing provider payment id" };
+  }
+
+  let payment;
+  try {
+    payment = await fetchNowpaymentsPayment(inv.provider_payment_id);
+  } catch (err) {
+    return {
+      settled: false,
+      reason: err instanceof Error ? err.message : "Provider lookup failed",
+    };
+  }
+
+  // Guard twin invoices: provider payload must name this invoice + this payment id.
+  const match = ipnFulfillsInvoice(payment, {
+    id: inv.id,
+    amountCents: inv.amount_cents,
+    asset: inv.asset,
+    payCurrency: inv.pay_currency || undefined,
+    providerPaymentId: inv.provider_payment_id,
+    payAddress: inv.pay_address,
+  });
+  if (!match.ok) {
+    return {
+      settled: false,
+      reason: match.reason,
+      underpaid: match.underpaid ?? null,
+    };
+  }
+
+  // Mark confirming if still pending so settle can claim the row.
+  if (inv.status === "pending") {
+    await sql`
+      update invoices set status = 'confirming'
+      where id = ${inv.id} and user_id = ${userId} and status = 'pending'
+    `;
+  }
+
+  const result = await settleInvoice(sql, inv.id, userId, { allowExpired: true });
+  return {
+    settled: true,
+    already: result.already,
+    giftCode: result.giftCode,
+  };
+}
+
 export async function settleVerifiedInvoice(sql: Sql, invoiceId: string) {
   await ensurePayCols(sql);
   const rows = await sql<{ user_id: string }>`select user_id from invoices where id = ${invoiceId}`;
@@ -503,23 +608,74 @@ export const confirmInvoice = createServerFn({ method: "POST" })
       `;
       if (!cur[0]) throw new Error("Invoice not found.");
       if (cur[0].status === "paid") {
-        return { settled: true as const, already: true as const, giftCode: cur[0].gift_code, status: "paid" as const };
+        return {
+          settled: true as const,
+          already: true as const,
+          giftCode: cur[0].gift_code,
+          status: "paid" as const,
+          underpaid: null,
+        };
       }
       if (cur[0].status === "confirming" || cur[0].status === "settling") {
+        // Still confirming — poll provider (covers stuck partially_paid underpays).
+        if (paymentsLive()) {
+          const rec = await tryReconcileWithProvider(sql, data.id, context.userId);
+          if (rec.settled) {
+            return {
+              settled: true as const,
+              already: Boolean(rec.already),
+              giftCode: rec.giftCode ?? cur[0].gift_code,
+              status: "paid" as const,
+              underpaid: null,
+            };
+          }
+          return {
+            settled: false as const,
+            already: false as const,
+            giftCode: cur[0].gift_code,
+            status: "confirming" as const,
+            underpaid: rec.underpaid ?? null,
+            pollReason: rec.reason,
+          };
+        }
         return {
           settled: false as const,
           already: false as const,
           giftCode: cur[0].gift_code,
           status: "confirming" as const,
+          underpaid: null,
         };
       }
       throw new Error("This invoice cannot be confirmed.");
     }
+
+    if (paymentsLive()) {
+      const rec = await tryReconcileWithProvider(sql, data.id, context.userId);
+      if (rec.settled) {
+        return {
+          settled: true as const,
+          already: Boolean(rec.already),
+          giftCode: rec.giftCode ?? row.gift_code,
+          status: "paid" as const,
+          underpaid: null,
+        };
+      }
+      return {
+        settled: false as const,
+        already: false as const,
+        giftCode: row.gift_code,
+        status: "confirming" as const,
+        underpaid: rec.underpaid ?? null,
+        pollReason: rec.reason,
+      };
+    }
+
     return {
       settled: false as const,
       already: false as const,
       giftCode: row.gift_code,
       status: "confirming" as const,
+      underpaid: null,
     };
   });
 

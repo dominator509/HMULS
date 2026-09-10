@@ -133,6 +133,36 @@ export async function createNowpaymentsPayment(opts: {
   };
 }
 
+
+export async function fetchNowpaymentsPayment(paymentId: string): Promise<IpnPayment> {
+  const key = nowpaymentsApiKey();
+  if (!key) throw new Error("NOWPayments is not fully configured.");
+  const id = normalizePaymentId(paymentId);
+  if (!id) throw new Error("Missing provider payment id.");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  let res: Response;
+  try {
+    res = await fetch(`https://api.nowpayments.io/v1/payment/${encodeURIComponent(id)}`, {
+      method: "GET",
+      headers: { "x-api-key": key },
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error("NOWPayments timed out. Try again in a minute.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+  const body = (await res.json()) as IpnPayment & { message?: string };
+  if (!res.ok) {
+    throw new Error(body.message || "NOWPayments payment lookup failed.");
+  }
+  return body;
+}
+
 export function parseIpnBody(raw: string): IpnPayment {
   return JSON.parse(raw) as IpnPayment;
 }

@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { describe, it } from "node:test";
-import { ipnCanonicalJson, ipnFulfillsInvoice, normalizePaymentId, sortObject } from "./nowpayments.ts";
+import {
+  ipnCanonicalJson,
+  ipnFulfillsInvoice,
+  normalizePaymentId,
+  paidWithinTolerance,
+  settleablePaymentStatus,
+  sortObject,
+} from "./nowpayments.ts";
 import { nowPayCurrency } from "./crypto.ts";
 import { dropLine, rivalLine, DEFAULT_DIALS } from "./psychology.ts";
 
@@ -56,6 +63,68 @@ describe("ipn economic match", () => {
     assert.equal(r.ok, true);
   });
 
+  it("accepts partially_paid within 98% tolerance (Coinbase underpay)", () => {
+    // 0.01145 / 0.0114591 ≈ 99.92%
+    const r = ipnFulfillsInvoice(
+      {
+        ...finished,
+        payment_status: "partially_paid",
+        pay_currency: "sol",
+        pay_amount: 0.0114591,
+        actually_paid: 0.01145,
+        pay_address: "0xabc",
+      },
+      { ...inv, asset: "SOL", payCurrency: "sol" },
+    );
+    assert.equal(r.ok, true);
+  });
+
+  it("accepts confirmed/sending when paid within tolerance", () => {
+    for (const status of ["confirmed", "sending"] as const) {
+      const r = ipnFulfillsInvoice(
+        { ...finished, payment_status: status, actually_paid: 0.00099, pay_amount: 0.001 },
+        inv,
+      );
+      assert.equal(r.ok, true, status);
+    }
+  });
+
+  it("rejects severe underpay on partially_paid and surfaces amounts", () => {
+    const r = ipnFulfillsInvoice(
+      {
+        ...finished,
+        payment_status: "partially_paid",
+        pay_amount: 0.0114591,
+        actually_paid: 0.01,
+      },
+      inv,
+    );
+    assert.equal(r.ok, false);
+    if (r.ok) throw new Error("expected fail");
+    assert.equal(r.reason, "underpaid");
+    assert.ok(r.underpaid);
+    assert.equal(r.underpaid.paid, 0.01);
+    assert.equal(r.underpaid.due, 0.0114591);
+  });
+
+  it("rejects waiting, confirming, expired — never unlock early", () => {
+    for (const status of ["waiting", "confirming", "expired", "failed", "refunded"]) {
+      const r = ipnFulfillsInvoice({ ...finished, payment_status: status }, inv);
+      assert.equal(r.ok, false, status);
+    }
+  });
+
+  it("rejects a different order_id / payment_id (twin invoice safety)", () => {
+    assert.equal(
+      ipnFulfillsInvoice({ ...finished, order_id: "inv_twin" }, inv).ok,
+      false,
+    );
+    assert.equal(
+      ipnFulfillsInvoice({ ...finished, payment_id: "999" }, inv).ok,
+      false,
+    );
+  });
+
   it("fails closed when fulfillment fields are absent", () => {
     assert.equal(ipnFulfillsInvoice({ payment_status: "finished", order_id: "inv_1" }, inv).ok, false);
     assert.equal(
@@ -84,11 +153,7 @@ describe("ipn economic match", () => {
     );
   });
 
-  it("rejects confirming, underpay, wrong asset, wrong order", () => {
-    assert.equal(
-      ipnFulfillsInvoice({ payment_status: "confirmed", order_id: "inv_1", price_amount: 4.99 }, inv).ok,
-      false,
-    );
+  it("rejects finished with wrong price, asset, or order", () => {
     assert.equal(
       ipnFulfillsInvoice({ ...finished, price_amount: 1.0 }, inv).ok,
       false,
@@ -101,6 +166,15 @@ describe("ipn economic match", () => {
       ipnFulfillsInvoice({ ...finished, order_id: "inv_other" }, inv).ok,
       false,
     );
+  });
+
+  it("paidWithinTolerance and settleablePaymentStatus helpers", () => {
+    assert.equal(paidWithinTolerance(0.01145, 0.0114591), true);
+    assert.equal(paidWithinTolerance(0.01, 0.0114591), false);
+    assert.equal(settleablePaymentStatus("finished"), true);
+    assert.equal(settleablePaymentStatus("partially_paid"), true);
+    assert.equal(settleablePaymentStatus("waiting"), false);
+    assert.equal(settleablePaymentStatus("confirming"), false);
   });
 });
 
