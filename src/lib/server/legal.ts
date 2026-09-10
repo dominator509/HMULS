@@ -48,6 +48,7 @@ type ModelRow = {
   voice: string | null;
   looks: string | null;
   tease_style: string | null;
+  owner_brief: string | null;
 };
 
 type DocRow = {
@@ -103,6 +104,7 @@ function mapModel(r: ModelRow): MuseModel {
     voice: r.voice ?? "",
     looks: r.looks ?? "",
     teaseStyle: r.tease_style ?? "",
+    ownerBrief: r.owner_brief ?? "",
   };
 }
 
@@ -125,12 +127,12 @@ async function upsertModelSeed(sql: Sql, m: MuseModel) {
     insert into models (
       id, slug, stage_name, content_kind, portrayed_age_min, aliases, bio,
       is_fictional, likeness_ok, records_on_file, id_type_on_file, first_produced,
-      ladder_slugs, card_portrayal, voice, looks, tease_style
+      ladder_slugs, card_portrayal, voice, looks, tease_style, owner_brief
     ) values (
       ${m.id}, ${m.slug}, ${m.stageName}, ${m.contentKind}, ${m.portrayedAgeMin},
       ${m.aliases}, ${m.bio}, ${m.isFictional}, ${m.likenessOk}, ${m.recordsOnFile},
       ${m.idTypeOnFile}, ${m.firstProduced}, ${m.ladderSlugs}, ${m.cardPortrayal},
-      ${m.voice}, ${m.looks}, ${m.teaseStyle}
+      ${m.voice}, ${m.looks}, ${m.teaseStyle}, ${m.ownerBrief ?? ""}
     )
     on conflict (id) do update set
       slug = excluded.slug,
@@ -145,12 +147,14 @@ async function upsertModelSeed(sql: Sql, m: MuseModel) {
       voice = excluded.voice,
       looks = excluded.looks,
       tease_style = excluded.tease_style,
+      owner_brief = excluded.owner_brief,
       updated_at = now()
   `;
 }
 
 export async function ensureLegal(sql: Sql) {
   if (legalReady) return;
+  await sql`alter table models add column if not exists owner_brief text not null default ''`;
   await upsertModelSeed(sql, LIORA_SEED);
   await upsertModelSeed(sql, NYX_SEED);
   const docs = await sql<{ c: number }>`select count(*)::int as c from legal_docs`;
@@ -297,12 +301,12 @@ export async function upsertMuseModel(sql: Sql, data: MuseModel): Promise<MuseMo
     insert into models (
       id, slug, stage_name, content_kind, portrayed_age_min, aliases, bio,
       is_fictional, likeness_ok, records_on_file, id_type_on_file, first_produced,
-      ladder_slugs, card_portrayal, voice, looks, tease_style, updated_at
+      ladder_slugs, card_portrayal, voice, looks, tease_style, owner_brief, updated_at
     ) values (
       ${id}, ${slug}, ${data.stageName.trim()}, ${kind}, ${data.portrayedAgeMin},
       ${data.aliases}, ${bio}, ${data.isFictional}, ${data.likenessOk},
       ${data.recordsOnFile}, ${data.idTypeOnFile}, ${data.firstProduced || new Date().toISOString().slice(0, 10)},
-      ${data.ladderSlugs}, ${data.cardPortrayal}, ${data.voice}, ${data.looks}, ${data.teaseStyle}, now()
+      ${data.ladderSlugs}, ${data.cardPortrayal}, ${data.voice}, ${data.looks}, ${data.teaseStyle}, ${data.ownerBrief ?? ""}, now()
     )
     on conflict (id) do update set
       slug = excluded.slug,
@@ -321,6 +325,7 @@ export async function upsertMuseModel(sql: Sql, data: MuseModel): Promise<MuseMo
       voice = excluded.voice,
       looks = excluded.looks,
       tease_style = excluded.tease_style,
+      owner_brief = excluded.owner_brief,
       updated_at = now()
   `;
   const rows = await sql<ModelRow>`select * from models where id = ${id}`;

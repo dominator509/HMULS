@@ -37,6 +37,8 @@ export type MuseModel = {
   voice: string;
   looks: string;
   teaseStyle: string;
+  /** Operator-only brief for generate/respin; not shown on public pages. */
+  ownerBrief: string;
 };
 
 export type LegalDoc = {
@@ -86,6 +88,7 @@ export const LIORA_SEED: MuseModel = {
   voice: LIORA.voice,
   looks: LIORA.looks,
   teaseStyle: LIORA.teaseStyle,
+  ownerBrief: "",
 };
 
 
@@ -107,6 +110,7 @@ export const NYX_SEED: MuseModel = {
   voice: NYX.voice,
   looks: NYX.looks,
   teaseStyle: NYX.teaseStyle,
+  ownerBrief: "",
 };
 
 export function entityComplete(e: LegalEntity) {
