@@ -6,7 +6,11 @@ import { createLadder, listAdminLadders } from "@/lib/server/admin";
 import { getLegalBundle, saveModel } from "@/lib/server/legal";
 import { autoWriteFromMedia, runTransporter } from "@/lib/server/transporter";
 import { generateNarrative, saveManualNarrative } from "@/lib/server/narrative";
-import { PSYCH_LEVERS, applyNarrativeToDraft } from "@/lib/narrative-formula";
+import {
+  PSYCH_LEVERS,
+  applyNarrativeToDraft,
+  type NarrativeMode,
+} from "@/lib/narrative-formula";
 import type { ContentKind, MuseModel } from "@/lib/legal-types";
 import { toast } from "sonner";
 
@@ -31,7 +35,7 @@ const EMPTY: MuseModel = {
   ownerBrief: "",
 };
 
-type NarrMode = "manual" | "from_identity" | "reverse_frames" | "respin";
+type NarrMode = "manual" | NarrativeMode;
 
 export function MusesPanel({ onLadders }: { onLadders?: () => void }) {
   const [models, setModels] = useState<MuseModel[]>([]);
@@ -119,13 +123,8 @@ export function MusesPanel({ onLadders }: { onLadders?: () => void }) {
       toast.error("Stage name required.");
       return;
     }
-    const mode =
-      narrMode === "reverse_frames"
-        ? "reverse_frames"
-        : narrMode === "respin"
-          ? "respin"
-          : "from_identity";
-    if (mode !== "from_identity" && mode !== "reverse_frames" && mode !== "respin") return;
+    if (narrMode === "manual") return;
+    const mode: NarrativeMode = narrMode;
 
     const overwrite = mode === "respin" || hasFilledNarrative(draft);
     if (overwrite && narrMode !== "manual") {
