@@ -167,6 +167,7 @@ export const commitNudeMasterPlan = createServerFn({ method: "POST" })
       voice: (data.voice || "").trim(),
       looks: identityLock,
       teaseStyle: "Write from Image 0. Early shots ADD garments onto the nude lock. Late shots keep her body and change pose and light.",
+      ownerBrief: "",
     };
     const saved = await upsertMuseModel(sql, payload);
     await regenerateAll(sql);

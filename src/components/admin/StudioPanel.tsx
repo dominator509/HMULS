@@ -20,6 +20,7 @@ import {
   laddersForThemes,
 } from "@/lib/nude-master";
 import type { MuseModel } from "@/lib/legal-types";
+import { generateNarrative, saveOwnerBrief } from "@/lib/server/narrative";
 import type { StudioPlan } from "@/lib/studio-types";
 import { toast } from "sonner";
 
@@ -42,6 +43,7 @@ export function StudioPanel({ onLadders }: { onLadders?: () => void }) {
   const [identityLock, setIdentityLock] = useState("");
   const [voice, setVoice] = useState("");
   const [notes, setNotes] = useState("");
+  const [ownerBrief, setOwnerBrief] = useState("");
   const [themes, setThemes] = useState<LadderTheme[]>(["frontal", "worship", "feet"]);
   const [busy, setBusy] = useState<string | null>(null);
   const [lockUrl, setLockUrl] = useState<string | null>(null);
@@ -148,6 +150,10 @@ export function StudioPanel({ onLadders }: { onLadders?: () => void }) {
       setMuseSlug(res.museSlug);
       setShotStatus({});
       setShotPreview({});
+      setModelId(res.modelId || modelId);
+      if (ownerBrief.trim() && res.modelId) {
+        await saveOwnerBrief({ data: { modelId: res.modelId, ownerBrief } });
+      }
       onLadders?.();
       toast.success(`${res.modelName} onboarded. Image 0 is the source for every paid still.`);
     } catch (err) {
@@ -207,6 +213,46 @@ export function StudioPanel({ onLadders }: { onLadders?: () => void }) {
       if (!beat) continue;
       await generateBeat(ladder, shot, beat);
       if (busy === "stop") return;
+    }
+  }
+
+
+  async function writeNarrativeFromLooks() {
+    const id = modelId;
+    const name = stageName.trim() || models.find((m) => m.id === id)?.stageName || "";
+    if (!id && !name) {
+      toast.error("Onboard / pick a muse before generating narrative.");
+      return;
+    }
+    const overwrite = window.confirm(
+      "Generate narrative from looks/identity and write muse + photoset voice? This overwrites empty or existing voice copy for her ladders.",
+    );
+    if (!overwrite) return;
+    setBusy("narrative");
+    try {
+      const res = await generateNarrative({
+        data: {
+          mode: "from_identity",
+          modelId: id || undefined,
+          stageName: name,
+          looks: identityLock,
+          voice,
+          scenario: notes,
+          ownerBrief,
+          portrayedAgeMin: 24,
+          persist: Boolean(id),
+          overwrite: true,
+        },
+      });
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(`Narrative written (${res.ladderCount} photoset${res.ladderCount === 1 ? "" : "s"}). Review on Muses tab.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Narrative generate failed.");
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -333,6 +379,20 @@ export function StudioPanel({ onLadders }: { onLadders?: () => void }) {
                 placeholder="Room, what the climax withholds…"
               />
             </label>
+            <label className="mt-3 block text-xs text-subtle">
+              Owner brief for narrative (optional — personality, shoot, psych levers to lean)
+              <textarea
+                value={ownerBrief}
+                onChange={(e) => setOwnerBrief(e.target.value)}
+                rows={3}
+                className="field-input"
+                placeholder="Injected into Generate from looks / Reverse / Respin. Not shown publicly."
+              />
+            </label>
+            <p className="mt-2 text-[11px] text-subtle">
+              Narrative formula: second person, sell next unlock, specificity &gt; adjectives, power/withhold,
+              desire first. Full checklist on Muses tab + docs/muse-narrative-formula.md.
+            </p>
             <p className="mt-5 text-xs text-subtle">Photosets to generate after you approve Image 0</p>
             <div className="mt-2 flex flex-wrap gap-3">
               {(
@@ -402,6 +462,13 @@ export function StudioPanel({ onLadders }: { onLadders?: () => void }) {
                   onClick={() => void generateRemaining()}
                 >
                   Generate remaining stills
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={Boolean(busy)}
+                  onClick={() => void writeNarrativeFromLooks()}
+                >
+                  {busy === "narrative" ? "Writing narrative…" : "Generate narrative"}
                 </Button>
                 <p className="text-sm text-muted">
                   {packs.length} set{packs.length === 1 ? "" : "s"} · source is always Image 0

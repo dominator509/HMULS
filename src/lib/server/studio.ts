@@ -380,6 +380,7 @@ export const commitStudioPlan = createServerFn({ method: "POST" })
         voice: plan.muse.voice,
         looks: plan.muse.looks,
         teaseStyle: plan.muse.teaseStyle,
+        ownerBrief: "",
       };
       const saved = await upsertMuseModel(sql, payload);
       await regenerateAll(sql);
