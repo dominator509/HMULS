@@ -8,7 +8,7 @@ export const CANONICAL_HOST = "sheundresses.com";
 export const CANONICAL_ORIGIN = "https://sheundresses.com";
 
 export const DEFAULT_DESC =
-  "18+ sequential unlock vault for collectors. AI muses start dressed; each payment peels one layer. Not a nudify app.";
+  "18+ sequential unlock vault for nerd, gamer, and crypto collectors. AI muses start dressed; each payment peels one layer. Not a nudify app.";
 
 export const RTA = "RTA-5042-1996-1400-1577-RTA";
 
@@ -86,10 +86,16 @@ export function authorModelSeo(m: ModelSeoIn) {
       ? `${name} is a fictional AI muse (adult OC), portrayed ${age}+.`
       : `${name} is portrayed ${age}+.`;
   const hook = bio || looks || `${name} undresses in order on ${BRAND}.`;
+  const title = clipMeta(`${name} AI muse sequential unlocks | ${BRAND}`, 60);
   const description = clipMeta(
-    `${name} AI muse sequential unlocks for collectors on ${BRAND}. ${kindLine} ${hook} She starts dressed. You pay. The next layer opens. Not a clothes-remover. 18+.`,
+    `Climb ${name}'s AI muse sequential unlocks for collectors on ${BRAND}. ${kindLine} Nine-shot ladders — not a clothes-remover. 18+.`,
+    155,
   );
-  const title = clipMeta(`${name} AI muse unlocks | ${BRAND}`, 60);
+  const h1 = clipMeta(`${name} — AI muse sequential unlocks`, 70);
+  const serviceBlurb = clipMeta(
+    `${name} is an AI muse in the ${BRAND} collector vault. Climb her sequential unlock photosets shot by shot — she starts dressed, each payment peels one layer. Built for nerd, gamer, and crypto collectors who want ordered ladders, not a nudify app.`,
+    420,
+  );
   const keywords = [
     name,
     BRAND,
@@ -129,33 +135,67 @@ export function authorModelSeo(m: ModelSeoIn) {
       a: `A personal viewing license. Duplicating, editing, sharing, or distributing unlocked media is prohibited by the Terms. Forensic stamps may identify a leak.`,
     },
   ];
-  return { title, description, keywords, faqs, kindLine };
+  return { title, description, keywords, faqs, kindLine, h1, serviceBlurb };
 }
 
-type LadderSeoIn = {
-  title: string;
-  modelName: string;
-  theme: string;
-  tagline?: string | null;
-  description?: string | null;
-  photosetHook?: string | null;
-  photosetTease?: string | null;
-};
+/** Theme money-query labels for ladder titles (deterministic; new themes fall back). */
+export function ladderThemeMoney(theme: string, titleName: string) {
+  const t = (theme || "").toLowerCase().trim();
+  const name = (titleName || "").toLowerCase().trim();
+  if (t.includes("frontal") || name.includes("reveal")) {
+    return {
+      short: "frontal unlock",
+      h1Suffix: "frontal sequential unlock",
+      query: "frontal sequential unlock",
+      beat: "cream silk to lace to nude in order",
+    };
+  }
+  if (t.includes("worship") || t.includes("curve") || name.includes("curve")) {
+    return {
+      short: "worship unlock",
+      h1Suffix: "silhouette worship unlock",
+      query: "silhouette worship sequential unlock",
+      beat: "over-shoulder to hips in order",
+    };
+  }
+  if (t.includes("feet") || t.includes("pedestal") || name.includes("pedestal")) {
+    return {
+      short: "feet unlock",
+      h1Suffix: "feet sequential unlock",
+      query: "feet and anklet sequential unlock",
+      beat: "heels to soles in order",
+    };
+  }
+  return {
+    short: "sequential unlock",
+    h1Suffix: "sequential unlock photoset",
+    query: "sequential unlock photoset",
+    beat: "shot by shot, no skipping",
+  };
+}
 
 export function authorLadderSeo(l: LadderSeoIn) {
   const name = l.modelName.trim() || "Muse";
   const titleName = l.title.trim() || "Photoset";
   const theme = (l.theme || "sequential").trim();
+  const money = ladderThemeMoney(theme, titleName);
   const hook = (l.photosetHook || l.tagline || "").trim();
   const tease = (l.photosetTease || l.description || "").trim();
-  const title = clipMeta(`${name} — ${titleName} unlock | ${BRAND}`, 60);
+  const title = clipMeta(`${name} ${titleName}: ${money.short} | ${BRAND}`, 60);
   const description = clipMeta(
-    `${name}'s ${titleName} (${theme}) sequential unlock for collectors on ${BRAND}. ${hook} ${tease} AI muse ladder — paid permissions in order. 18+.`,
+    `Climb ${name}'s ${titleName} — ${money.query} for crypto collectors on ${BRAND}. ${hook || money.beat}. AI muse ladder, not a nudify app. 18+.`,
+    155,
+  );
+  const h1 = clipMeta(`${titleName} — ${money.h1Suffix}`, 70);
+  const serviceBlurb = clipMeta(
+    `${titleName} is ${name}'s ${money.query} on ${BRAND}. ${hook || tease || `She undresses ${money.beat}.`} Built for nerd, gamer, and crypto collectors who climb nine shots in order — not a clothes-remover.`,
+    420,
   );
   const keywords = [
     name,
     titleName,
     theme,
+    money.short,
     BRAND,
     "sequential unlock",
     "AI muse",
@@ -182,7 +222,46 @@ export function authorLadderSeo(l: LadderSeoIn) {
       a: `No. ${BRAND} never undresses an uploaded photograph. ${name} undresses FOR the collector, in this photoset, one permission at a time.`,
     },
   ];
-  return { title, description, keywords, faqs };
+  return { title, description, keywords, faqs, h1, serviceBlurb };
+}
+
+export function authorHomeSeo(modelNames: string[] = []) {
+  const names = modelNames.map((n) => n.trim()).filter(Boolean);
+  const title = clipMeta(`${BRAND} — sequential unlock vault`, 60);
+  const description = clipMeta(
+    names.length
+      ? `18+ sequential unlock vault featuring ${names.join(", ")}. AI muses for crypto collectors — she starts dressed; each payment peels one layer. Not a nudify app.`
+      : DEFAULT_DESC,
+    155,
+  );
+  const h1 = "Sequential unlock. She starts dressed.";
+  const serviceBlurb =
+    "SHE UNDRESSES is an adults-only sequential unlock vault for nerd, gamer, and crypto collectors. Pick an AI muse, climb The Reveal, The Curve, or The Pedestal shot by shot — not a clothes-remover.";
+  const keywords = [
+    BRAND,
+    "sequential unlock",
+    "AI muse",
+    "collector vault",
+    "crypto unlock",
+    "Nine-Yes",
+    "not nudify",
+    ...names,
+    "18+",
+  ].join(", ");
+  return { title, description, keywords, h1, serviceBlurb };
+}
+
+export function authorModelsHubSeo() {
+  const title = clipMeta(`AI muses — sequential unlock vault | ${BRAND}`, 60);
+  const description = clipMeta(
+    `Meet AI muses on ${BRAND} — sequential unlock photosets for collectors. Pick a woman, climb The Reveal, Curve, or Pedestal in order. Not a nudify app. 18+.`,
+    155,
+  );
+  const h1 = "AI muses who undress in order";
+  const serviceBlurb =
+    "Every muse on SHE UNDRESSES runs sequential unlock ladders for collectors. Pick her night, pay for the next yes, climb The Reveal, The Curve, or The Pedestal — ordered photosets, not infinite selfie spam.";
+  const keywords = `${BRAND}, AI muses, sequential unlock, collector vault, adult photosets, The Reveal, The Curve, The Pedestal, 18+`;
+  return { title, description, keywords, h1, serviceBlurb };
 }
 
 export function homeFaqs(models: { stageName: string }[]): FaqItem[] {
