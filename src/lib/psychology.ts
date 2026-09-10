@@ -221,8 +221,8 @@ export function fallbackSurfaces(d: Dials): Surfaces {
     heroKicker: d.tease >= 7 ? "Nine shots. You cannot skip." : "Private sequential sets",
     heroHeadline:
       d.fetishHeat >= 7
-        ? "Watch her take it off. One layer at a time."
-        : "She starts dressed. You pay. Layers come off.",
+        ? "Sequential unlock. Watch her take it off."
+        : "Sequential unlock. She starts dressed.",
     heroBody:
       d.addiction >= 7
         ? "Free porn flashes the nude and you're already bored. Here she starts dressed. You pay. The robe slips off one shoulder. You pay again. Black lace. Then the bed. Then skin. The last shot is the close-up she only gives men who didn't skip."
