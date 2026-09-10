@@ -75,36 +75,73 @@ type ModelSeoIn = {
   portrayedAgeMin?: number | null;
 };
 
+/** Archetype money-angle from slug/looks — keeps helpers deterministic for new muses. */
+export function museMoneyAngle(m: Pick<ModelSeoIn, "slug" | "looks" | "stageName">) {
+  const slug = (m.slug || "").toLowerCase();
+  const looks = (m.looks || "").toLowerCase();
+  const name = (m.stageName || "").toLowerCase();
+  if (
+    slug === "nyx" ||
+    name.includes("nyx") ||
+    looks.includes("netrunner") ||
+    looks.includes("chrome mesh") ||
+    looks.includes("liquid-chrome") ||
+    (looks.includes("neon") && looks.includes("locs"))
+  ) {
+    return "cyberpunk" as const;
+  }
+  return "default" as const;
+}
+
 export function authorModelSeo(m: ModelSeoIn) {
   const name = m.stageName.trim() || "Muse";
   const kind = m.contentKind === "human" ? "human" : m.contentKind === "hybrid" ? "hybrid" : "synthetic";
   const age = Math.max(21, m.portrayedAgeMin ?? 21);
   const looks = (m.looks || "").replace(/\s+/g, " ").trim();
   const bio = (m.bio || "").replace(/\s+/g, " ").trim();
+  const angle = museMoneyAngle(m);
   const kindLine =
     kind === "synthetic"
       ? `${name} is a fictional AI muse (adult OC), portrayed ${age}+.`
       : `${name} is portrayed ${age}+.`;
   const hook = bio || looks || `${name} undresses in order on ${BRAND}.`;
-  const title = clipMeta(`${name} AI muse sequential unlocks | ${BRAND}`, 60);
-  const description = clipMeta(
-    `Climb ${name}'s AI muse sequential unlocks for collectors on ${BRAND}. ${kindLine} Nine-shot ladders — not a clothes-remover. 18+.`,
-    155,
-  );
-  const h1 = clipMeta(`${name} — AI muse sequential unlocks`, 70);
-  const serviceBlurb = clipMeta(
-    `${name} is an AI muse in the ${BRAND} collector vault. Climb her sequential unlock photosets shot by shot — she starts dressed, each payment peels one layer. Built for nerd, gamer, and crypto collectors who want ordered ladders, not a nudify app.`,
-    420,
-  );
+  const title =
+    angle === "cyberpunk"
+      ? clipMeta(`${name} cyberpunk AI muse | ${BRAND}`, 60)
+      : clipMeta(`${name} AI muse sequential unlocks | ${BRAND}`, 60);
+  const description =
+    angle === "cyberpunk"
+      ? clipMeta(
+          `Climb ${name} — cyberpunk AI muse / netrunner sequential unlocks for collectors on ${BRAND}. Neon, locs, chrome mesh — covered cyber editorial. Not a nudify app. 18+.`,
+          155,
+        )
+      : clipMeta(
+          `Climb ${name}'s AI muse sequential unlocks for collectors on ${BRAND}. ${kindLine} Nine-shot ladders — not a clothes-remover. 18+.`,
+          155,
+        );
+  const h1 =
+    angle === "cyberpunk"
+      ? clipMeta(`${name} — cyberpunk AI muse unlocks`, 70)
+      : clipMeta(`${name} — AI muse sequential unlocks`, 70);
+  const serviceBlurb =
+    angle === "cyberpunk"
+      ? clipMeta(
+          `${name} is the cyberpunk / netrunner AI muse in the ${BRAND} collector vault — neon nights, ink-black locs, liquid-chrome mesh. Climb her sequential unlock ladders shot by shot: covered cyber editorial, not a nude climax dump and not a clothes-remover. Built for nerd, gamer, and crypto collectors.`,
+          420,
+        )
+      : clipMeta(
+          `${name} is an AI muse in the ${BRAND} collector vault. Climb her sequential unlock photosets shot by shot — she starts dressed, each payment peels one layer. Built for nerd, gamer, and crypto collectors who want ordered ladders, not a nudify app.`,
+          420,
+        );
   const keywords = [
     name,
     BRAND,
     "sequential unlock",
     "AI muse",
     "collector vault",
-    "adult photoset",
-    "paid permission",
-    "Nine-Yes",
+    ...(angle === "cyberpunk"
+      ? ["cyberpunk AI muse", "netrunner AI", "neon AI muse", "covered cyber editorial"]
+      : ["adult photoset", "paid permission", "Nine-Yes"]),
     kind === "synthetic" ? "synthetic muse" : "adult model",
     "18+",
   ].join(", ");
@@ -142,17 +179,41 @@ type LadderSeoIn = {
   title: string;
   modelName: string;
   theme: string;
+  slug?: string | null;
   tagline?: string | null;
   description?: string | null;
   photosetHook?: string | null;
   photosetTease?: string | null;
 };
 
+export function isCoveredCyberEditorial(l: Pick<LadderSeoIn, "slug" | "tagline" | "description" | "photosetHook" | "modelName">) {
+  const slug = (l.slug || "").toLowerCase();
+  if (slug.startsWith("nyx-")) return true;
+  const blob = `${l.tagline || ""} ${l.description || ""} ${l.photosetHook || ""}`.toLowerCase();
+  if (blob.includes("covered cyber")) return true;
+  const muse = (l.modelName || "").toLowerCase();
+  if (muse.includes("nyx") && (blob.includes("chrome") || blob.includes("neon"))) return true;
+  return false;
+}
+
 /** Theme money-query labels for ladder titles (deterministic; new themes fall back). */
-export function ladderThemeMoney(theme: string, titleName: string) {
+export function ladderThemeMoney(
+  theme: string,
+  titleName: string,
+  opts?: { coveredCyber?: boolean },
+) {
   const t = (theme || "").toLowerCase().trim();
   const name = (titleName || "").toLowerCase().trim();
+  const covered = !!opts?.coveredCyber;
   if (t.includes("frontal") || name.includes("reveal")) {
+    if (covered) {
+      return {
+        short: "cyber unlock",
+        h1Suffix: "covered cyber frontal unlock",
+        query: "cyberpunk frontal sequential unlock",
+        beat: "chrome mesh to violet lace — covered cyber editorial, in order",
+      };
+    }
     return {
       short: "frontal unlock",
       h1Suffix: "frontal sequential unlock",
@@ -161,6 +222,14 @@ export function ladderThemeMoney(theme: string, titleName: string) {
     };
   }
   if (t.includes("worship") || t.includes("curve") || name.includes("curve")) {
+    if (covered) {
+      return {
+        short: "cyber worship",
+        h1Suffix: "covered cyber worship unlock",
+        query: "cyberpunk silhouette worship unlock",
+        beat: "chrome back to neon hips — covered cyber worship, in order",
+      };
+    }
     return {
       short: "worship unlock",
       h1Suffix: "silhouette worship unlock",
@@ -169,11 +238,27 @@ export function ladderThemeMoney(theme: string, titleName: string) {
     };
   }
   if (t.includes("feet") || t.includes("pedestal") || name.includes("pedestal")) {
+    if (covered) {
+      return {
+        short: "cyber pedestal",
+        h1Suffix: "covered cyber feet unlock",
+        query: "cyberpunk feet and anklet unlock",
+        beat: "chrome stilettos to silver anklet studies — covered editorial, in order",
+      };
+    }
     return {
       short: "feet unlock",
       h1Suffix: "feet sequential unlock",
       query: "feet and anklet sequential unlock",
       beat: "heels to soles in order",
+    };
+  }
+  if (covered) {
+    return {
+      short: "cyber unlock",
+      h1Suffix: "covered cyber sequential unlock",
+      query: "cyberpunk sequential unlock photoset",
+      beat: "covered cyber editorial, shot by shot — no nude climax promise",
     };
   }
   return {
@@ -188,19 +273,30 @@ export function authorLadderSeo(l: LadderSeoIn) {
   const name = l.modelName.trim() || "Muse";
   const titleName = l.title.trim() || "Photoset";
   const theme = (l.theme || "sequential").trim();
-  const money = ladderThemeMoney(theme, titleName);
+  const covered = isCoveredCyberEditorial(l);
+  const money = ladderThemeMoney(theme, titleName, { coveredCyber: covered });
   const hook = (l.photosetHook || l.tagline || "").trim();
   const tease = (l.photosetTease || l.description || "").trim();
   const title = clipMeta(`${name} ${titleName}: ${money.short} | ${BRAND}`, 60);
-  const description = clipMeta(
-    `Climb ${name}'s ${titleName} — ${money.query} for crypto collectors on ${BRAND}. ${hook || money.beat}. AI muse ladder, not a nudify app. 18+.`,
-    155,
-  );
+  const description = covered
+    ? clipMeta(
+        `Climb ${name}'s ${titleName} — ${money.query} for crypto collectors on ${BRAND}. ${hook || money.beat}. Covered cyber editorial — not a nude climax ladder. 18+.`,
+        155,
+      )
+    : clipMeta(
+        `Climb ${name}'s ${titleName} — ${money.query} for crypto collectors on ${BRAND}. ${hook || money.beat}. AI muse ladder, not a nudify app. 18+.`,
+        155,
+      );
   const h1 = clipMeta(`${titleName} — ${money.h1Suffix}`, 70);
-  const serviceBlurb = clipMeta(
-    `${titleName} is ${name}'s ${money.query} on ${BRAND}. ${hook || tease || `She undresses ${money.beat}.`} Built for nerd, gamer, and crypto collectors who climb nine shots in order — not a clothes-remover.`,
-    420,
-  );
+  const serviceBlurb = covered
+    ? clipMeta(
+        `${titleName} is ${name}'s ${money.query} on ${BRAND}. ${hook || tease || money.beat} Covered cyber-editorial sequential unlock for nerd, gamer, and crypto collectors — Imagine-moderated chrome/neon frames, not a nude climax dump and not a clothes-remover.`,
+        420,
+      )
+    : clipMeta(
+        `${titleName} is ${name}'s ${money.query} on ${BRAND}. ${hook || tease || `She undresses ${money.beat}.`} Built for nerd, gamer, and crypto collectors who climb nine shots in order — not a clothes-remover.`,
+        420,
+      );
   const keywords = [
     name,
     titleName,
@@ -210,29 +306,35 @@ export function authorLadderSeo(l: LadderSeoIn) {
     "sequential unlock",
     "AI muse",
     "collector vault",
-    "adult photoset",
-    "Nine-Yes",
-    "paid permission",
+    ...(covered
+      ? ["cyberpunk AI muse", "netrunner AI", "covered cyber editorial", "neon"]
+      : ["adult photoset", "Nine-Yes", "paid permission"]),
     "18+",
   ].join(", ");
   const faqs: FaqItem[] = [
     {
       q: `What is ${titleName} by ${name}?`,
       a: clipMeta(
-        `${titleName} is ${name}'s ${theme} sequential unlock ladder on ${BRAND}. ${hook || tease || "She starts dressed. Each payment peels one layer. You cannot skip."} Collectors climb shot by shot.`,
+        covered
+          ? `${titleName} is ${name}'s ${theme} covered cyber-editorial sequential unlock on ${BRAND}. ${hook || tease || money.beat} Collectors climb shot by shot — chrome and neon on her terms, not a nude climax promise.`
+          : `${titleName} is ${name}'s ${theme} sequential unlock ladder on ${BRAND}. ${hook || tease || "She starts dressed. Each payment peels one layer. You cannot skip."} Collectors climb shot by shot.`,
         280,
       ),
     },
     {
       q: `Can I skip shots in ${titleName}?`,
-      a: `No. ${name} opens ${titleName} in order. Pay for the next shot. Bundles and next-3 offers still climb sequentially — they never jump the last nude.`,
+      a: covered
+        ? `No. ${name} opens ${titleName} in order. Pay for the next shot. Bundles and next-3 offers still climb sequentially — they never jump the vault close.`
+        : `No. ${name} opens ${titleName} in order. Pay for the next shot. Bundles and next-3 offers still climb sequentially — they never jump the last nude.`,
     },
     {
       q: `Is ${titleName} a nudify or clothes-remover tool?`,
-      a: `No. ${BRAND} never undresses an uploaded photograph. ${name} undresses FOR the collector, in this photoset, one permission at a time.`,
+      a: covered
+        ? `No. ${BRAND} never undresses an uploaded photograph. ${name}'s ${titleName} is covered cyber editorial she cleared for the vault — not a nude climax ladder and not a clothes-remover.`
+        : `No. ${BRAND} never undresses an uploaded photograph. ${name} undresses FOR the collector, in this photoset, one permission at a time.`,
     },
   ];
-  return { title, description, keywords, faqs, h1, serviceBlurb };
+  return { title, description, keywords, faqs, h1, serviceBlurb, coveredCyber: covered };
 }
 
 export function authorHomeSeo(modelNames: string[] = []) {
@@ -264,13 +366,13 @@ export function authorHomeSeo(modelNames: string[] = []) {
 export function authorModelsHubSeo() {
   const title = clipMeta(`AI muses — sequential unlock vault | ${BRAND}`, 60);
   const description = clipMeta(
-    `Meet AI muses on ${BRAND} — sequential unlock photosets for collectors. Pick a woman, climb The Reveal, Curve, or Pedestal in order. Not a nudify app. 18+.`,
+    `Meet AI muses on ${BRAND} — sequential unlock photosets for collectors (warm-control + cyberpunk/netrunner). Climb The Reveal, Curve, or Pedestal in order. Not a nudify app. 18+.`,
     155,
   );
   const h1 = "AI muses who undress in order";
   const serviceBlurb =
     "Every muse on SHE UNDRESSES runs sequential unlock ladders for collectors. Pick her night, pay for the next yes, climb The Reveal, The Curve, or The Pedestal — ordered photosets, not infinite selfie spam.";
-  const keywords = `${BRAND}, AI muses, sequential unlock, collector vault, adult photosets, The Reveal, The Curve, The Pedestal, 18+`;
+  const keywords = `${BRAND}, AI muses, sequential unlock, collector vault, adult photosets, The Reveal, The Curve, The Pedestal, cyberpunk AI muse, netrunner AI, 18+`;
   return { title, description, keywords, h1, serviceBlurb };
 }
 
