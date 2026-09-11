@@ -2,19 +2,25 @@
 
 Operator checklist for SHE UNDRESSES muse / photoset voice. Adult fictional OC only (portrayed **24–34**). No celebrities, no minors, no non-consensual framing. Never put Dominic or personal emails in public copy.
 
-**Default `copyStyle`:** `brazzers-scenario` — FORMAT / PATTERN only. Study public adult-studio scene blurbs for structure; never paste or plagiarize copyrighted synopses.
+**Default `copyStyle`:** `personal-fantasy-hybrid` — **Personal fantasy (Brazzers×NA hybrid)**. FORMAT / PATTERN only. Study public adult-studio scene blurbs for structure; never paste or plagiarize copyrighted synopses. Studio generate / respin defaults to this voice.
 
-## Brazzers-scenario pattern (encode this shape)
+## Personal-fantasy hybrid pattern (encode this shape)
 
-Public scene blurbs that sell male buyers tend to hit the same beats in **2–5 short sentences**:
+Write as if composing **his private fantasy** — intimate, direct, slightly conspiratorial. Heavy **second person**. Pull him closer sentence by sentence. Public scene blurbs that sell male buyers (Brazzers × Naughty America energy) plus personal-fantasy draw-in tend to hit these beats in **2–5 short sentences**:
 
-1. **Scene-title energy** — punchy WHO + situation in beat one.
+1. **Intimate hook** — “you weren’t supposed to be here / she left this for you” (private, not the feed).
 2. **WHO she is** — role/archetype in one concrete line (“the netrunner who…”, “the silk-robed hostess who…”).
 3. **WHERE / WHEN** — specific wardrobe + setting (chrome mesh doorway, cream silk bedroom, neon after-hours).
-4. **Tension** — curiosity, power flip, withhold that turns invitation.
-5. **Sexual promise** — where the night is headed; **leave the unlock ladder** to deliver the layers.
+4. **Why YOU specifically** — chosen / private lobby / after hours; possession without a roomful.
+5. **Tension + sexual promise** — curiosity, power flip, withhold that turns soft invitation; **leave the unlock ladder** to deliver climax.
+6. **Soft CTA hunger** — pull him toward the next unlock (never “buy now” spam).
 
-**Voice:** fluent **native American English**, short sentences, dirty-but-smooth, zero ESL / Engrish / Chinglish artifacts. Male-buyer POV curiosity without broken “you is / very hot body” junk.
+**Voice rules (mandatory):**
+
+- Private fantasy written *to* the reader — “this is for you / she chose you / she kept you.”
+- Fluent **native American English**, short sentences, dirty-but-smooth, zero ESL / Engrish / Chinglish artifacts.
+- Soft invitation + heat; never clinical product copy.
+- Specific garments / jewelry / pose; progressive unlock sales still apply.
 
 ### Before / after (invented OC — not studio text)
 
@@ -22,9 +28,9 @@ Public scene blurbs that sell male buyers tend to hit the same beats in **2–5 
 
 > Nyx is very sexy beautiful cyber girl with hot body. She want you look her undress step by step. You will like very much her lace and chrome. Please unlock to enjoy her charm.
 
-**After (Brazzers-scenario energy for sequential unlock):**
+**After (personal-fantasy hybrid for sequential unlock):**
 
-> Void Channel Invitation — Nyx Virell runs the after-hours netrunner lounge you weren't supposed to find. Chrome mesh robe tied at the waist, violet lace only hinted underneath, LED ink glowing along her collarbones. She clocks you the second you clear the doorway — and she doesn't look away. Tonight she's deciding how much chrome comes off, and on whose terms. Stay long enough and the mesh stops being polite.
+> You weren’t supposed to find her channel. Nyx Virell left the after-hours netrunner lounge open for one man — you. Chrome mesh robe tied at the waist, violet lace only hinted underneath, LED ink glowing along her collarbones. She clocks you the second you clear the doorway and doesn’t look away — like she kept this private on purpose. Tonight she’s deciding how much chrome comes off, and she already chose whose terms. Stay. The mesh stops being polite for you.
 
 **Before:**
 
@@ -32,7 +38,7 @@ Public scene blurbs that sell male buyers tend to hit the same beats in **2–5 
 
 **After:**
 
-> Private Room Protocol — Liora doesn't open the door for a crowd. Cream silk robe, gold crescent at her throat, dark eyes that already know why you showed up. She lets the night start dressed on purpose — the silk only moves when you've earned the next inch. Lace is a test. The bed is a decision. The last frame is for men who didn't quit early.
+> She doesn’t open this door for a crowd — she left it for you. Cream silk robe, gold crescent at her throat, dark eyes that already know why you showed up. Liora lets the night start dressed on purpose; the silk only moves when you’ve earned the next inch. Lace is a test she set for you. The bed is a decision. The last frame is for the man who didn’t quit early — and she wants that to be you.
 
 ### Engrish ban (instant rewrite)
 
@@ -48,7 +54,7 @@ Public scene blurbs that sell male buyers tend to hit the same beats in **2–5 
 | **Manual** | You type everything | Source of truth. Save writes DB fields. LLM is not called. Owner brief still saved for later respins. |
 | **Generate from looks** | You have stage name + looks (+ optional archetype tags / brief) | Invents congruent scenario + full photoset voices for the three ladders (or selected ladder). |
 | **Reverse from frames** | Shots have visual beats / vision captions | Reverse-engineers bio + shot copy FROM the frames (written from the frame, sell next layer). |
-| **Respin** | Same inputs + optional note (“more dominant”, “less soft”, “more cyber”) | Regenerates without losing identity lock. Never changes age band. Upgrades Engrish into fluent scenario copy. |
+| **Respin** | Same inputs + optional note (“more dominant”, “less soft”, “more cyber”) | Regenerates without losing identity lock. Never changes age band. Upgrades Engrish into fluent personal-fantasy copy. |
 
 **Generate / Respin never wipe unsaved manual edits without your click.** Manual fields are source of truth; Generate fills empties or overwrites only when you click Generate / Respin (confirm if fields already have copy).
 
@@ -84,10 +90,10 @@ Public scene blurbs that sell male buyers tend to hit the same beats in **2–5 
 
 ## Tone formula
 
-- `copyStyle: "brazzers-scenario"` — scene blurb structure above
-- Second person, present tense, **her** voice
+- `copyStyle: "personal-fantasy-hybrid"` — Personal fantasy (Brazzers×NA hybrid) beats above
+- Second person, present tense, **her** voice — private fantasy written *to* him
 - Specific garments / jewelry / pose / setting; sell the **next** unlock
-- Sexualized desire + power/control dynamic appropriate to the muse
+- Sexualized desire + power/control dynamic appropriate to the muse; he feels selected
 - Story first, price second; no “exclusive content” spam; native American English
 - Adult 24–34 fictional OC only
 
@@ -99,11 +105,11 @@ Bake these into **every** generated (and preferably manual) field. Illegal / non
 2. **Specificity > adjectives** — “chrome mesh off one shoulder” beats “very sexy body.”
 3. **Power / withhold / choose-you** — she decides; buyer feels selected; she never begs.
 4. **Scarcity + social proof without lies** — drop % / collectors / “most men stop here”; no fake “0 collectors.”
-5. **Possession / private-set framing** — “for you / not a room / not a feed.”
+5. **Possession / private-set framing** — “for you / not a room / not a feed / she kept this private”; personal-fantasy draw-in.
 6. **Anticipation loop** — story opens a loop the next unlock closes.
 7. **Collector / gacha brain** — roster + limited lore-drop language for photoset hooks.
-8. **Second person present** — “you” in the scene now; fluent native American English.
-9. **Desire first, price second** — never lead with “exclusive content” spam.
+8. **Second person present** — “you” in the scene now; private fantasy written TO him; fluent native American English.
+9. **Desire first, price second** — never lead with “exclusive content” spam; intimate personal-fantasy scene first.
 10. **Archetype congruence** — levers match THIS muse, not generic baddie paste.
 
 Manual mode shows short **psych tips** beside fields so owner-written copy can use the same levers. Owner brief may name which levers to lean on.
@@ -122,7 +128,7 @@ Manual mode shows short **psych tips** beside fields so owner-written copy can u
 
 ## Code entry points
 
-- Formula + prompts: `src/lib/narrative-formula.ts` (`COPY_STYLE`, `BRAZZERS_SCENARIO_PATTERN`)
+- Formula + prompts: `src/lib/narrative-formula.ts` (`COPY_STYLE`, `PERSONAL_FANTASY_HYBRID_PATTERN`; `BRAZZERS_SCENARIO_PATTERN` is a deprecated alias)
 - Server generate / respin / persist: `src/lib/server/narrative.ts` (uses existing `grokJson` / `XAI_API_KEY`)
 - UI: `src/components/admin/MusesPanel.tsx` (Manual | Generate from looks | Reverse from frames | Respin)
 - Studio: narrative brief + Generate narrative affordance on muse add flow in `StudioPanel`

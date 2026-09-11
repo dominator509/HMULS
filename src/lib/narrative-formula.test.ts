@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   BRAZZERS_SCENARIO_PATTERN,
   COPY_STYLE,
+  PERSONAL_FANTASY_HYBRID_PATTERN,
   PSYCH_LEVERS,
   applyNarrativeToDraft,
   buildNarrativeUserMessage,
@@ -12,10 +13,12 @@ import {
 } from "./narrative-formula.ts";
 
 describe("narrative formula", () => {
-  it("defaults copyStyle to brazzers-scenario", () => {
-    assert.equal(COPY_STYLE, "brazzers-scenario");
-    assert.equal(BRAZZERS_SCENARIO_PATTERN.id, "brazzers-scenario");
-    assert.ok(BRAZZERS_SCENARIO_PATTERN.beats.length >= 4);
+  it("defaults copyStyle to personal-fantasy-hybrid", () => {
+    assert.equal(COPY_STYLE, "personal-fantasy-hybrid");
+    assert.equal(PERSONAL_FANTASY_HYBRID_PATTERN.id, "personal-fantasy-hybrid");
+    assert.equal(PERSONAL_FANTASY_HYBRID_PATTERN.label, "Personal fantasy (Brazzers×NA hybrid)");
+    assert.ok(PERSONAL_FANTASY_HYBRID_PATTERN.beats.length >= 5);
+    assert.equal(BRAZZERS_SCENARIO_PATTERN, PERSONAL_FANTASY_HYBRID_PATTERN);
   });
 
   it("encodes all ten psych levers and Engrish ban in system prompt", () => {
@@ -24,7 +27,7 @@ describe("narrative formula", () => {
     assert.match(sys, /Specificity/);
     assert.match(sys, /choose-you/);
     assert.match(sys, /Scarcity/);
-    assert.match(sys, /private-set/);
+    assert.match(sys, /private-set|personal-fantasy/);
     assert.match(sys, /Anticipation loop/);
     assert.match(sys, /gacha/);
     assert.match(sys, /Second person/);
@@ -32,12 +35,19 @@ describe("narrative formula", () => {
     assert.match(sys, /Archetype congruence/);
     assert.match(sys, /24–34|24-34/);
     assert.match(sys, /Never minors/);
-    assert.match(sys, /brazzers-scenario/);
+    assert.match(sys, /personal-fantasy-hybrid/);
     assert.match(sys, /BAN Engrish|Engrish/);
     assert.match(sys, /very sexy beautiful/);
     assert.match(sys, /native American English/);
-    assert.match(sys, /FEW-SHOT|Void Channel Invitation/);
+    assert.match(sys, /private fantasy|FEW-SHOT|You weren't supposed to find/);
+    assert.match(sys, /chosen|she kept you|for you/i);
     assert.equal(PSYCH_LEVERS.length, 10);
+    const desire = PSYCH_LEVERS.find((l) => l.id === "desire_first");
+    assert.ok(desire?.tip.includes("Personal-fantasy") || desire?.tip.includes("personal-fantasy"));
+    const second = PSYCH_LEVERS.find((l) => l.id === "second_person");
+    assert.ok(second?.tip.includes("private fantasy") || second?.tip.includes("Draw him in"));
+    const poss = PSYCH_LEVERS.find((l) => l.id === "possession");
+    assert.ok(poss?.tip.includes("Personal-fantasy") || poss?.tip.includes("chosen"));
   });
 
   it("builds from-identity user message with owner brief and copyStyle", () => {
@@ -53,7 +63,7 @@ describe("narrative formula", () => {
     assert.match(msg, /Owner brief/);
     assert.match(msg, /more dominant/);
     assert.match(msg, /The Reveal/);
-    assert.match(msg, /brazzers-scenario/);
+    assert.match(msg, /personal-fantasy-hybrid/);
     assert.match(msg, /ZERO Engrish|Engrish/);
   });
 
@@ -77,7 +87,7 @@ describe("narrative formula", () => {
     });
     assert.match(msg, /REVERSE FROM FRAMES/);
     assert.match(msg, /FRAME: Doorway/);
-    assert.match(msg, /brazzers-scenario/);
+    assert.match(msg, /personal-fantasy-hybrid/);
   });
 
   it("builds respin with identity lock note", () => {
@@ -98,7 +108,7 @@ describe("narrative formula", () => {
     assert.match(msg, /RESPIN/);
     assert.match(msg, /more cyber/);
     assert.match(msg, /age band/);
-    assert.match(msg, /brazzers-scenario/);
+    assert.match(msg, /personal-fantasy-hybrid/);
   });
 
   it("parses muse narrative JSON", () => {
