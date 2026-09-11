@@ -173,7 +173,11 @@ export function walletDeepLink(
       }
       return `https://link.trustwallet.com/send?address=${address}&amount=${amount}`;
     case "phantom":
-      return `https://phantom.app/ul/browse/${encoded}`;
+      // phantom.app/ul/browse is for https dApp URLs in the in-app browser.
+      // Wrapping a solana: Pay URI there opens a blank black screen.
+      // Prefer the raw Solana Pay URI so iOS/Android hand off to Phantom (or any solana: handler).
+      if (!address?.trim()) return uri;
+      return uri;
     default:
       return uri;
   }
@@ -242,7 +246,7 @@ export const WALLET_OPTIONS: WalletOption[] = [
   {
     id: "phantom",
     name: "Phantom",
-    hint: "Solana pay link.",
+    hint: "Opens Solana Pay (address + amount). If the app stays blank, copy the solana: link below.",
     kind: "deeplink",
     assets: ["SOL"],
   },
