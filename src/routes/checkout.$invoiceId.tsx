@@ -57,6 +57,9 @@ function CheckoutPage() {
   const [softError, setSoftError] = useState<string | null>(null);
   const [underpaidMsg, setUnderpaidMsg] = useState<string | null>(null);
   const loadedRef = useRef(false);
+  /** Quiet poll / resume failures stay silent until this many consecutive misses. */
+  const failStreakRef = useRef(0);
+  const userId = user?.id;
 
   useEffect(() => {
     setClock(0);
@@ -74,14 +77,15 @@ function CheckoutPage() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
     getMyRole()
       .then((r) => setIsAdmin(r.role === "admin"))
       .catch(() => setIsAdmin(false));
-  }, [user]);
+  }, [userId]);
 
   const applyRow = useCallback((row: InvoiceView) => {
     loadedRef.current = true;
+    failStreakRef.current = 0;
     setInv((prev) => mergeInvoice(prev, row));
     setSoftError(null);
     if (row.status === "paid") {
@@ -93,9 +97,22 @@ function CheckoutPage() {
     }
   }, []);
 
+  const noteRefreshFailure = useCallback((quiet?: boolean) => {
+    // Never clear a loaded invoice on transient refresh failures — pay UI stays up.
+    if (!loadedRef.current) {
+      if (!quiet) setSoftError(CHECKOUT_COPY.softError);
+      return;
+    }
+    failStreakRef.current += 1;
+    // Quiet polls / resume refreshes stay silent until a short streak; explicit Retry shows immediately.
+    if (!quiet || failStreakRef.current >= 3) {
+      setSoftError(CHECKOUT_COPY.softError);
+    }
+  }, []);
+
   const loadInvoice = useCallback(
     async (opts?: { quiet?: boolean }) => {
-      if (!user) return;
+      if (!userId) return;
       try {
         const row = await getInvoice({ data: { id: invoiceId } });
         if (row) {
@@ -116,33 +133,41 @@ function CheckoutPage() {
         if (!loadedRef.current) {
           setInv(null);
           setSoftError(null);
+          failStreakRef.current = 0;
         } else {
-          setSoftError(CHECKOUT_COPY.softError);
+          noteRefreshFailure(opts?.quiet);
         }
       } catch {
-        if (!opts?.quiet) {
-          setSoftError(CHECKOUT_COPY.softError);
-        } else if (loadedRef.current) {
-          setSoftError(CHECKOUT_COPY.softError);
-        }
-        // Never clear a loaded invoice on transient Worker/Neon/auth blips.
+        noteRefreshFailure(opts?.quiet);
       }
     },
-    [user, invoiceId, applyRow],
+    [userId, invoiceId, applyRow, noteRefreshFailure],
   );
 
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
     void loadInvoice();
-  }, [user, invoiceId, loadInvoice]);
+  }, [userId, invoiceId, loadInvoice]);
 
   useEffect(() => {
-    if (phase !== "wait" || !user) return;
+    if (phase !== "wait" || !userId) return;
     const t = window.setInterval(() => {
       void loadInvoice({ quiet: true });
     }, 4000);
     return () => window.clearInterval(t);
-  }, [phase, invoiceId, user, loadInvoice]);
+  }, [phase, invoiceId, userId, loadInvoice]);
+
+  // Mobile Safari / background tabs: one quiet refresh when visible again.
+  useEffect(() => {
+    if (!userId) return;
+    const onVis = () => {
+      if (document.visibilityState === "visible") {
+        void loadInvoice({ quiet: true });
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [userId, loadInvoice]);
 
   // Auth still resolving and we have no invoice yet — don't flash not-found.
   if (isPending && inv === undefined) {
