@@ -1,7 +1,7 @@
 /**
  * Muse / photoset narrative formula — prompt builders + JSON schemas.
- * Default copyStyle: personal-fantasy-hybrid (Brazzers × Naughty America structure +
- * intimate second-person private-fantasy voice — FORMAT only; never paste studio synopses).
+ * Default copyStyle: personal-fantasy-hybrid (premium adult scene-trailer + private-room POV
+ * patterns + intimate second-person private-fantasy voice — FORMAT only; never paste studio synopses).
  * Tone: fluent native American English, dirty-but-smooth, second person present, her voice —
  * written TO the reader like a private fantasy he was chosen for.
  * Adult 24–34 fictional OC only. Manual edits are source of truth.
@@ -14,12 +14,12 @@ export const COPY_STYLE = "personal-fantasy-hybrid" as const;
 export type CopyStyle = typeof COPY_STYLE;
 
 /**
- * Pattern distilled from public adult-studio scene blurbs (Brazzers × Naughty America hybrid)
+ * Pattern distilled from public adult-studio scene blurbs (premium scene-trailer + private-room POV)
  * plus personal-fantasy draw-in — structure only. Never plagiarize copyrighted synopses.
  */
 export const PERSONAL_FANTASY_HYBRID_PATTERN = {
   id: COPY_STYLE,
-  label: "Personal fantasy (Brazzers×NA hybrid)",
+  label: "Personal fantasy hybrid",
   beats: [
     "Intimate hook — you weren't supposed to be here / she left this for you (private, not the feed).",
     "WHO she is — role/archetype in one concrete beat (the netrunner, the silk-robed hostess).",
@@ -39,8 +39,8 @@ export const PERSONAL_FANTASY_HYBRID_PATTERN = {
   ],
 } as const;
 
-/** @deprecated Alias — prefer PERSONAL_FANTASY_HYBRID_PATTERN. Same object. */
-export const BRAZZERS_SCENARIO_PATTERN = PERSONAL_FANTASY_HYBRID_PATTERN;
+/** Alias — prefer PERSONAL_FANTASY_HYBRID_PATTERN. Same object. */
+export const PERSONAL_FANTASY_PATTERN = PERSONAL_FANTASY_HYBRID_PATTERN;
 
 /** Buyer-psych levers every generated field must use (consensual adult only). */
 export const PSYCH_LEVERS = [
@@ -87,7 +87,7 @@ export const PSYCH_LEVERS = [
   {
     id: "desire_first",
     label: "Desire first, price second",
-    tip: "Never lead with 'exclusive content' spam. Personal-fantasy scene first — intimate Brazzers×NA hybrid energy that pulls him closer before any CTA.",
+    tip: "Never lead with 'exclusive content' spam. Personal-fantasy scene first — intimate scene-trailer + private-room POV energy that pulls him closer before any CTA.",
   },
   {
     id: "archetype",
@@ -233,7 +233,7 @@ const ENGRISH_BAN = `BAN Engrish / Chinglish / AI-translation mush (instant fail
 - No robot-summary tone. Write like a private fantasy whispered to him — not a product manual.
 - If a sentence sounds translated, cut it and write a clean American one.`;
 
-const BRAZZERS_STYLE_BLOCK = `copyStyle "${COPY_STYLE}" — PERSONAL FANTASY (Brazzers × Naughty America hybrid). FORMAT PATTERN ONLY (never paste or plagiarize any studio's copyrighted synopses):
+const PERSONAL_FANTASY_STYLE_BLOCK = `copyStyle "${COPY_STYLE}" — PERSONAL FANTASY HYBRID (premium adult scene-trailer + private-room POV). FORMAT PATTERN ONLY (never paste or plagiarize any studio's copyrighted synopses):
 
 Personal-fantasy voice (mandatory):
 - Compose as if writing HIS private fantasy — intimate, direct, slightly conspiratorial.
@@ -291,13 +291,13 @@ Shot field map (match ShotVoice / PhotosetVoice):
 
 export function narrativeSystemPrompt(): string {
   return `You are the muse narrative writer for SHE UNDRESSES — a sequential paid-unlock vault of adult photo/video sets for adult men.
-Default copyStyle: ${COPY_STYLE}. Write personal-fantasy hybrid smut marketing (Brazzers × Naughty America structure + intimate second-person draw-in) — fluent, dirty-smooth, zero translation mush. Like a private fantasy written TO him.
+Default copyStyle: ${COPY_STYLE}. Write personal-fantasy hybrid smut marketing (premium adult scene-trailer + private-room POV structure + intimate second-person draw-in) — fluent, dirty-smooth, zero translation mush. Like a private fantasy written TO him.
 
 ${HARD_RULES}
 
 ${ENGRISH_BAN}
 
-${BRAZZERS_STYLE_BLOCK}
+${PERSONAL_FANTASY_STYLE_BLOCK}
 
 ${PSYCH_SYSTEM_BLOCK}
 
