@@ -194,7 +194,7 @@ Put values that must reach **Nitro `process.env`** as **encrypted Worker secrets
 | Doc | Use |
 |---|---|
 | [`docs/payment-recovery-agentmail.md`](docs/payment-recovery-agentmail.md) | Stranded crypto / NOWPayments underpay; AgentMail recovery; ~2% tolerance; operator settle one invoice only |
-| [`docs/muse-narrative-formula.md`](docs/muse-narrative-formula.md) | Muse / photoset voice; Brazzers-scenario pattern; Engrish ban; Manual / Generate / Reverse modes |
+| [`docs/muse-narrative-formula.md`](docs/muse-narrative-formula.md) | Muse / photoset voice; personal-fantasy hybrid / scene-trailer pattern; Engrish ban; Manual / Generate / Reverse modes |
 | [`docs/seo-taxonomy.md`](docs/seo-taxonomy.md) | SEO taxonomy |
 | [`docs/seo-content-calendar-8wk.md`](docs/seo-content-calendar-8wk.md) | 8-week content calendar |
 | [`docs/seo-w2-page-copy.md`](docs/seo-w2-page-copy.md) | Week-2 page copy |

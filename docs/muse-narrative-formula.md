@@ -2,11 +2,11 @@
 
 Operator checklist for SHE UNDRESSES muse / photoset voice. Adult fictional OC only (portrayed **24–34**). No celebrities, no minors, no non-consensual framing. Never put Dominic or personal emails in public copy.
 
-**Default `copyStyle`:** `personal-fantasy-hybrid` — **Personal fantasy (Brazzers×NA hybrid)**. FORMAT / PATTERN only. Study public adult-studio scene blurbs for structure; never paste or plagiarize copyrighted synopses. Studio generate / respin defaults to this voice.
+**Default `copyStyle`:** `personal-fantasy-hybrid` — **Personal fantasy hybrid**. FORMAT / PATTERN only. Study public adult-studio scene blurbs for structure (premium scene-trailer + private-room POV patterns); never paste or plagiarize copyrighted synopses. Studio generate / respin defaults to this voice.
 
 ## Personal-fantasy hybrid pattern (encode this shape)
 
-Write as if composing **his private fantasy** — intimate, direct, slightly conspiratorial. Heavy **second person**. Pull him closer sentence by sentence. Public scene blurbs that sell male buyers (Brazzers × Naughty America energy) plus personal-fantasy draw-in tend to hit these beats in **2–5 short sentences**:
+Write as if composing **his private fantasy** — intimate, direct, slightly conspiratorial. Heavy **second person**. Pull him closer sentence by sentence. Public scene blurbs that sell male buyers (premium adult scene-trailer + private-room POV energy) plus personal-fantasy draw-in tend to hit these beats in **2–5 short sentences**:
 
 1. **Intimate hook** — “you weren’t supposed to be here / she left this for you” (private, not the feed).
 2. **WHO she is** — role/archetype in one concrete line (“the netrunner who…”, “the silk-robed hostess who…”).
@@ -90,7 +90,7 @@ Write as if composing **his private fantasy** — intimate, direct, slightly con
 
 ## Tone formula
 
-- `copyStyle: "personal-fantasy-hybrid"` — Personal fantasy (Brazzers×NA hybrid) beats above
+- `copyStyle: "personal-fantasy-hybrid"` — Personal fantasy hybrid beats above
 - Second person, present tense, **her** voice — private fantasy written *to* him
 - Specific garments / jewelry / pose / setting; sell the **next** unlock
 - Sexualized desire + power/control dynamic appropriate to the muse; he feels selected
@@ -128,7 +128,7 @@ Manual mode shows short **psych tips** beside fields so owner-written copy can u
 
 ## Code entry points
 
-- Formula + prompts: `src/lib/narrative-formula.ts` (`COPY_STYLE`, `PERSONAL_FANTASY_HYBRID_PATTERN`; `BRAZZERS_SCENARIO_PATTERN` is a deprecated alias)
+- Formula + prompts: `src/lib/narrative-formula.ts` (`COPY_STYLE`, `PERSONAL_FANTASY_HYBRID_PATTERN`; `PERSONAL_FANTASY_PATTERN` is an alias)
 - Server generate / respin / persist: `src/lib/server/narrative.ts` (uses existing `grokJson` / `XAI_API_KEY`)
 - UI: `src/components/admin/MusesPanel.tsx` (Manual | Generate from looks | Reverse from frames | Respin)
 - Studio: narrative brief + Generate narrative affordance on muse add flow in `StudioPanel`

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  BRAZZERS_SCENARIO_PATTERN,
+  PERSONAL_FANTASY_PATTERN,
   COPY_STYLE,
   PERSONAL_FANTASY_HYBRID_PATTERN,
   PSYCH_LEVERS,
@@ -16,9 +16,9 @@ describe("narrative formula", () => {
   it("defaults copyStyle to personal-fantasy-hybrid", () => {
     assert.equal(COPY_STYLE, "personal-fantasy-hybrid");
     assert.equal(PERSONAL_FANTASY_HYBRID_PATTERN.id, "personal-fantasy-hybrid");
-    assert.equal(PERSONAL_FANTASY_HYBRID_PATTERN.label, "Personal fantasy (Brazzers×NA hybrid)");
+    assert.equal(PERSONAL_FANTASY_HYBRID_PATTERN.label, "Personal fantasy hybrid");
     assert.ok(PERSONAL_FANTASY_HYBRID_PATTERN.beats.length >= 5);
-    assert.equal(BRAZZERS_SCENARIO_PATTERN, PERSONAL_FANTASY_HYBRID_PATTERN);
+    assert.equal(PERSONAL_FANTASY_PATTERN, PERSONAL_FANTASY_HYBRID_PATTERN);
   });
 
   it("encodes all ten psych levers and Engrish ban in system prompt", () => {

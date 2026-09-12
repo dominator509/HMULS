@@ -328,7 +328,7 @@ export function MusesPanel({ onLadders }: { onLadders?: () => void }) {
             onChange={(e) => setDraft({ ...draft, ownerBrief: e.target.value })}
             rows={3}
             className="field-input"
-            placeholder="Personality, setting, wardrobe beats, kinks-to-lean, shoot notes, lines to hit/avoid — ban Engrish; lean Brazzers-scenario…"
+            placeholder="Personality, setting, wardrobe beats, kinks-to-lean, shoot notes, lines to hit/avoid — ban Engrish; lean personal-fantasy scene-trailer…"
           />
         </label>
 
@@ -382,11 +382,11 @@ export function MusesPanel({ onLadders }: { onLadders?: () => void }) {
             onChange={(e) => setDraft({ ...draft, teaseStyle: e.target.value })}
             rows={2}
             className="field-input"
-            placeholder="From the frame + next unlock. Brazzers-scenario beats. Never Engrish."
+            placeholder="From the frame + next unlock. Personal-fantasy scene-trailer beats. Never Engrish."
           />
         </label>
         <label className="mt-3 block text-xs text-subtle">
-          Scenario / backstory (Brazzers-scenario blurb — stored as bio)
+          Scenario / backstory (personal-fantasy scene-trailer blurb — stored as bio)
           <textarea
             value={draft.bio}
             onChange={(e) => setDraft({ ...draft, bio: e.target.value })}
@@ -557,7 +557,7 @@ export function MusesPanel({ onLadders }: { onLadders?: () => void }) {
 function PsychTips() {
   return (
     <details className="mt-4 rounded-lg border border-border bg-raised/40 p-3 text-xs text-muted">
-      <summary className="cursor-pointer text-gold">Psych tips + copyStyle (brazzers-scenario)</summary>
+      <summary className="cursor-pointer text-gold">Psych tips + copyStyle (personal-fantasy-hybrid)</summary>
       <p className="mt-2 text-muted">
         Write fluent native American English — dirty-smooth scene blurbs, not Engrish. WHO / WHERE /
         tension / sexual promise; leave the unlock ladder to deliver. Ban &quot;very sexy beautiful&quot;

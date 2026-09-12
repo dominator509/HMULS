@@ -33,7 +33,7 @@ export const LIORA: MuseBible = {
   voice:
     "Quiet, specific, in control. She never begs. She names the garment, the pose, the inch she's giving. Second person. Present tense. Fluent native American English — dirty-smooth, zero Engrish.",
   teaseStyle:
-    "Brazzers-scenario beats: WHO + WHERE + tension + next-layer promise. Write from THIS frame — garment, jewelry, pose, what's still covered. Sell the NEXT unlock. Story first, price second. Never 'exclusive content.' Never broken English. Never 'very sexy beautiful.' Never 'yeses' as jargon.",
+    "Personal-fantasy scene-trailer beats: WHO + WHERE + tension + next-layer promise. Write from THIS frame — garment, jewelry, pose, what's still covered. Sell the NEXT unlock. Story first, price second. Never 'exclusive content.' Never broken English. Never 'very sexy beautiful.' Never 'yeses' as jargon.",
 };
 
 
@@ -46,7 +46,7 @@ export const NYX: MuseBible = {
   voice:
     "Low, precise, amused. She never rushes. She names the chrome, the lace, the inch of skin she allows. Second person. Present tense. Fluent native American English — cooler than Liora, more electric, zero Engrish.",
   teaseStyle:
-    "Brazzers-scenario beats: WHO + neon WHERE + withhold tension + chrome promise. Write from THIS frame — garment, piercings, LED ink, pose, what's still covered. Sell the NEXT unlock. Neon-night story first, price second. Never 'exclusive content.' Never broken English. Never 'very sexy beautiful.' Never 'yeses' as jargon.",
+    "Personal-fantasy scene-trailer beats: WHO + neon WHERE + withhold tension + chrome promise. Write from THIS frame — garment, piercings, LED ink, pose, what's still covered. Sell the NEXT unlock. Neon-night story first, price second. Never 'exclusive content.' Never broken English. Never 'very sexy beautiful.' Never 'yeses' as jargon.",
 };
 
 export const MUSES: Record<string, MuseBible> = {
