@@ -1,7 +1,0 @@
-# Cloudflare Workers Builds merges this with the generated Worker deploy config.
-# R2 binding for paid vault originals + stamp cache (bucket hmuls-vault).
-name = "hmuls"
-
-[[r2_buckets]]
-binding = "HMULS_VAULT"
-bucket_name = "hmuls-vault"
