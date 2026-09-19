@@ -48,7 +48,9 @@ export function PayWallet({
         toast.success("Wallet connected.");
         return;
       }
-      const link = walletDeepLink(id, inv.asset, inv.payAddress, inv.cryptoAmount);
+      const link = walletDeepLink(id, inv.asset, inv.payAddress, inv.cryptoAmount, {
+        checkoutUrl: typeof window !== "undefined" ? window.location.href : undefined,
+      });
       window.open(link, "_blank", "noopener,noreferrer");
       setOpen(false);
       toast.message(`Opened ${opt.name}. Send to the invoice address, then mark sent.`);
@@ -213,7 +215,21 @@ export function PayWallet({
               ))}
             </ul>
             {uri ? (
-              <p className="mt-4 break-all font-mono text-[11px] text-subtle">{uri}</p>
+              <div className="mt-4">
+                <p className="break-all font-mono text-[11px] text-subtle">{uri}</p>
+                {inv.asset === "SOL" ? (
+                  <button
+                    type="button"
+                    className="mt-2 inline-flex items-center gap-1 text-xs text-gold"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(uri);
+                      toast.success("Solana Pay link copied.");
+                    }}
+                  >
+                    <Copy className="size-3" /> Copy Solana Pay link
+                  </button>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </Overlay>
