@@ -41,7 +41,7 @@ Never commit .env or secret values. Never put operator personal name/Gmail on pu
 | **Repo** | `dominator509/HMULS` — **keep PRIVATE** (`private-media/` = paid seed originals; a public GitHub repo makes them world-downloadable) |
 | **Production runtime** | Cloudflare Worker **`hmuls`** (Git-connected; Workers Builds from `main`) |
 | **DB** | Neon Postgres — Worker secret `DATABASE_URL` **must** use the **`-pooler`** host (`ep-…-pooler.…aws.neon.tech`). App SQL uses Neon HTTP `/sql` (AbortError/transient retries in `db.ts`); do not use long-lived node-postgres TCP from the Worker. |
-| **Auth** | Better Auth via `@neondatabase/serverless` Pool (`poolQueryViaFetch` / HTTP) + pooler URL (`preferNeonPoolerUrl`), `max: 1` — **not** `pg` TCP (do not monkey-patch Pool.query/connect) |
+| **Auth** | Better Auth via Neon HTTP Kysely dialect (`neonHttpDialect` → `getSql`) — same path as app SQL; **not** `pg` TCP or sticky serverless Pool |
 | **Paid media** | Cloudflare R2 bucket `hmuls-vault` (binding `HMULS_VAULT`; REST token fallback); optional private Vercel Blob; collector reads only via `/api/media` |
 | **AI** | xAI Grok / Imagine (Studio) when `XAI_API_KEY` is set |
 | **Payments** | NOWPayments; IPN HMAC + amount/currency match; ~**98%** underpay tolerance |
@@ -76,7 +76,7 @@ Do not leave runbooks or secret-name lists stale. Prefer expanding this file ove
 
 ### 2. Neon + migrations
 
-1. Create a Neon project; use the **pooled** connection string as `DATABASE_URL` (host must include `-pooler`). Code rewrites non-pooler Neon hosts via `preferNeonPoolerUrl`, but the Worker secret should still be the pooler URI from Neon console / `get_connection_string`.
+1. Create a Neon project; use the **pooled** connection string as `DATABASE_URL` (host must include `-pooler`). Code rewrites non-pooler Neon hosts via `preferNeonPoolerUrl` and strips `channel_binding` (breaks Workers). Worker secret should still be the pooler URI from Neon console / `get_connection_string`.
 2. Apply migrations in basename order through latest, including **`0014_narrative_brief.sql`** (`owner_brief` on models/ladders).
 3. Cloudflare Workers Builds typically **does not** see `DATABASE_URL` at build time, so **`db:migrate` may be skipped on CF build** — apply migrations yourself (Neon SQL editor / MCP / `npm run db:migrate` with `DATABASE_URL` set) before expecting the homepage to work.
 4. Migration order is lexical by filename under `migrations/*.sql` (see `scripts/migration-plan.mjs`). Do not skip `0014`.
