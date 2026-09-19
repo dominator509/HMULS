@@ -18,7 +18,7 @@ Success criteria (zero → live):
 3. Cloudflare Worker `hmuls` deployed via Workers Builds / connected GitHub
 4. Worker secrets set (keys that must reach Nitro process.env) + plain vars set
 5. DNS apex on CF; www → apex 301; role mailboxes only (no personal Gmail on public site)
-6. R2 vault (`hmuls-vault` + `HMULS_VAULT` binding and/or `CLOUDFLARE_API_TOKEN`); seed sync via ensureCatalog / Ops sync
+6. R2 vault (`hmuls-vault` + `HMULS_VAULT` binding and/or `CLOUDFLARE_API_TOKEN`); seed sync backgrounded from ensureCatalog (not on auth path) / `/api/media` miss / Ops sync
 7. Stamp sidecar live if stamps used; STAMP_URL + STAMP_SECRET on Worker
 8. Admin bootstrap /login → /admin; Ops Legal entity required for checkout
 9. IPN https://sheundresses.com/api/payments/ipn; ~98% underpay tolerance; recovery runbook
@@ -142,7 +142,7 @@ Put values that must reach **Nitro `process.env`** as **encrypted Worker secrets
 2. Plain Worker vars: `R2_ACCOUNT_ID`, `R2_BUCKET=hmuls-vault`. Secret for REST fallback: `CLOUDFLARE_API_TOKEN` (or `R2_CF_API_TOKEN`) — same Cloudflare REST object API (`/accounts/{id}/r2/buckets/hmuls-vault/objects/{key}`).
 3. Object keys: `vault/<basename>` matching grant keys (e.g. `vault/crv_1.jpg`, `vault/rev_1.jpg`) — **not** Vercel Blob HMAC pathnames. Stamps: `stamps/<userId>/<shotId>.png`.
 4. Seed unlocks use `media_url` like `grant:rev_1.jpg`. Files ship in git `private-media/` for local/Nitro, but **the Worker has no durable private-media disk**.
-5. Cold starts call `syncBundledVaultOriginals()` from `ensureCatalog` (once per isolate) to upload missing seeds into **R2 first**, then Blob if configured. Existence checks use **HEAD** (or list) — never a full GET (Vercel Hobby transfer footgun when existence used GET).
+5. Cold starts **kick off** `syncBundledVaultOriginals()` from `ensureCatalog` once per isolate (**fire-and-forget — not awaited**). Auth / `getMyRole` / other server fns must not wait on R2 seed sync (that blocked login after the R2 cutover → client "Sign-in timed out"). Existence for bulk sync uses **one `vault/` list** (not N REST HEADs); R2 REST fetches use ~5s AbortSignal timeouts. Per-file seed repair still runs on `/api/media` miss.
 6. Ops can re-run via admin seed vault sync (`syncVaultOriginals` on the Stamps panel).
 7. Optional/legacy: private Vercel Blob via `BLOB_READ_WRITE_TOKEN`. Prefer R2 in production; Blob Hobby transfer caps can suspend the store.
 8. Teasers/covers stay under `public/media/` (or public Blob). **Never** copy a paid original into `public/`.
@@ -189,7 +189,7 @@ Put values that must reach **Nitro `process.env`** as **encrypted Worker secrets
 
 - Production **paid originals prefer Cloudflare R2** bucket `hmuls-vault` (Workers binding `HMULS_VAULT`, REST fallback via `CLOUDFLARE_API_TOKEN` / `R2_CF_API_TOKEN`). Keys: `vault/<safe basename>`. Vercel Blob is **optional/legacy** fallback (`access: "private"`). HMAC Blob pathnames are not access control; `/api/media` is the only collector read path.
 - Dashboard Studio / admin ingest goes through `vaultShotMedia` → `putPrivateOriginal` when R2 is ready or `BLOB_READ_WRITE_TOKEN` is set. Do not weaken that path or store paid frames as public CDN objects / under `public/`.
-- Seed unlocks use `media_url` like `grant:rev_1.jpg`. Files ship in git `private-media/` for local/Nitro, but **Cloudflare Worker has no durable private-media disk** — cold starts call `syncBundledVaultOriginals()` from `ensureCatalog` (once per isolate) to upload missing seeds into R2 (then Blob). Existence uses HEAD/list — never full GET (fixed Hobby transfer footgun). Ops can re-run via admin `syncVaultOriginals`.
+- Seed unlocks use `media_url` like `grant:rev_1.jpg`. Files ship in git `private-media/` for local/Nitro, but **Cloudflare Worker has no durable private-media disk** — cold starts **background** `syncBundledVaultOriginals()` from `ensureCatalog` (once per isolate, **not awaited** on the request path). Bulk existence uses one `vault/` list; R2 REST is time-bounded. `/api/media` miss still syncs a single seed. Ops can re-run via admin `syncVaultOriginals`.
 - Teasers/covers stay under `public/media/` (or public Blob). Never copy a paid original into `public/`.
 
 ---

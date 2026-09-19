@@ -114,10 +114,13 @@ async function ensureVaultBlobSeedSync() {
       } catch (err) {
         // Never take down catalog / the site if Blob sync fails.
         console.error("[vault-sync] failed", err);
+        // Allow a later isolate request to retry after a soft failure.
+        vaultBlobSyncPromise = null;
       }
     })();
   }
-  await vaultBlobSyncPromise;
+  // Intentionally not awaited — callers must not block on R2 seed sync.
+  return vaultBlobSyncPromise;
 }
 
 
@@ -202,12 +205,13 @@ export async function ensureCatalog(sql: Sql) {
   copySynced = true;
   if (!grantVaultSynced) {
     // Teaser/SEO vault sweeps stay off the hot path (Workers 1101 risk).
-    // Seed → private Blob sync is memoized once per isolate and awaited so
-    // unlocks work after cold start when BLOB_READ_WRITE_TOKEN is set.
+    // Seed → R2/Blob sync is memoized once per isolate but MUST NOT be awaited
+    // here — REST HEADs on cold start blocked login/getMyRole (1101 / client
+    // "Sign-in timed out"). Miss path: /api/media syncs one file; Ops can re-run.
     grantVaultSynced = true;
     grantVaultReady = true;
   }
-  await ensureVaultBlobSeedSync();
+  void ensureVaultBlobSeedSync();
   await syncLiveCounts(sql);
 }
 

@@ -154,8 +154,6 @@ function solBrowseDeepLink(
   opts?: { checkoutUrl?: string },
 ) {
   const uri = paymentUri(asset, address, amount);
-  // Prefer brand universal browse so iOS/Android open that wallet specifically
-  // (raw solana: is shared; OS may hand it to Base/Coinbase Wallet).
   // browse requires an https URL — do NOT wrap solana: (blank screen).
   if (asset === "SOL" && opts?.checkoutUrl) {
     try {
@@ -173,12 +171,18 @@ function solBrowseDeepLink(
   return uri;
 }
 
+export type WalletDeepLinkOpts = {
+  checkoutUrl?: string;
+  /** When true, Phantom/Solflare open https checkout in-wallet (logged-out). Default: native solana: pay. */
+  preferBrowse?: boolean;
+};
+
 export function walletDeepLink(
   wallet: string,
   asset: CryptoAsset,
   address: string,
   amount: string,
-  opts?: { checkoutUrl?: string },
+  opts?: WalletDeepLinkOpts,
 ) {
   const uri = paymentUri(asset, address, amount);
   const encoded = encodeURIComponent(uri);
@@ -201,8 +205,16 @@ export function walletDeepLink(
       }
       return `https://link.trustwallet.com/send?address=${address}&amount=${amount}`;
     case "phantom":
+      // Prefer native Solana Pay when we already have address+amount — wallet in-app
+      // browse opens sheundresses logged-out (no shared cookies) and hit auth hangs.
+      if (asset === "SOL" && address?.trim() && !opts?.preferBrowse) {
+        return uri;
+      }
       return solBrowseDeepLink("phantom.app/ul/browse", asset, address, amount, opts);
     case "solflare":
+      if (asset === "SOL" && address?.trim() && !opts?.preferBrowse) {
+        return uri;
+      }
       return solBrowseDeepLink("solflare.com/ul/v1/browse", asset, address, amount, opts);
     default:
       return uri;
@@ -272,14 +284,14 @@ export const WALLET_OPTIONS: WalletOption[] = [
   {
     id: "phantom",
     name: "Phantom",
-    hint: "Opens this invoice in the Phantom app.",
+    hint: "Opens Solana Pay in Phantom (no in-app browser login).",
     kind: "deeplink",
     assets: ["SOL"],
   },
   {
     id: "solflare",
     name: "Solflare",
-    hint: "Opens this invoice in the Solflare app.",
+    hint: "Opens Solana Pay in Solflare (no in-app browser login).",
     kind: "deeplink",
     assets: ["SOL"],
   },
