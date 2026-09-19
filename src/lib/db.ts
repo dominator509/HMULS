@@ -108,6 +108,9 @@ export function preferNeonPoolerUrl(connectionString: string): string {
       u.hostname = u.hostname.replace(/^(ep-[^.]+)\./i, "$1-pooler.");
     }
     if (!u.searchParams.has("sslmode")) u.searchParams.set("sslmode", "require");
+    // channel_binding=require breaks @neondatabase/serverless HTTP/WebSocket on Workers
+    // (alternating CF 1101). Neon console URIs often include it — strip for runtime.
+    u.searchParams.delete("channel_binding");
     return u.toString();
   } catch {
     return connectionString;

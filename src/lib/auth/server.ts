@@ -34,19 +34,11 @@ import { bearer, genericOAuth } from "better-auth/plugins";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { getCookie } from "@tanstack/react-start/server";
 import { randomBytes } from "node:crypto";
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import { ensureDbReady, getPglite, preferNeonPoolerUrl } from "../db";
-
-// Cloudflare Workers: prefer HTTP for Pool queries (no sticky WebSocket).
-// WebSocket pools were flipping 401 ↔ CF 1101 under load; fetch is the
-// serverless-safe transport and matches app SQL (Neon HTTP).
-neonConfig.poolQueryViaFetch = true;
-if (typeof WebSocket !== "undefined") {
-  neonConfig.webSocketConstructor = WebSocket;
-}
+import { ensureDbReady, getPglite } from "../db";
 import { emailAndPasswordEnabled, emailAndPasswordConfig } from "./email-password";
 import { GATE_PROVIDER_ID, gateIdentitySessions } from "./gate-session.server";
 import { GROK_PROVIDERS } from "./providers";
+import { neonHttpDialect } from "./neon-http-dialect";
 import { pgliteDialect } from "./pglite-dialect";
 import {
   GROK_ISSUER_DEFAULT,
@@ -189,24 +181,11 @@ const grokUserInfoUrl = `${issuerBase}/api/auth/oauth2/userinfo`;
 // schema from `migrations/auth/0001_auth.sql`, copied into `migrations/` when
 // the app turns sign-in on.
 //
-// Cloudflare Workers: node-postgres TCP hangs (connectionTimeoutMillis → empty
-// 500 after ~8s). Use `@neondatabase/serverless` (HTTP via poolQueryViaFetch) + Neon **pooler**
-// host, max 1 connection per isolate, short connect timeout with retries.
-function createAuthPool(connectionString: string): Pool {
-  // Do not monkey-patch query/connect — that caused alternating CF 1101s with
-  // Better Auth. Retries for app SQL live in db.ts Neon HTTP; auth relies on
-  // poolQueryViaFetch + pooler + short connect timeout.
-  return new Pool({
-    connectionString: preferNeonPoolerUrl(connectionString),
-    max: 1,
-    idleTimeoutMillis: 5_000,
-    connectionTimeoutMillis: 4_000,
-    allowExitOnIdle: true,
-  });
-}
-
+// Cloudflare Workers: never use node-postgres TCP or a sticky serverless Pool —
+// those caused empty 500s (~8s connect timeout) and alternating CF 1101s.
+// Auth shares the app Neon HTTP client (`getSql` / neonHttpDialect) with AbortError retries.
 const database = databaseUrl
-  ? createAuthPool(databaseUrl)
+  ? { dialect: neonHttpDialect(), type: "postgres" as const }
   : { dialect: pgliteDialect(() => getPglite()), type: "postgres" as const };
 
 /** Session token cookie name — also read by the live-preview popup completion page. */
