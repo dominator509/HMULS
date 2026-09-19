@@ -41,7 +41,7 @@ Never commit .env or secret values. Never put operator personal name/Gmail on pu
 | **Repo** | `dominator509/HMULS` — **keep PRIVATE** (`private-media/` = paid seed originals; a public GitHub repo makes them world-downloadable) |
 | **Production runtime** | Cloudflare Worker **`hmuls`** (Git-connected; Workers Builds from `main`) |
 | **DB** | Neon Postgres — Worker secret `DATABASE_URL` **must** use the **`-pooler`** host (`ep-…-pooler.…aws.neon.tech`). App SQL uses Neon HTTP `/sql` (AbortError/transient retries in `db.ts`); do not use long-lived node-postgres TCP from the Worker. |
-| **Auth** | Better Auth via `@neondatabase/serverless` Pool (`poolQueryViaFetch` / HTTP) + pooler URL (`preferNeonPoolerUrl`), `max: 1`, connect retries — **not** `pg` TCP |
+| **Auth** | Better Auth via `@neondatabase/serverless` Pool (`poolQueryViaFetch` / HTTP) + pooler URL (`preferNeonPoolerUrl`), `max: 1` — **not** `pg` TCP (do not monkey-patch Pool.query/connect) |
 | **Paid media** | Cloudflare R2 bucket `hmuls-vault` (binding `HMULS_VAULT`; REST token fallback); optional private Vercel Blob; collector reads only via `/api/media` |
 | **AI** | xAI Grok / Imagine (Studio) when `XAI_API_KEY` is set |
 | **Payments** | NOWPayments; IPN HMAC + amount/currency match; ~**98%** underpay tolerance |
