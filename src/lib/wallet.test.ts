@@ -6,13 +6,24 @@ describe("walletDeepLink phantom", () => {
   const addr = "So11111111111111111111111111111111111111112";
   const amount = "0.05";
 
-  it("with https checkoutUrl returns phantom.app/ul/browse + encoded https + ref", () => {
+  it("with pay address returns native solana: (not in-app browse)", () => {
     const checkoutUrl = "https://example.com/checkout/inv_123?x=1";
     const link = walletDeepLink("phantom", "SOL", addr, amount, { checkoutUrl });
+    assert.equal(link.startsWith("solana:"), true);
+    assert.match(link, new RegExp(addr));
+    assert.match(link, /amount=0\.05/);
+    assert.doesNotMatch(link, /phantom\.app\/ul\/browse/);
+  });
+
+  it("preferBrowse + https checkoutUrl returns phantom browse + encoded https + ref", () => {
+    const checkoutUrl = "https://example.com/checkout/inv_123?x=1";
+    const link = walletDeepLink("phantom", "SOL", addr, amount, {
+      checkoutUrl,
+      preferBrowse: true,
+    });
     assert.match(link, /^https:\/\/phantom\.app\/ul\/browse\//);
     assert.equal(link.includes(encodeURIComponent(checkoutUrl)), true);
     assert.equal(link.includes(`ref=${encodeURIComponent("https://example.com")}`), true);
-    // Never wrap solana: inside browse (blank screen).
     assert.doesNotMatch(link, /solana%3A/i);
     assert.doesNotMatch(link, /browse\/solana:/);
   });
@@ -25,25 +36,21 @@ describe("walletDeepLink phantom", () => {
     assert.doesNotMatch(link, /phantom\.app\/ul\/browse/);
   });
 
-  it("falls back to solana: when checkoutUrl is not https", () => {
+  it("preferBrowse falls back to solana: when checkoutUrl is not https", () => {
     const link = walletDeepLink("phantom", "SOL", addr, "0.1", {
       checkoutUrl: "http://localhost:3000/pay",
+      preferBrowse: true,
     });
     assert.equal(link.startsWith("solana:"), true);
     assert.doesNotMatch(link, /phantom\.app\/ul\/browse/);
   });
 
-  it("falls back to solana: when checkoutUrl is invalid", () => {
-    const link = walletDeepLink("phantom", "SOL", addr, "0.1", {
-      checkoutUrl: "not-a-url",
+  it("preferBrowse still opens browse when address is missing but checkout is https", () => {
+    const link = walletDeepLink("phantom", "SOL", "", "0.1", {
+      checkoutUrl: "https://example.com/checkout/x",
+      preferBrowse: true,
     });
-    assert.equal(link.startsWith("solana:"), true);
-    assert.doesNotMatch(link, /phantom\.app\/ul\/browse/);
-  });
-
-  it("falls back safely when address is missing", () => {
-    const link = walletDeepLink("phantom", "SOL", "", "0.1");
-    assert.doesNotMatch(link, /phantom\.app\/ul\/browse/);
+    assert.match(link, /^https:\/\/phantom\.app\/ul\/browse\//);
   });
 });
 
@@ -51,13 +58,23 @@ describe("walletDeepLink solflare", () => {
   const addr = "So11111111111111111111111111111111111111112";
   const amount = "0.05";
 
-  it("with https checkoutUrl returns solflare.com/ul/v1/browse + encoded https + ref", () => {
+  it("with pay address returns native solana: (not in-app browse)", () => {
     const checkoutUrl = "https://example.com/checkout/inv_123?x=1";
     const link = walletDeepLink("solflare", "SOL", addr, amount, { checkoutUrl });
+    assert.equal(link.startsWith("solana:"), true);
+    assert.match(link, new RegExp(addr));
+    assert.doesNotMatch(link, /solflare\.com\/ul\/v1\/browse/);
+  });
+
+  it("preferBrowse + https checkoutUrl returns solflare browse + encoded https + ref", () => {
+    const checkoutUrl = "https://example.com/checkout/inv_123?x=1";
+    const link = walletDeepLink("solflare", "SOL", addr, amount, {
+      checkoutUrl,
+      preferBrowse: true,
+    });
     assert.match(link, /^https:\/\/solflare\.com\/ul\/v1\/browse\//);
     assert.equal(link.includes(encodeURIComponent(checkoutUrl)), true);
     assert.equal(link.includes(`ref=${encodeURIComponent("https://example.com")}`), true);
-    // Never wrap solana: inside browse (blank screen).
     assert.doesNotMatch(link, /solana%3A/i);
     assert.doesNotMatch(link, /browse\/solana:/);
   });
@@ -70,25 +87,21 @@ describe("walletDeepLink solflare", () => {
     assert.doesNotMatch(link, /solflare\.com\/ul\/v1\/browse/);
   });
 
-  it("falls back to solana: when checkoutUrl is not https", () => {
+  it("preferBrowse falls back to solana: when checkoutUrl is not https", () => {
     const link = walletDeepLink("solflare", "SOL", addr, "0.1", {
       checkoutUrl: "http://localhost:3000/pay",
+      preferBrowse: true,
     });
     assert.equal(link.startsWith("solana:"), true);
     assert.doesNotMatch(link, /solflare\.com\/ul\/v1\/browse/);
   });
 
-  it("falls back to solana: when checkoutUrl is invalid", () => {
-    const link = walletDeepLink("solflare", "SOL", addr, "0.1", {
-      checkoutUrl: "not-a-url",
+  it("preferBrowse still opens browse when address is missing but checkout is https", () => {
+    const link = walletDeepLink("solflare", "SOL", "", "0.1", {
+      checkoutUrl: "https://example.com/checkout/x",
+      preferBrowse: true,
     });
-    assert.equal(link.startsWith("solana:"), true);
-    assert.doesNotMatch(link, /solflare\.com\/ul\/v1\/browse/);
-  });
-
-  it("falls back safely when address is missing", () => {
-    const link = walletDeepLink("solflare", "SOL", "", "0.1");
-    assert.doesNotMatch(link, /solflare\.com\/ul\/v1\/browse/);
+    assert.match(link, /^https:\/\/solflare\.com\/ul\/v1\/browse\//);
   });
 });
 

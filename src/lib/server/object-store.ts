@@ -22,6 +22,16 @@ export type R2BucketLike = {
     value: ArrayBuffer | ArrayBufferView | string | Blob | ReadableStream,
     options?: { httpMetadata?: { contentType?: string } },
   ) => Promise<unknown>;
+  /** Optional — used by seed sync to avoid N HEADs. */
+  list?: (opts: {
+    prefix?: string;
+    limit?: number;
+    cursor?: string;
+  }) => Promise<{
+    objects: Array<{ key: string }>;
+    truncated: boolean;
+    cursor?: string;
+  }>;
 };
 
 /**
@@ -288,15 +298,23 @@ function r2RestObjectUrl(objectKey: string) {
   return `https://api.cloudflare.com/client/v4/accounts/${account}/r2/buckets/${bucket}/objects/${encoded}`;
 }
 
-function r2RestListUrl(prefix: string) {
+function r2RestListUrl(prefix: string, perPage = 1, cursor?: string) {
   const account = r2AccountId();
   const bucket = r2BucketName();
   const u = new URL(
     `https://api.cloudflare.com/client/v4/accounts/${account}/r2/buckets/${bucket}/objects`,
   );
   u.searchParams.set("prefix", prefix);
-  u.searchParams.set("per_page", "1");
+  u.searchParams.set("per_page", String(perPage));
+  if (cursor) u.searchParams.set("cursor", cursor);
   return u.toString();
+}
+
+/** Bound every R2 REST fetch so a hung api.cloudflare.com cannot wedge the isolate. */
+const R2_REST_TIMEOUT_MS = 5_000;
+
+function r2RestSignal() {
+  return AbortSignal.timeout(R2_REST_TIMEOUT_MS);
 }
 
 async function r2RestPut(objectKey: string, bytes: Buffer, contentType: string) {
@@ -309,6 +327,7 @@ async function r2RestPut(objectKey: string, bytes: Buffer, contentType: string) 
       "content-type": contentType,
     },
     body: new Uint8Array(bytes),
+    signal: r2RestSignal(),
   });
   if (!res.ok) {
     const msg = await res.text().catch(() => "");
@@ -322,6 +341,7 @@ async function r2RestGet(objectKey: string): Promise<Buffer | null> {
   const res = await globalThis.fetch(r2RestObjectUrl(objectKey), {
     method: "GET",
     headers: { authorization: `Bearer ${token}` },
+    signal: r2RestSignal(),
   });
   if (res.status === 404) return null;
   if (!res.ok) {
@@ -341,6 +361,7 @@ async function r2RestHead(objectKey: string): Promise<boolean> {
     const headRes = await globalThis.fetch(r2RestObjectUrl(objectKey), {
       method: "HEAD",
       headers: { authorization: `Bearer ${token}` },
+      signal: r2RestSignal(),
     });
     if (headRes.status === 200 || headRes.status === 204) return true;
     if (headRes.status === 404) return false;
@@ -349,9 +370,10 @@ async function r2RestHead(objectKey: string): Promise<boolean> {
     /* try list */
   }
   try {
-    const listRes = await globalThis.fetch(r2RestListUrl(objectKey), {
+    const listRes = await globalThis.fetch(r2RestListUrl(objectKey, 1), {
       method: "GET",
       headers: { authorization: `Bearer ${token}` },
+      signal: r2RestSignal(),
     });
     if (!listRes.ok) return false;
     const json = (await listRes.json().catch(() => null)) as {
@@ -368,6 +390,76 @@ async function r2RestHead(objectKey: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * One (paginated) list of vault/* keys for seed sync — avoids N REST HEADs per cold start.
+ * Returns basenames (without the `vault/` prefix).
+ */
+async function listVaultBasenames(): Promise<Set<string> | null> {
+  const out = new Set<string>();
+  const prefix = "vault/";
+
+  const binding = await resolveR2Binding();
+  if (binding?.list) {
+    let cursor: string | undefined;
+    for (let page = 0; page < 20; page++) {
+      const res = await binding.list({ prefix, limit: 1000, cursor });
+      for (const obj of res.objects) {
+        if (obj.key.startsWith(prefix)) out.add(obj.key.slice(prefix.length));
+      }
+      if (!res.truncated) return out;
+      cursor = res.cursor;
+      if (!cursor) return out;
+    }
+    return out;
+  }
+
+  if (!r2RestConfigured()) return null;
+  const token = r2ApiToken();
+  if (!token) return null;
+  let cursor: string | undefined;
+  for (let page = 0; page < 20; page++) {
+    try {
+      const listRes = await globalThis.fetch(r2RestListUrl(prefix, 1000, cursor), {
+        method: "GET",
+        headers: { authorization: `Bearer ${token}` },
+        signal: r2RestSignal(),
+      });
+      if (!listRes.ok) {
+        console.error("[vault-sync] R2 list failed", listRes.status);
+        return out.size ? out : null;
+      }
+      const json = (await listRes.json().catch(() => null)) as {
+        success?: boolean;
+        result?: Array<{ key?: string }> | { objects?: Array<{ key?: string }>; truncated?: boolean; cursor?: string };
+        result_info?: { cursor?: string; is_truncated?: boolean };
+      } | null;
+      if (!json) return out.size ? out : null;
+      const items = Array.isArray(json.result)
+        ? json.result
+        : Array.isArray(json.result?.objects)
+          ? json.result.objects
+          : [];
+      for (const o of items) {
+        if (o.key?.startsWith(prefix)) out.add(o.key.slice(prefix.length));
+      }
+      const truncated = Boolean(
+        (typeof json.result === "object" && !Array.isArray(json.result) && json.result?.truncated) ||
+          json.result_info?.is_truncated,
+      );
+      cursor =
+        (typeof json.result === "object" && !Array.isArray(json.result) && json.result?.cursor) ||
+        json.result_info?.cursor ||
+        undefined;
+      if (!truncated) return out;
+      if (!cursor) return out;
+    } catch (err) {
+      console.error("[vault-sync] R2 list error", err);
+      return out.size ? out : null;
+    }
+  }
+  return out;
 }
 
 async function r2Put(objectKey: string, bytes: Buffer) {
@@ -752,7 +844,7 @@ async function listSeedVaultCandidates(): Promise<string[]> {
 
 /**
  * Bootstrap git private-media/ seed originals into R2 (preferred) or private Vercel Blob.
- * Idempotent: if the vault object already exists (HEAD), skip (never overwrite studio uploads).
+ * Idempotent: existence via one vault/ list (preferred) or HEAD; skip existing (never overwrite studio uploads).
  * No-ops without R2 or BLOB_READ_WRITE_TOKEN. Does not throw on per-file failures.
  */
 export async function syncBundledVaultOriginals(): Promise<{
@@ -768,9 +860,12 @@ export async function syncBundledVaultOriginals(): Promise<{
     return { uploaded, skipped, missing };
   }
   const names = await listSeedVaultCandidates();
+  // Prefer one vault/ list over N HEADs (Worker → api.cloudflare.com latency / 1101 risk).
+  const listed = await listVaultBasenames();
   for (const name of names) {
     try {
-      if (await privateOriginalExists(name)) {
+      const known = listed ? listed.has(name) : await privateOriginalExists(name);
+      if (known) {
         skipped.push(name);
         continue;
       }
@@ -781,6 +876,7 @@ export async function syncBundledVaultOriginals(): Promise<{
       }
       await putPrivateOriginal(name, bytes);
       uploaded.push(name);
+      listed?.add(name);
     } catch (err) {
       console.error("[vault-sync] file failed", name, err);
       missing.push(name);

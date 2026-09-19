@@ -48,12 +48,15 @@ export function PayWallet({
         toast.success("Wallet connected.");
         return;
       }
-      const link = walletDeepLink(id, inv.asset, inv.payAddress, inv.cryptoAmount, {
-        checkoutUrl: typeof window !== "undefined" ? window.location.href : undefined,
-      });
+      // Phantom/Solflare: native solana: pay URI (avoid in-app browse → logged-out site).
+      const link = walletDeepLink(id, inv.asset, inv.payAddress, inv.cryptoAmount);
       window.open(link, "_blank", "noopener,noreferrer");
       setOpen(false);
-      toast.message(`Opened ${opt.name}. Send to the invoice address, then mark sent.`);
+      toast.message(
+        inv.asset === "SOL"
+          ? `Opened ${opt.name} with Solana Pay. Confirm the amount, then mark sent here.`
+          : `Opened ${opt.name}. Send to the invoice address, then mark sent.`,
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not connect.");
     }
