@@ -262,7 +262,10 @@ describe("R2 binding preference", () => {
       const hit = store.get(key);
       if (!hit) return null;
       return {
-        arrayBuffer: async () => hit.buffer.slice(hit.byteOffset, hit.byteOffset + hit.byteLength),
+        arrayBuffer: async (): Promise<ArrayBuffer> => {
+          const copy = Uint8Array.from(hit);
+          return copy.buffer.slice(copy.byteOffset, copy.byteOffset + copy.byteLength);
+        },
         body: null,
       };
     },

@@ -147,9 +147,13 @@ export async function resolveR2Binding(): Promise<R2BucketLike | null> {
   if (testR2Bucket) return testR2Bucket;
   if (resolvedBinding !== undefined) return resolvedBinding;
   try {
-    const mod = await import(/* @vite-ignore */ "cloudflare:workers");
-    const env = (mod as { env?: Record<string, unknown> }).env;
-    const bucket = env?.HMULS_VAULT;
+    // Dynamic Function import avoids tsc resolving the Workers-only module.
+    const dynamicImport = new Function(
+      "specifier",
+      "return import(specifier)",
+    ) as (specifier: string) => Promise<{ env?: Record<string, unknown> }>;
+    const mod = await dynamicImport("cloudflare:workers");
+    const bucket = mod.env?.HMULS_VAULT;
     resolvedBinding = isR2Like(bucket) ? bucket : null;
   } catch {
     resolvedBinding = null;
