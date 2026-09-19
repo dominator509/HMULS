@@ -4,12 +4,21 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   blobWriteOptions,
+  encodeR2RestObjectKey,
   installBlobSdkForTests,
+  installR2BucketForTests,
+  privateOriginalExists,
   putPrivateOriginal,
   putPublicTeaser,
   putStampCache,
   readPrivateOriginal,
   readRuntimeFile,
+  r2Configured,
+  r2RestConfigured,
+  safeObjectKey,
+  stampObjectKey,
+  vaultObjectKey,
+  type R2BucketLike,
 } from "./object-store.ts";
 import { authorizeMediaGrant } from "./media-access.ts";
 
@@ -186,5 +195,126 @@ describe("paid blob privacy", () => {
     assert.doesNotMatch(src, /import\(["']@vercel\/blob["']\)/);
     assert.match(src, /globalThis\.fetch/);
     assert.match(src, /x-vercel-blob-access/);
+  });
+});
+
+describe("R2 path keys + configuration", () => {
+  it("safeObjectKey strips grant: and rejects traversal", () => {
+    assert.equal(safeObjectKey("grant:crv_1.jpg"), "crv_1.jpg");
+    assert.equal(safeObjectKey("/rev_1.jpg"), "rev_1.jpg");
+    assert.throws(() => safeObjectKey("../etc/passwd"));
+  });
+
+  it("vault and stamp object keys use plain basenames (not Blob HMAC paths)", () => {
+    assert.equal(vaultObjectKey("crv_1.jpg"), "vault/crv_1.jpg");
+    assert.equal(vaultObjectKey("grant:rev_1.jpg"), "vault/rev_1.jpg");
+    assert.equal(vaultObjectKey("nyx_crv_1.jpg"), "vault/nyx_crv_1.jpg");
+    assert.equal(stampObjectKey("user_abc", "shot_1"), "stamps/user_abc/shot_1.png");
+  });
+
+  it("encodeR2RestObjectKey keeps slash segments literal-separated", () => {
+    assert.equal(encodeR2RestObjectKey("vault/crv_1.jpg"), "vault/crv_1.jpg");
+    assert.equal(encodeR2RestObjectKey("stamps/u/s.png"), "stamps/u/s.png");
+  });
+
+  it("r2Configured / r2RestConfigured require account+bucket+token", () => {
+    const prev = {
+      account: process.env.R2_ACCOUNT_ID,
+      bucket: process.env.R2_BUCKET,
+      cf: process.env.CLOUDFLARE_API_TOKEN,
+      r2cf: process.env.R2_CF_API_TOKEN,
+    };
+    delete process.env.R2_ACCOUNT_ID;
+    delete process.env.R2_BUCKET;
+    delete process.env.CLOUDFLARE_API_TOKEN;
+    delete process.env.R2_CF_API_TOKEN;
+    assert.equal(r2RestConfigured(), false);
+    assert.equal(r2Configured(), false);
+    process.env.R2_ACCOUNT_ID = "8e4acc97dafd9496df937662d07aa0d5";
+    process.env.R2_BUCKET = "hmuls-vault";
+    process.env.CLOUDFLARE_API_TOKEN = "test-token";
+    assert.equal(r2RestConfigured(), true);
+    assert.equal(r2Configured(), true);
+    if (prev.account === undefined) delete process.env.R2_ACCOUNT_ID;
+    else process.env.R2_ACCOUNT_ID = prev.account;
+    if (prev.bucket === undefined) delete process.env.R2_BUCKET;
+    else process.env.R2_BUCKET = prev.bucket;
+    if (prev.cf === undefined) delete process.env.CLOUDFLARE_API_TOKEN;
+    else process.env.CLOUDFLARE_API_TOKEN = prev.cf;
+    if (prev.r2cf === undefined) delete process.env.R2_CF_API_TOKEN;
+    else process.env.R2_CF_API_TOKEN = prev.r2cf;
+  });
+});
+
+describe("R2 binding preference", () => {
+  const store = new Map<string, Buffer>();
+  let headCalls = 0;
+  let getCalls = 0;
+  let putCalls = 0;
+  const bucket: R2BucketLike = {
+    async head(key) {
+      headCalls += 1;
+      const hit = store.get(key);
+      return hit ? { key, size: hit.length } : null;
+    },
+    async get(key) {
+      getCalls += 1;
+      const hit = store.get(key);
+      if (!hit) return null;
+      return {
+        arrayBuffer: async () => hit.buffer.slice(hit.byteOffset, hit.byteOffset + hit.byteLength),
+        body: null,
+      };
+    },
+    async put(key, value) {
+      putCalls += 1;
+      const bytes =
+        typeof value === "string"
+          ? Buffer.from(value)
+          : Buffer.isBuffer(value)
+            ? value
+            : Buffer.from(value as ArrayBuffer);
+      store.set(key, Buffer.from(bytes));
+      return {};
+    },
+  };
+  let prevBlob: string | undefined;
+
+  before(() => {
+    prevBlob = process.env.BLOB_READ_WRITE_TOKEN;
+    delete process.env.BLOB_READ_WRITE_TOKEN;
+    installR2BucketForTests(bucket);
+  });
+
+  after(() => {
+    installR2BucketForTests(null);
+    if (prevBlob === undefined) delete process.env.BLOB_READ_WRITE_TOKEN;
+    else process.env.BLOB_READ_WRITE_TOKEN = prevBlob;
+  });
+
+  it("putPrivateOriginal writes vault/<basename> via R2 binding", async () => {
+    putCalls = 0;
+    const grant = await putPrivateOriginal("crv_1.jpg", Buffer.from("R2-ORIGINAL"));
+    assert.equal(grant, "grant:crv_1.jpg");
+    assert.equal(putCalls, 1);
+    assert.ok(store.has("vault/crv_1.jpg"));
+  });
+
+  it("privateOriginalExists uses HEAD not GET", async () => {
+    headCalls = 0;
+    getCalls = 0;
+    assert.equal(await privateOriginalExists("crv_1.jpg"), true);
+    assert.equal(headCalls >= 1, true);
+    assert.equal(getCalls, 0);
+  });
+
+  it("readPrivateOriginal reads from R2 binding", async () => {
+    const got = await readPrivateOriginal("crv_1.jpg");
+    assert.equal(got?.toString(), "R2-ORIGINAL");
+  });
+
+  it("putStampCache prefers stamps/<user>/<shot>.png on R2", async () => {
+    await putStampCache("user_x", "shot_y", Buffer.from("stamp-bytes"));
+    assert.ok(store.has("stamps/user_x/shot_y.png"));
   });
 });

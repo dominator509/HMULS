@@ -379,11 +379,11 @@ export const syncVaultOriginals = createServerFn({ method: "POST" })
     const sql = await getSql();
     await ensureCatalog(sql);
     await requireAdmin(sql, context.userId);
-    const { syncBundledVaultOriginalsToBlob, blobToken } = await import("./object-store");
-    if (!blobToken()) {
+    const { syncBundledVaultOriginals, blobToken, r2Ready } = await import("./object-store");
+    if (!(await r2Ready()) && !blobToken()) {
       return {
         ok: false as const,
-        error: "BLOB_READ_WRITE_TOKEN is not set.",
+        error: "R2 (HMULS_VAULT binding or CLOUDFLARE_API_TOKEN) or BLOB_READ_WRITE_TOKEN is not set.",
         uploaded: 0,
         skipped: 0,
         missing: 0,
@@ -392,7 +392,7 @@ export const syncVaultOriginals = createServerFn({ method: "POST" })
         missingNames: [] as string[],
       };
     }
-    const result = await syncBundledVaultOriginalsToBlob();
+    const result = await syncBundledVaultOriginals();
     return {
       ok: true as const,
       uploaded: result.uploaded.length,
