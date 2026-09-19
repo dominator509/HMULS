@@ -95,22 +95,61 @@ function toSql(run: Run): Sql {
   return sql;
 }
 
+/**
+ * Prefer Neon's PgBouncer host (`ep-…-pooler.…`) for protocol clients (Better Auth
+ * `@neondatabase/serverless` Pool). No-ops if already pooled or not a Neon URL.
+ * Also ensures `sslmode=require` when missing.
+ */
+export function preferNeonPoolerUrl(connectionString: string): string {
+  try {
+    const u = new URL(connectionString);
+    if (/\.neon\.tech$/i.test(u.hostname) && !/-pooler\./i.test(u.hostname)) {
+      // ep-name.region.aws.neon.tech → ep-name-pooler.region.aws.neon.tech
+      u.hostname = u.hostname.replace(/^(ep-[^.]+)\./i, "$1-pooler.");
+    }
+    if (!u.searchParams.has("sslmode")) u.searchParams.set("sslmode", "require");
+    return u.toString();
+  } catch {
+    return connectionString;
+  }
+}
+
+/** Neon HTTP `/sql` speaks to the compute host — strip `-pooler` from the URL host. */
 function neonHttpEndpoint(connectionString: string) {
   const asHttp = connectionString.replace(/^postgres(ql)?:/i, "https:");
-  return `https://${new URL(asHttp).hostname}/sql`;
+  const host = new URL(asHttp).hostname.replace(/-pooler\./i, ".");
+  return `https://${host}/sql`;
+}
+
+function isNeonTransientError(err: unknown): boolean {
+  if (!err) return false;
+  if (typeof err === "object" && err !== null && "name" in err) {
+    const name = String((err as { name?: string }).name ?? "");
+    if (name === "AbortError" || name === "TimeoutError") return true;
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    /aborted|abort|timeout|timed out|too many connections|ECONNRESET|ETIMEDOUT|fetch failed|network|503|502|429/i.test(
+      msg,
+    )
+  );
 }
 
 function createNeonSql(): Promise<Sql> {
   globalRef.__pgSqlPromise__ ??= (async () => {
-    const conn = databaseUrl as string;
+    // Header may be pooled; HTTP URL host is always the compute (non-pooler).
+    const conn = preferNeonPoolerUrl(databaseUrl as string);
     const endpoint = neonHttpEndpoint(conn);
     return toSql(async <T>(text: string, params: unknown[]) => {
-      const backoffsMs = [150, 400, 900];
+      // Per-attempt abort ~5s; up to 3 tries with backoff — cold wake should not
+      // fail on the first 8s abort (old behavior). Worst case ~16s < Worker limits.
+      const attemptTimeoutsMs = [5_000, 5_000, 5_000];
+      const backoffsMs = [200, 500];
       let lastErr: Error | undefined;
-      for (let attempt = 0; attempt <= backoffsMs.length; attempt += 1) {
+      for (let attempt = 0; attempt < attemptTimeoutsMs.length; attempt += 1) {
         const ac = new AbortController();
-        const timer = setTimeout(() => ac.abort(), 8000);
-        let res: Response;
+        const timer = setTimeout(() => ac.abort(), attemptTimeoutsMs[attempt]);
+        let res: Response | undefined;
         try {
           res = await fetch(endpoint, {
             method: "POST",
@@ -122,18 +161,24 @@ function createNeonSql(): Promise<Sql> {
             body: JSON.stringify({ query: text, params }),
             signal: ac.signal,
           });
+        } catch (err) {
+          const wrapped =
+            err instanceof Error ? err : new Error(String(err));
+          if (isNeonTransientError(wrapped) && attempt < attemptTimeoutsMs.length - 1) {
+            lastErr = wrapped;
+            await new Promise((r) => setTimeout(r, backoffsMs[attempt] ?? 500));
+            continue;
+          }
+          throw wrapped;
         } finally {
           clearTimeout(timer);
         }
         if (!res.ok) {
           const errText = await res.text();
           const err = new Error(`Neon HTTP ${res.status}: ${errText.slice(0, 240)}`);
-          const connectionStorm =
-            /too many connections/i.test(errText) ||
-            /too many connections/i.test(err.message);
-          if (connectionStorm && attempt < backoffsMs.length) {
+          if (isNeonTransientError(err) && attempt < attemptTimeoutsMs.length - 1) {
             lastErr = err;
-            await new Promise((r) => setTimeout(r, backoffsMs[attempt]));
+            await new Promise((r) => setTimeout(r, backoffsMs[attempt] ?? 500));
             continue;
           }
           throw err;
@@ -153,7 +198,7 @@ function createNeonSql(): Promise<Sql> {
           return out as T;
         });
       }
-      throw lastErr ?? new Error("Neon HTTP: exhausted connection-storm retries");
+      throw lastErr ?? new Error("Neon HTTP: exhausted transient retries");
     });
   })().catch((err) => {
     globalRef.__pgSqlPromise__ = undefined;

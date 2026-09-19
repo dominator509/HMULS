@@ -34,8 +34,14 @@ import { bearer, genericOAuth } from "better-auth/plugins";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { getCookie } from "@tanstack/react-start/server";
 import { randomBytes } from "node:crypto";
-import { Pool } from "pg";
-import { ensureDbReady, getPglite } from "../db";
+import { Pool, neonConfig } from "@neondatabase/serverless";
+import { ensureDbReady, getPglite, preferNeonPoolerUrl } from "../db";
+
+// Workers expose global WebSocket; Node 22+ may too. Local Neon auth without it
+// still typechecks — connect only happens when DATABASE_URL is set at runtime.
+if (typeof WebSocket !== "undefined") {
+  neonConfig.webSocketConstructor = WebSocket;
+}
 import { emailAndPasswordEnabled, emailAndPasswordConfig } from "./email-password";
 import { GATE_PROVIDER_ID, gateIdentitySessions } from "./gate-session.server";
 import { GROK_PROVIDERS } from "./providers";
@@ -180,14 +186,58 @@ const grokUserInfoUrl = `${issuerBase}/api/auth/oauth2/userinfo`;
 // SAME DB as app data, including email/password users. Both use the Better Auth
 // schema from `migrations/auth/0001_auth.sql`, copied into `migrations/` when
 // the app turns sign-in on.
+//
+// Cloudflare Workers: node-postgres TCP hangs (connectionTimeoutMillis → empty
+// 500 after ~8s). Use `@neondatabase/serverless` (WebSocket) + Neon **pooler**
+// host, max 1 connection per isolate, short connect timeout with retries.
+function isAuthDbTransient(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  const name = err instanceof Error ? err.name : "";
+  return (
+    name === "AbortError" ||
+    /timeout|timed out|ECONNRESET|ETIMEDOUT|CONNECTION_CLOSED|Connection terminated|fetch failed|network|too many connections|ConnectError|WebSocket/i.test(
+      msg,
+    )
+  );
+}
+
+function createAuthPool(connectionString: string): Pool {
+  const pool = new Pool({
+    connectionString: preferNeonPoolerUrl(connectionString),
+    max: 1,
+    idleTimeoutMillis: 5_000,
+    connectionTimeoutMillis: 4_000,
+    allowExitOnIdle: true,
+  });
+
+  const backoffsMs = [150, 400, 900];
+  const withRetry = <T>(run: () => Promise<T>): Promise<T> => {
+    const attempt = async (i: number): Promise<T> => {
+      try {
+        return await run();
+      } catch (err) {
+        if (!isAuthDbTransient(err) || i >= backoffsMs.length) throw err;
+        await new Promise((r) => setTimeout(r, backoffsMs[i]));
+        return attempt(i + 1);
+      }
+    };
+    return attempt(0);
+  };
+
+  // Better Auth calls pool.query / pool.connect — wrap both so a cold Neon or
+  // brief pooler blip retries instead of surfacing as an empty Worker 500.
+  const origQuery = pool.query.bind(pool) as (...args: unknown[]) => Promise<unknown>;
+  const origConnect = pool.connect.bind(pool) as (...args: unknown[]) => Promise<unknown>;
+  (pool as unknown as { query: typeof pool.query }).query = ((...args: unknown[]) =>
+    withRetry(() => origQuery(...args))) as typeof pool.query;
+  (pool as unknown as { connect: typeof pool.connect }).connect = ((...args: unknown[]) =>
+    withRetry(() => origConnect(...args))) as typeof pool.connect;
+
+  return pool;
+}
+
 const database = databaseUrl
-  ? new Pool({
-      connectionString: databaseUrl,
-      max: 1,
-      idleTimeoutMillis: 5_000,
-      connectionTimeoutMillis: 8_000,
-      allowExitOnIdle: true,
-    })
+  ? createAuthPool(databaseUrl)
   : { dialect: pgliteDialect(() => getPglite()), type: "postgres" as const };
 
 /** Session token cookie name — also read by the live-preview popup completion page. */
