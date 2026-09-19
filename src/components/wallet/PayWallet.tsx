@@ -48,8 +48,10 @@ export function PayWallet({
         toast.success("Wallet connected.");
         return;
       }
-      // Phantom/Solflare: native solana: pay URI (avoid in-app browse → logged-out site).
-      const link = walletDeepLink(id, inv.asset, inv.payAddress, inv.cryptoAmount);
+      // Branded Solana wallets must browse the HTTPS checkout, never a bare solana: URI.
+      const link = walletDeepLink(id, inv.asset, inv.payAddress, inv.cryptoAmount, {
+        checkoutUrl: window.location.href,
+      });
       window.open(link, "_blank", "noopener,noreferrer");
       setOpen(false);
       toast.message(

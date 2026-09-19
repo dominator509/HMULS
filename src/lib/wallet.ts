@@ -146,35 +146,29 @@ export function paymentUri(asset: CryptoAsset, address: string, amount: string, 
   }
 }
 
-function solBrowseDeepLink(
-  hostPath: string,
-  asset: CryptoAsset,
-  address: string,
-  amount: string,
-  opts?: { checkoutUrl?: string },
-) {
-  const uri = paymentUri(asset, address, amount);
-  // browse requires an https URL — do NOT wrap solana: (blank screen).
-  if (asset === "SOL" && opts?.checkoutUrl) {
-    try {
-      const checkout = new URL(opts.checkoutUrl);
-      if (checkout.protocol === "https:") {
-        const browseUrl = encodeURIComponent(checkout.href);
-        const ref = encodeURIComponent(checkout.origin);
-        return `https://${hostPath}/${browseUrl}?ref=${ref}`;
-      }
-    } catch {
-      // fall through to raw solana: pay URI
-    }
+function solBrowseDeepLink(hostPath: string, checkoutUrl?: string) {
+  if (!checkoutUrl) {
+    throw new Error("Phantom and Solflare links require an HTTPS checkout URL.");
   }
-  if (!address?.trim()) return uri;
-  return uri;
+
+  let checkout: URL;
+  try {
+    checkout = new URL(checkoutUrl);
+  } catch {
+    throw new Error("Phantom and Solflare links require an HTTPS checkout URL.");
+  }
+  // browse requires an https URL — do NOT wrap solana: (blank screen).
+  if (checkout.protocol !== "https:") {
+    throw new Error("Phantom and Solflare links require an HTTPS checkout URL.");
+  }
+
+  const browseUrl = encodeURIComponent(checkout.href);
+  const ref = encodeURIComponent(checkout.origin);
+  return `https://${hostPath}/${browseUrl}?ref=${ref}`;
 }
 
 export type WalletDeepLinkOpts = {
   checkoutUrl?: string;
-  /** When true, Phantom/Solflare open https checkout in-wallet (logged-out). Default: native solana: pay. */
-  preferBrowse?: boolean;
 };
 
 export function walletDeepLink(
@@ -205,17 +199,9 @@ export function walletDeepLink(
       }
       return `https://link.trustwallet.com/send?address=${address}&amount=${amount}`;
     case "phantom":
-      // Prefer native Solana Pay when we already have address+amount — wallet in-app
-      // browse opens sheundresses logged-out (no shared cookies) and hit auth hangs.
-      if (asset === "SOL" && address?.trim() && !opts?.preferBrowse) {
-        return uri;
-      }
-      return solBrowseDeepLink("phantom.app/ul/browse", asset, address, amount, opts);
+      return solBrowseDeepLink("phantom.app/ul/browse", opts?.checkoutUrl);
     case "solflare":
-      if (asset === "SOL" && address?.trim() && !opts?.preferBrowse) {
-        return uri;
-      }
-      return solBrowseDeepLink("solflare.com/ul/v1/browse", asset, address, amount, opts);
+      return solBrowseDeepLink("solflare.com/ul/v1/browse", opts?.checkoutUrl);
     default:
       return uri;
   }
@@ -284,14 +270,14 @@ export const WALLET_OPTIONS: WalletOption[] = [
   {
     id: "phantom",
     name: "Phantom",
-    hint: "Opens Solana Pay in Phantom (no in-app browser login).",
+    hint: "Opens in Phantom (may ask you to sign in again in-app).",
     kind: "deeplink",
     assets: ["SOL"],
   },
   {
     id: "solflare",
     name: "Solflare",
-    hint: "Opens Solana Pay in Solflare (no in-app browser login).",
+    hint: "Opens in Solflare (may ask you to sign in again in-app).",
     kind: "deeplink",
     assets: ["SOL"],
   },
