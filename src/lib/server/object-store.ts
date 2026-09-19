@@ -1,5 +1,5 @@
 import { access, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { constants } from "node:fs";
+import { constants, existsSync, readdirSync } from "node:fs";
 import { createHmac } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -8,7 +8,36 @@ import { isInside } from "../safe-path.ts";
 
 export type BlobAccess = "public" | "private";
 
+/**
+ * Roots where vite `copy-private-media` (and local/dev) may place seed originals.
+ * Order: cwd first, then Nitro `.output/server`, then Vercel function bundles.
+ */
+export function privateMediaDirCandidates(): string[] {
+  const cwd = process.cwd();
+  const roots: string[] = [
+    resolve(cwd, "private-media"),
+    resolve(cwd, ".output/server/private-media"),
+    resolve(cwd, ".output/private-media"),
+  ];
+  const fnRoot = resolve(cwd, ".vercel/output/functions");
+  if (existsSync(fnRoot)) {
+    try {
+      for (const ent of readdirSync(fnRoot, { withFileTypes: true })) {
+        if (!ent.isDirectory()) continue;
+        roots.push(join(fnRoot, ent.name, "private-media"));
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return roots;
+}
+
+/** First existing private-media root, else cwd/private-media (for mkdir writes). */
 export function privateMediaDir() {
+  for (const root of privateMediaDirCandidates()) {
+    if (existsSync(root)) return root;
+  }
   return resolve(process.cwd(), "private-media");
 }
 
@@ -210,8 +239,7 @@ async function blobRead(kind: "vault" | "stamps" | "media", name: string): Promi
 
 export async function readPrivateOriginal(key: string): Promise<Buffer | null> {
   const name = safeKey(key);
-  const bundled = join(privateMediaDir(), name);
-  const fromDisk = await readFileIfInside(privateMediaDir(), bundled);
+  const fromDisk = await readDiskBundledOriginal(name);
   if (fromDisk) return fromDisk;
 
   const fromBlob = await blobRead("vault", name);
@@ -322,8 +350,11 @@ export async function putStampCache(userId: string, shotId: string, bytes: Buffe
 
 export function resolveBundledOriginal(key: string) {
   const name = safeKey(key);
-  const bundled = join(privateMediaDir(), name);
-  return isInside(privateMediaDir(), bundled) ? bundled : null;
+  for (const root of privateMediaDirCandidates()) {
+    const bundled = join(root, name);
+    if (isInside(root, bundled) && existsSync(bundled)) return bundled;
+  }
+  return null;
 }
 
 
@@ -341,21 +372,27 @@ export function seedVaultOriginalFilenames(): string[] {
 
 async function readDiskBundledOriginal(name: string): Promise<Buffer | null> {
   const key = safeKey(name);
-  const bundled = join(privateMediaDir(), key);
-  return readFileIfInside(privateMediaDir(), bundled);
+  for (const root of privateMediaDirCandidates()) {
+    const bundled = join(root, key);
+    const bytes = await readFileIfInside(root, bundled);
+    if (bytes) return bytes;
+  }
+  return null;
 }
 
 async function listSeedVaultCandidates(): Promise<string[]> {
   const set = new Set(seedVaultOriginalFilenames());
-  try {
-    const names = await readdir(privateMediaDir());
-    for (const n of names) {
-      if (!/\.(jpe?g|png|webp|mp4|webm)$/i.test(n)) continue;
-      if (n.includes("..") || n.includes("/") || n.includes("\\")) continue;
-      set.add(n);
+  for (const root of privateMediaDirCandidates()) {
+    try {
+      const names = await readdir(root);
+      for (const n of names) {
+        if (!/\.(jpe?g|png|webp|mp4|webm)$/i.test(n)) continue;
+        if (n.includes("..") || n.includes("/") || n.includes("\\")) continue;
+        set.add(n);
+      }
+    } catch {
+      /* Cloudflare Worker / read-only deploy may have no private-media disk. */
     }
-  } catch {
-    /* Cloudflare Worker / read-only deploy may have no private-media disk. */
   }
   return [...set].sort();
 }
