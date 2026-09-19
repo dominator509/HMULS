@@ -297,22 +297,23 @@ describe("R2 binding preference", () => {
 
   it("putPrivateOriginal writes vault/<basename> via R2 binding", async () => {
     putCalls = 0;
-    const grant = await putPrivateOriginal("crv_1.jpg", Buffer.from("R2-ORIGINAL"));
-    assert.equal(grant, "grant:crv_1.jpg");
+    // Use a key that is NOT shipped in private-media/ so disk does not short-circuit.
+    const grant = await putPrivateOriginal("audit_r2_only.jpg", Buffer.from("R2-ORIGINAL"));
+    assert.equal(grant, "grant:audit_r2_only.jpg");
     assert.equal(putCalls, 1);
-    assert.ok(store.has("vault/crv_1.jpg"));
+    assert.ok(store.has("vault/audit_r2_only.jpg"));
   });
 
   it("privateOriginalExists uses HEAD not GET", async () => {
     headCalls = 0;
     getCalls = 0;
-    assert.equal(await privateOriginalExists("crv_1.jpg"), true);
+    assert.equal(await privateOriginalExists("audit_r2_only.jpg"), true);
     assert.equal(headCalls >= 1, true);
     assert.equal(getCalls, 0);
   });
 
   it("readPrivateOriginal reads from R2 binding", async () => {
-    const got = await readPrivateOriginal("crv_1.jpg");
+    const got = await readPrivateOriginal("audit_r2_only.jpg");
     assert.equal(got?.toString(), "R2-ORIGINAL");
   });
 
