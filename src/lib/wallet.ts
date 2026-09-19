@@ -151,6 +151,7 @@ export function walletDeepLink(
   asset: CryptoAsset,
   address: string,
   amount: string,
+  opts?: { checkoutUrl?: string },
 ) {
   const uri = paymentUri(asset, address, amount);
   const encoded = encodeURIComponent(uri);
@@ -173,9 +174,21 @@ export function walletDeepLink(
       }
       return `https://link.trustwallet.com/send?address=${address}&amount=${amount}`;
     case "phantom":
-      // phantom.app/ul/browse is for https dApp URLs in the in-app browser.
-      // Wrapping a solana: Pay URI there opens a blank black screen.
-      // Prefer the raw Solana Pay URI so iOS/Android hand off to Phantom (or any solana: handler).
+      // Prefer Phantom universal browse so iOS/Android open Phantom specifically
+      // (raw solana: is shared; OS may hand it to Base/Coinbase Wallet).
+      // browse requires an https URL — do NOT wrap solana: (blank screen).
+      if (asset === "SOL" && opts?.checkoutUrl) {
+        try {
+          const checkout = new URL(opts.checkoutUrl);
+          if (checkout.protocol === "https:") {
+            const browseUrl = encodeURIComponent(checkout.href);
+            const ref = encodeURIComponent(checkout.origin);
+            return `https://phantom.app/ul/browse/${browseUrl}?ref=${ref}`;
+          }
+        } catch {
+          // fall through to raw solana: pay URI
+        }
+      }
       if (!address?.trim()) return uri;
       return uri;
     default:
@@ -246,7 +259,7 @@ export const WALLET_OPTIONS: WalletOption[] = [
   {
     id: "phantom",
     name: "Phantom",
-    hint: "Opens Solana Pay (address + amount). If the app stays blank, copy the solana: link below.",
+    hint: "Opens this invoice in the Phantom app. Copy the solana: link below if you prefer Solana Pay / another wallet.",
     kind: "deeplink",
     assets: ["SOL"],
   },
