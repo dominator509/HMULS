@@ -190,7 +190,7 @@ const grokUserInfoUrl = `${issuerBase}/api/auth/oauth2/userinfo`;
 // the app turns sign-in on.
 //
 // Cloudflare Workers: node-postgres TCP hangs (connectionTimeoutMillis → empty
-// 500 after ~8s). Use `@neondatabase/serverless` (WebSocket) + Neon **pooler**
+// 500 after ~8s). Use `@neondatabase/serverless` (HTTP via poolQueryViaFetch) + Neon **pooler**
 // host, max 1 connection per isolate, short connect timeout with retries.
 function isAuthDbTransient(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
