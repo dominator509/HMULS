@@ -193,7 +193,7 @@ export function PayWallet({
               Open a wallet with this invoice
             </h3>
             <p className="mt-2 text-sm text-muted">
-              Deeplinks fill the address and amount. A wallet signature is not payment — unlock waits until this invoice confirms.
+              Pick an app, or copy the pay link for any other wallet.
             </p>
             <ul className="mt-5 space-y-2">
               {options.map((w) => (
@@ -223,10 +223,10 @@ export function PayWallet({
                     className="mt-2 inline-flex items-center gap-1 text-xs text-gold"
                     onClick={() => {
                       void navigator.clipboard.writeText(uri);
-                      toast.success("Solana Pay link copied.");
+                      toast.success("Pay link copied.");
                     }}
                   >
-                    <Copy className="size-3" /> Copy Solana Pay link
+                    <Copy className="size-3" /> Copy pay link / other wallet
                   </button>
                 ) : null}
               </div>
