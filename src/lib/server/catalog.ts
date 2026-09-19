@@ -55,10 +55,15 @@ type ShotRow = {
 
 let seedPromise: Promise<void> | null = null;
 let vaultBlobSyncPromise: Promise<void> | null = null;
+let liveCountsPromise: Promise<void> | null = null;
+let liveCountsAt = 0;
 let copySynced = false;
 let voiceColsReady = false;
 let grantVaultSynced = false;
 export let grantVaultReady = false;
+
+/** Don't hammer Neon with full-ladder count UPDATEs on every ensureCatalog. */
+const LIVE_COUNTS_MIN_INTERVAL_MS = 60_000;
 
 async function ensureVoiceColumns(_sql: Sql) {
   // Voice columns already applied via migrations. Skipping ALTER on Workers.
@@ -212,7 +217,25 @@ export async function ensureCatalog(sql: Sql) {
     grantVaultReady = true;
   }
   void ensureVaultBlobSeedSync();
-  await syncLiveCounts(sql);
+  // Live collector counts are nice-to-have UI; awaiting them on every catalog
+  // touch (login getPsychology, getMyRole, …) saturated Neon HTTP (8s abort in
+  // db.ts) and produced empty 500s on /api/auth/sign-in/email.
+  void scheduleLiveCounts(sql);
+}
+
+function scheduleLiveCounts(sql: Sql) {
+  const now = Date.now();
+  if (liveCountsPromise) return liveCountsPromise;
+  if (now - liveCountsAt < LIVE_COUNTS_MIN_INTERVAL_MS) return Promise.resolve();
+  liveCountsAt = now;
+  liveCountsPromise = syncLiveCounts(sql)
+    .catch((err) => {
+      console.error("[catalog] syncLiveCounts failed", err);
+    })
+    .finally(() => {
+      liveCountsPromise = null;
+    });
+  return liveCountsPromise;
 }
 
 async function syncLiveCounts(sql: Sql) {
