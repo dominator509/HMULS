@@ -2,112 +2,58 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { paymentUri, walletDeepLink } from "./wallet.ts";
 
+const checkoutUrl = "https://example.com/checkout/inv_123?x=1";
+const addr = "So11111111111111111111111111111111111111112";
+const amount = "0.05";
+
+function assertBrowseLink(link: string, hostPath: string) {
+  assert.equal(
+    link,
+    `https://${hostPath}/${encodeURIComponent(checkoutUrl)}?ref=${encodeURIComponent("https://example.com")}`,
+  );
+  assert.doesNotMatch(link, /solana:/i);
+  assert.doesNotMatch(link, /browse\/solana:/i);
+}
+
 describe("walletDeepLink phantom", () => {
-  const addr = "So11111111111111111111111111111111111111112";
-  const amount = "0.05";
-
-  it("with pay address returns native solana: (not in-app browse)", () => {
-    const checkoutUrl = "https://example.com/checkout/inv_123?x=1";
+  it("returns a Phantom browse link for an HTTPS checkout", () => {
     const link = walletDeepLink("phantom", "SOL", addr, amount, { checkoutUrl });
-    assert.equal(link.startsWith("solana:"), true);
-    assert.match(link, new RegExp(addr));
-    assert.match(link, /amount=0\.05/);
-    assert.doesNotMatch(link, /phantom\.app\/ul\/browse/);
+    assertBrowseLink(link, "phantom.app/ul/browse");
   });
 
-  it("preferBrowse + https checkoutUrl returns phantom browse + encoded https + ref", () => {
-    const checkoutUrl = "https://example.com/checkout/inv_123?x=1";
-    const link = walletDeepLink("phantom", "SOL", addr, amount, {
-      checkoutUrl,
-      preferBrowse: true,
-    });
-    assert.match(link, /^https:\/\/phantom\.app\/ul\/browse\//);
-    assert.equal(link.includes(encodeURIComponent(checkoutUrl)), true);
-    assert.equal(link.includes(`ref=${encodeURIComponent("https://example.com")}`), true);
-    assert.doesNotMatch(link, /solana%3A/i);
-    assert.doesNotMatch(link, /browse\/solana:/);
-  });
-
-  it("without checkoutUrl returns raw solana: pay URI", () => {
-    const link = walletDeepLink("phantom", "SOL", addr, amount);
-    assert.equal(link.startsWith("solana:"), true);
-    assert.match(link, new RegExp(addr));
-    assert.match(link, /amount=0\.05/);
-    assert.doesNotMatch(link, /phantom\.app\/ul\/browse/);
-  });
-
-  it("preferBrowse falls back to solana: when checkoutUrl is not https", () => {
-    const link = walletDeepLink("phantom", "SOL", addr, "0.1", {
-      checkoutUrl: "http://localhost:3000/pay",
-      preferBrowse: true,
-    });
-    assert.equal(link.startsWith("solana:"), true);
-    assert.doesNotMatch(link, /phantom\.app\/ul\/browse/);
-  });
-
-  it("preferBrowse still opens browse when address is missing but checkout is https", () => {
-    const link = walletDeepLink("phantom", "SOL", "", "0.1", {
-      checkoutUrl: "https://example.com/checkout/x",
-      preferBrowse: true,
-    });
-    assert.match(link, /^https:\/\/phantom\.app\/ul\/browse\//);
+  it("requires an HTTPS checkout URL instead of returning solana:", () => {
+    assert.throws(
+      () => walletDeepLink("phantom", "SOL", addr, amount),
+      /require an HTTPS checkout URL/,
+    );
+    assert.throws(
+      () => walletDeepLink("phantom", "SOL", addr, amount, { checkoutUrl: "http://localhost:3000/pay" }),
+      /require an HTTPS checkout URL/,
+    );
   });
 });
 
 describe("walletDeepLink solflare", () => {
-  const addr = "So11111111111111111111111111111111111111112";
-  const amount = "0.05";
-
-  it("with pay address returns native solana: (not in-app browse)", () => {
-    const checkoutUrl = "https://example.com/checkout/inv_123?x=1";
+  it("returns a Solflare browse link for an HTTPS checkout", () => {
     const link = walletDeepLink("solflare", "SOL", addr, amount, { checkoutUrl });
-    assert.equal(link.startsWith("solana:"), true);
-    assert.match(link, new RegExp(addr));
-    assert.doesNotMatch(link, /solflare\.com\/ul\/v1\/browse/);
+    assertBrowseLink(link, "solflare.com/ul/v1/browse");
   });
 
-  it("preferBrowse + https checkoutUrl returns solflare browse + encoded https + ref", () => {
-    const checkoutUrl = "https://example.com/checkout/inv_123?x=1";
-    const link = walletDeepLink("solflare", "SOL", addr, amount, {
-      checkoutUrl,
-      preferBrowse: true,
-    });
-    assert.match(link, /^https:\/\/solflare\.com\/ul\/v1\/browse\//);
-    assert.equal(link.includes(encodeURIComponent(checkoutUrl)), true);
-    assert.equal(link.includes(`ref=${encodeURIComponent("https://example.com")}`), true);
-    assert.doesNotMatch(link, /solana%3A/i);
-    assert.doesNotMatch(link, /browse\/solana:/);
-  });
-
-  it("without checkoutUrl returns raw solana: pay URI", () => {
-    const link = walletDeepLink("solflare", "SOL", addr, amount);
-    assert.equal(link.startsWith("solana:"), true);
-    assert.match(link, new RegExp(addr));
-    assert.match(link, /amount=0\.05/);
-    assert.doesNotMatch(link, /solflare\.com\/ul\/v1\/browse/);
-  });
-
-  it("preferBrowse falls back to solana: when checkoutUrl is not https", () => {
-    const link = walletDeepLink("solflare", "SOL", addr, "0.1", {
-      checkoutUrl: "http://localhost:3000/pay",
-      preferBrowse: true,
-    });
-    assert.equal(link.startsWith("solana:"), true);
-    assert.doesNotMatch(link, /solflare\.com\/ul\/v1\/browse/);
-  });
-
-  it("preferBrowse still opens browse when address is missing but checkout is https", () => {
-    const link = walletDeepLink("solflare", "SOL", "", "0.1", {
-      checkoutUrl: "https://example.com/checkout/x",
-      preferBrowse: true,
-    });
-    assert.match(link, /^https:\/\/solflare\.com\/ul\/v1\/browse\//);
+  it("requires an HTTPS checkout URL instead of returning solana:", () => {
+    assert.throws(
+      () => walletDeepLink("solflare", "SOL", addr, amount),
+      /require an HTTPS checkout URL/,
+    );
+    assert.throws(
+      () => walletDeepLink("solflare", "SOL", addr, amount, { checkoutUrl: "http://localhost:3000/pay" }),
+      /require an HTTPS checkout URL/,
+    );
   });
 });
 
 describe("paymentUri SOL", () => {
-  it("builds native Solana Pay URI with decimal amount", () => {
-    const uri = paymentUri("SOL", "So11111111111111111111111111111111111111112", "1.25");
+  it("builds native Solana Pay URI with decimal amount for copy escape hatch", () => {
+    const uri = paymentUri("SOL", addr, "1.25");
     assert.equal(uri.startsWith("solana:"), true);
     assert.match(uri, /amount=1\.25/);
     assert.doesNotMatch(uri, /spl-token/);
