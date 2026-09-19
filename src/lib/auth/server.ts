@@ -37,8 +37,10 @@ import { randomBytes } from "node:crypto";
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import { ensureDbReady, getPglite, preferNeonPoolerUrl } from "../db";
 
-// Workers expose global WebSocket; Node 22+ may too. Local Neon auth without it
-// still typechecks — connect only happens when DATABASE_URL is set at runtime.
+// Cloudflare Workers: prefer HTTP for Pool queries (no sticky WebSocket).
+// WebSocket pools were flipping 401 ↔ CF 1101 under load; fetch is the
+// serverless-safe transport and matches app SQL (Neon HTTP).
+neonConfig.poolQueryViaFetch = true;
 if (typeof WebSocket !== "undefined") {
   neonConfig.webSocketConstructor = WebSocket;
 }
