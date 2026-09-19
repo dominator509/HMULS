@@ -83,6 +83,19 @@ function dispositionHeaders(request: Request, contentType: string): Record<strin
   };
 }
 
+
+/** Reject tiny/corrupt stamp cache buffers so we fall through to vault originals. */
+function looksLikeImageBytes(bytes: Buffer | Uint8Array): boolean {
+  if (bytes.length < 512) return false;
+  // PNG \x89PNG
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+    return true;
+  }
+  // JPEG FF D8 FF
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return true;
+  return false;
+}
+
 export const Route = createFileRoute("/api/media/$shotId")({
   server: {
     handlers: {
@@ -122,7 +135,7 @@ export const Route = createFileRoute("/api/media/$shotId")({
             mediaType: row.media_type,
           }).catch((err) => console.error("[media] stamp mint failed", err));
           const cached = await stamp.readStampCache(userId, shotId);
-          if (cached) {
+          if (cached && looksLikeImageBytes(cached)) {
             const type = "image/png";
             return new Response(new Uint8Array(cached), {
               headers: {
@@ -161,7 +174,10 @@ export const Route = createFileRoute("/api/media/$shotId")({
         }
 
         const path = stamp.resolveMediaPath(row.media_url);
-        if (!path) return new Response("Media missing.", { status: 404, headers: ROBOTS });
+        if (!path) {
+          console.error("[media] Media missing", { shotId, media_url: row.media_url });
+          return new Response("Media missing.", { status: 404, headers: ROBOTS });
+        }
         try {
           const { readFile, stat } = await import("node:fs/promises");
           await stat(path);
@@ -175,6 +191,7 @@ export const Route = createFileRoute("/api/media/$shotId")({
             },
           });
         } catch {
+          console.error("[media] Media missing", { shotId, media_url: row.media_url });
           return new Response("Media missing.", { status: 404, headers: ROBOTS });
         }
       },
