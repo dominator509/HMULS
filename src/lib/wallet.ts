@@ -146,29 +146,72 @@ export function paymentUri(asset: CryptoAsset, address: string, amount: string, 
   }
 }
 
-function solBrowseDeepLink(hostPath: string, checkoutUrl?: string) {
-  if (!checkoutUrl) {
-    throw new Error("Phantom and Solflare links require an HTTPS checkout URL.");
-  }
+/** Phantom Android applicationId — pins Solana Pay away from other solana: handlers. */
+export const PHANTOM_ANDROID_PACKAGE = "app.phantom";
+/** Solflare Android applicationId. */
+export const SOLFLARE_ANDROID_PACKAGE = "com.solflare.mobile";
 
-  let checkout: URL;
-  try {
-    checkout = new URL(checkoutUrl);
-  } catch {
-    throw new Error("Phantom and Solflare links require an HTTPS checkout URL.");
-  }
-  // browse requires an https URL — do NOT wrap solana: (blank screen).
-  if (checkout.protocol !== "https:") {
-    throw new Error("Phantom and Solflare links require an HTTPS checkout URL.");
-  }
+export function isAndroidUserAgent(
+  ua: string = typeof navigator !== "undefined" ? navigator.userAgent : "",
+): boolean {
+  return /Android/i.test(ua);
+}
 
-  const browseUrl = encodeURIComponent(checkout.href);
-  const ref = encodeURIComponent(checkout.origin);
-  return `https://${hostPath}/${browseUrl}?ref=${ref}`;
+/**
+ * Android Intent URL that opens a Solana Pay transfer in a *specific* wallet.
+ * Bare `solana:` is a shared scheme (other wallets can hijack it). Package-scoped
+ * intents do not open sheundresses.com in an in-app browser.
+ */
+export function androidSolanaPayIntent(solanaUri: string, androidPackage: string): string {
+  if (!solanaUri.startsWith("solana:")) {
+    throw new Error("Expected a solana: pay URI");
+  }
+  const pathAndQuery = solanaUri.slice("solana:".length);
+  return `intent://${pathAndQuery}#Intent;scheme=solana;package=${androidPackage};end`;
+}
+
+export type SolWalletLaunch =
+  | { kind: "open"; href: string; uri: string; message: string }
+  | { kind: "copy"; uri: string; message: string };
+
+/**
+ * How to open Phantom / Solflare for SOL unlock without forcing a logged-out
+ * in-app browser session on sheundresses.com.
+ *
+ * Research note (2026-09): Phantom/Solflare branded ULs are connect/sign*
+ * (encrypted sessions) or `…/ul/browse/<https-url>` (in-app browser). There is
+ * no branded HTTPS deeplink that pre-fills a native Solana Pay send. On Android
+ * we package-pin the shared `solana:` scheme; elsewhere we copy the pay link.
+ */
+export function launchSolWallet(
+  wallet: "phantom" | "solflare",
+  address: string,
+  amount: string,
+  opts?: { userAgent?: string },
+): SolWalletLaunch {
+  const uri = paymentUri("SOL", address, amount);
+  const ua = opts?.userAgent ?? (typeof navigator !== "undefined" ? navigator.userAgent : "");
+  const name = wallet === "phantom" ? "Phantom" : "Solflare";
+  const pkg = wallet === "phantom" ? PHANTOM_ANDROID_PACKAGE : SOLFLARE_ANDROID_PACKAGE;
+  if (isAndroidUserAgent(ua)) {
+    return {
+      kind: "open",
+      href: androidSolanaPayIntent(uri, pkg),
+      uri,
+      message: `Opening ${name} to send. Confirm the amount, then mark sent here.`,
+    };
+  }
+  return {
+    kind: "copy",
+    uri,
+    message: `Pay link copied. Open ${name} → paste or scan Solana Pay. Do not re-open this site inside the wallet browser (separate sign-in).`,
+  };
 }
 
 export type WalletDeepLinkOpts = {
   checkoutUrl?: string;
+  /** Optional UA override for tests / SSR. */
+  userAgent?: string;
 };
 
 export function walletDeepLink(
@@ -199,9 +242,12 @@ export function walletDeepLink(
       }
       return `https://link.trustwallet.com/send?address=${address}&amount=${amount}`;
     case "phantom":
-      return solBrowseDeepLink("phantom.app/ul/browse", opts?.checkoutUrl);
-    case "solflare":
-      return solBrowseDeepLink("solflare.com/ul/v1/browse", opts?.checkoutUrl);
+    case "solflare": {
+      // Prefer native / copy — never default to wallet in-app browse (logged-out).
+      if (asset !== "SOL") return uri;
+      const launch = launchSolWallet(wallet, address, amount, { userAgent: opts?.userAgent });
+      return launch.kind === "open" ? launch.href : launch.uri;
+    }
     default:
       return uri;
   }
@@ -270,14 +316,14 @@ export const WALLET_OPTIONS: WalletOption[] = [
   {
     id: "phantom",
     name: "Phantom",
-    hint: "Opens in Phantom (may ask you to sign in again in-app).",
+    hint: "Android: native send. Other devices: copies the pay link (no in-app site login).",
     kind: "deeplink",
     assets: ["SOL"],
   },
   {
     id: "solflare",
     name: "Solflare",
-    hint: "Opens in Solflare (may ask you to sign in again in-app).",
+    hint: "Android: native send. Other devices: copies the pay link (no in-app site login).",
     kind: "deeplink",
     assets: ["SOL"],
   },
