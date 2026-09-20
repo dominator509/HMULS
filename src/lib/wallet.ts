@@ -1,5 +1,6 @@
 import type { CryptoAsset } from "./types";
 import { formatSolAmount, isSolanaAddress, solToLamports } from "./sol-amount.ts";
+import { startSolMobileConnect } from "./sol-mobile-deeplink.ts";
 
 export { formatSolAmount, isSolanaAddress, solToLamports } from "./sol-amount.ts";
 
@@ -188,10 +189,12 @@ export type SolWalletLaunch =
  * How to open Phantom / Solflare for SOL unlock without forcing a logged-out
  * in-app browser session on sheundresses.com.
  *
- * Research note (2026-09): Phantom/Solflare branded ULs are connect/sign*
- * (encrypted sessions) or `…/ul/browse/<https-url>` (in-app browser). There is
- * no branded HTTPS deeplink that pre-fills a native Solana Pay send. On Android
- * we package-pin the shared `solana:` scheme; elsewhere we copy the pay link.
+ * - Android: package-scoped `intent://` Solana Pay (native send; not Base).
+ * - iOS: branded HTTPS universal links — `https://phantom.app/ul/v1/connect`
+ *   then `…/signAndSendTransaction` (encrypted session). Never bare `solana:`
+ *   (iOS has no chooser; Base hijacks the shared scheme).
+ * - Desktop: extension `sendSolWithWallet`; copy is fallback only.
+ * - Never `…/ul/browse/<checkout>` as the primary pay path (logged-out WebView).
  */
 export function isMobileUserAgent(
   ua: string = typeof navigator !== "undefined" ? navigator.userAgent : "",
@@ -199,11 +202,24 @@ export function isMobileUserAgent(
   return /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
 }
 
+export function isIosUserAgent(
+  ua: string = typeof navigator !== "undefined" ? navigator.userAgent : "",
+): boolean {
+  return /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && /Mobile/i.test(ua));
+}
+
+export type LaunchSolWalletOpts = {
+  userAgent?: string;
+  /** Required on iOS for branded connect UL redirect back to checkout. */
+  checkoutUrl?: string;
+  appUrl?: string;
+};
+
 export function launchSolWallet(
   wallet: "phantom" | "solflare",
   address: string,
   amount: string,
-  opts?: { userAgent?: string },
+  opts?: LaunchSolWalletOpts,
 ): SolWalletLaunch {
   const uri = paymentUri("SOL", address, amount);
   if (!uri) {
@@ -226,14 +242,41 @@ export function launchSolWallet(
       message: `Confirm ${amt} SOL in ${name}.`,
     };
   }
-  // iOS / other mobile: open Solana Pay URI → installed wallet native confirm.
-  if (isMobileUserAgent(ua)) {
-    return {
-      kind: "open",
-      href: uri,
-      uri,
-      message: `Confirm ${amt} SOL in ${name}.`,
-    };
+  // iOS / other mobile: wallet-owned HTTPS UL (connect → signAndSend). Never bare solana:.
+  if (isMobileUserAgent(ua) || isIosUserAgent(ua)) {
+    const checkoutUrl =
+      opts?.checkoutUrl ||
+      (typeof window !== "undefined" && window.location?.href?.startsWith("https://")
+        ? window.location.href
+        : "");
+    if (!checkoutUrl.startsWith("https://")) {
+      return {
+        kind: "copy",
+        uri,
+        message: `Open this page over HTTPS, then tap Pay with ${name} again.`,
+      };
+    }
+    try {
+      const started = startSolMobileConnect({
+        wallet,
+        to: address,
+        amountSol: amount,
+        checkoutUrl,
+        appUrl: opts?.appUrl,
+      });
+      return {
+        kind: "open",
+        href: started.href,
+        uri,
+        message: started.message,
+      };
+    } catch (err) {
+      return {
+        kind: "copy",
+        uri,
+        message: err instanceof Error ? err.message : `Could not open ${name}.`,
+      };
+    }
   }
   // Desktop without extension: UI prefers connect+signAndSend; copy is fallback only.
   return {
@@ -387,7 +430,10 @@ export function walletDeepLink(
     case "solflare": {
       // Prefer native / copy — never default to wallet in-app browse (logged-out).
       if (asset !== "SOL") return uri;
-      const launch = launchSolWallet(wallet, address, amount, { userAgent: opts?.userAgent });
+      const launch = launchSolWallet(wallet, address, amount, {
+        userAgent: opts?.userAgent,
+        checkoutUrl: opts?.checkoutUrl,
+      });
       return launch.kind === "open" ? launch.href : launch.uri;
     }
     default:
@@ -458,14 +504,14 @@ export const WALLET_OPTIONS: WalletOption[] = [
   {
     id: "phantom",
     name: "Phantom",
-    hint: "Connect & pay in one tap (extension), or open native confirm on phone.",
+    hint: "Connect & pay in one tap (extension), or open Phantom on iPhone via branded link.",
     kind: "deeplink",
     assets: ["SOL"],
   },
   {
     id: "solflare",
     name: "Solflare",
-    hint: "Connect & pay in one tap (extension), or open native confirm on phone.",
+    hint: "Connect & pay in one tap (extension), or open Solflare on iPhone via branded link.",
     kind: "deeplink",
     assets: ["SOL"],
   },

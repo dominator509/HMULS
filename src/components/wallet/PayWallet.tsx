@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Overlay, OverlayClose, Panel } from "@/components/ui/chrome";
 import type { InvoiceView } from "@/lib/types";
@@ -18,6 +18,12 @@ import {
   walletDeepLink,
   type SolWalletId,
 } from "@/lib/wallet";
+import {
+  cleanSolUlUrl,
+  continueSolMobileAfterConnect,
+  finishSolMobileAfterSign,
+  parseSolUlReturn,
+} from "@/lib/sol-mobile-deeplink";
 import { Copy, ExternalLink, Loader2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 
@@ -42,10 +48,61 @@ export function PayWallet({
   const [account, setAccount] = useState<string | null>(null);
   const [method, setMethod] = useState<string>("injected");
   const [phase, setPhase] = useState<Phase>("idle");
+  const ulHandled = useRef(false);
 
   const uri = paymentUri(inv.asset, inv.payAddress, inv.cryptoAmount);
   const solAmount = inv.asset === "SOL" ? formatSolAmount(inv.cryptoAmount) : inv.cryptoAmount;
   const busy = phase === "signing" || phase === "broadcast";
+
+  // Resume encrypted Phantom/Solflare UL flow after iOS wallet redirects back to checkout.
+  useEffect(() => {
+    if (typeof window === "undefined" || ulHandled.current) return;
+    if (inv.asset !== "SOL" || disabled) return;
+    const parsed = parseSolUlReturn(window.location.href);
+    if (!parsed.active) return;
+    ulHandled.current = true;
+
+    void (async () => {
+      const wallet = parsed.wallet!;
+      const name = wallet === "phantom" ? "Phantom" : "Solflare";
+      setMethod(wallet);
+      try {
+        if (parsed.step === "connect") {
+          setPhase("signing");
+          toast.message(`Connected to ${name}. Confirm the transfer…`);
+          const next = await continueSolMobileAfterConnect(window.location.href);
+          if (!next.ok) {
+            setPhase("idle");
+            toast.error(next.error);
+            window.history.replaceState({}, "", cleanSolUlUrl(window.location.href));
+            return;
+          }
+          window.history.replaceState({}, "", cleanSolUlUrl(window.location.href));
+          toast.message(next.message);
+          window.location.href = next.href;
+          return;
+        }
+        if (parsed.step === "sign") {
+          setPhase("broadcast");
+          const done = finishSolMobileAfterSign(window.location.href);
+          window.history.replaceState({}, "", cleanSolUlUrl(window.location.href));
+          if (!done.ok) {
+            setPhase("idle");
+            toast.error(done.error);
+            return;
+          }
+          setAccount(done.from);
+          await onSubmitted({ method: done.wallet, wallet: done.from, txHash: done.signature });
+          toast.success(`Sent with ${name}. Waiting for unlock…`);
+          return;
+        }
+      } catch (err) {
+        setPhase("idle");
+        window.history.replaceState({}, "", cleanSolUlUrl(window.location.href));
+        toast.error(err instanceof Error ? err.message : `Could not finish ${name} payment.`);
+      }
+    })();
+  }, [disabled, inv.asset, onSubmitted]);
 
   async function copyPayLink() {
     if (!uri) {
@@ -84,7 +141,9 @@ export function PayWallet({
         toast.success(`Sent with ${name}. Waiting for unlock…`);
         return;
       }
-      const launch = launchSolWallet(id, inv.payAddress, inv.cryptoAmount);
+      const launch = launchSolWallet(id, inv.payAddress, inv.cryptoAmount, {
+        checkoutUrl: typeof window !== "undefined" ? window.location.href : undefined,
+      });
       if (launch.kind === "open") {
         window.location.href = launch.href;
         toast.message(launch.message);
@@ -232,7 +291,7 @@ export function PayWallet({
                 {hasPhantom || hasSolflare
                   ? "Your wallet will ask you to confirm the exact amount."
                   : mobile
-                    ? "Opens your wallet app to confirm the exact amount — stay signed in here."
+                    ? "Opens Phantom or Solflare only — approve, then confirm the exact SOL amount. You return here signed in."
                     : "Install Phantom or Solflare in this browser, or pay from your phone."}
               </p>
             </>
