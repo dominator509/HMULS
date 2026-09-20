@@ -1,4 +1,7 @@
 import type { CryptoAsset } from "./types";
+import { formatSolAmount, isSolanaAddress, solToLamports } from "./sol-amount";
+
+export { formatSolAmount, isSolanaAddress, solToLamports } from "./sol-amount";
 
 const VAULT_KEY = "sheundresses.vault.wallet";
 
@@ -134,15 +137,22 @@ export function ethToWei(ethAmount: string): bigint {
 
 export function paymentUri(asset: CryptoAsset, address: string, amount: string, label = "SHE UNDRESSES") {
   const enc = encodeURIComponent(label);
+  const addr = (address || "").trim();
   switch (asset) {
     case "ETH":
-      return `ethereum:${address}@1?value=${ethToWei(amount).toString()}&label=${enc}`;
+      if (!addr) return "";
+      return `ethereum:${addr}@1?value=${ethToWei(amount).toString()}&label=${enc}`;
     case "BTC":
-      return `bitcoin:${address}?amount=${amount}&label=${enc}`;
-    case "SOL":
-      return `solana:${address}?amount=${amount}&label=${enc}`;
+      if (!addr) return "";
+      return `bitcoin:${addr}?amount=${amount}&label=${enc}`;
+    case "SOL": {
+      // Solana Pay rejects >9 decimals / scientific notation / empty recipient (invalid link).
+      const amt = formatSolAmount(amount);
+      if (!addr || !isSolanaAddress(addr) || !amt || amt === "0") return "";
+      return `solana:${addr}?amount=${amt}&label=${enc}`;
+    }
     case "USDT":
-      return address;
+      return addr;
   }
 }
 
@@ -183,6 +193,12 @@ export type SolWalletLaunch =
  * no branded HTTPS deeplink that pre-fills a native Solana Pay send. On Android
  * we package-pin the shared `solana:` scheme; elsewhere we copy the pay link.
  */
+export function isMobileUserAgent(
+  ua: string = typeof navigator !== "undefined" ? navigator.userAgent : "",
+): boolean {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+}
+
 export function launchSolWallet(
   wallet: "phantom" | "solflare",
   address: string,
@@ -190,22 +206,148 @@ export function launchSolWallet(
   opts?: { userAgent?: string },
 ): SolWalletLaunch {
   const uri = paymentUri("SOL", address, amount);
+  if (!uri) {
+    return {
+      kind: "copy",
+      uri: "",
+      message: "Payment address or amount is not ready yet. Wait a moment and try again.",
+    };
+  }
   const ua = opts?.userAgent ?? (typeof navigator !== "undefined" ? navigator.userAgent : "");
   const name = wallet === "phantom" ? "Phantom" : "Solflare";
   const pkg = wallet === "phantom" ? PHANTOM_ANDROID_PACKAGE : SOLFLARE_ANDROID_PACKAGE;
+  const amt = formatSolAmount(amount);
+  // Android: package-scoped intent → native send sheet (not Base, not in-app browse).
   if (isAndroidUserAgent(ua)) {
     return {
       kind: "open",
       href: androidSolanaPayIntent(uri, pkg),
       uri,
-      message: `Opening ${name} to send. Confirm the amount, then mark sent here.`,
+      message: `Confirm ${amt} SOL in ${name}.`,
     };
   }
+  // iOS / other mobile: open Solana Pay URI → installed wallet native confirm.
+  if (isMobileUserAgent(ua)) {
+    return {
+      kind: "open",
+      href: uri,
+      uri,
+      message: `Confirm ${amt} SOL in ${name}.`,
+    };
+  }
+  // Desktop without extension: UI prefers connect+signAndSend; copy is fallback only.
   return {
     kind: "copy",
     uri,
-    message: `Pay link copied. Open ${name} → paste or scan Solana Pay. Do not re-open this site inside the wallet browser (separate sign-in).`,
+    message: `Install the ${name} extension to pay in one tap, or use Copy address below.`,
   };
+}
+
+export type SolWalletId = "phantom" | "solflare";
+
+type SolanaInjected = {
+  isPhantom?: boolean;
+  isSolflare?: boolean;
+  publicKey?: { toString(): string } | null;
+  connect: (opts?: { onlyIfTrusted?: boolean }) => Promise<{ publicKey: { toString(): string } }>;
+  disconnect?: () => Promise<void>;
+  signAndSendTransaction: (
+    transaction: unknown,
+    opts?: { skipPreflight?: boolean },
+  ) => Promise<{ signature: string } | string>;
+};
+
+function readSolInjected(id: SolWalletId): SolanaInjected | null {
+  if (typeof window === "undefined") return null;
+  const w = window as unknown as {
+    phantom?: { solana?: SolanaInjected };
+    solflare?: SolanaInjected;
+    solana?: SolanaInjected;
+  };
+  if (id === "phantom") {
+    const p = w.phantom?.solana;
+    if (p) return p;
+    if (w.solana?.isPhantom) return w.solana;
+    return null;
+  }
+  if (w.solflare) return w.solflare;
+  if (w.solana?.isSolflare) return w.solana;
+  return null;
+}
+
+export function detectSolWallet(id: SolWalletId): boolean {
+  return Boolean(readSolInjected(id));
+}
+
+export async function connectSolWallet(id: SolWalletId): Promise<string> {
+  const provider = readSolInjected(id);
+  const name = id === "phantom" ? "Phantom" : "Solflare";
+  if (!provider) {
+    throw new Error(`${name} extension not found. Install it, or pay from your phone.`);
+  }
+  const res = await provider.connect();
+  const pk = res?.publicKey?.toString() || provider.publicKey?.toString();
+  if (!pk) throw new Error(`${name} returned no account.`);
+  return pk;
+}
+
+function solRpcUrl() {
+  try {
+    const env = (import.meta as unknown as { env?: Record<string, string> }).env;
+    const fromEnv = env?.VITE_SOLANA_RPC_URL?.trim();
+    if (fromEnv) return fromEnv;
+  } catch {
+    /* non-vite */
+  }
+  return "https://api.mainnet-beta.solana.com";
+}
+
+/**
+ * Desktop / in-wallet WebView: connect (if needed) and signAndSend a native SOL
+ * transfer for the exact invoice amount to the invoice address.
+ */
+export async function sendSolWithWallet(opts: {
+  wallet: SolWalletId;
+  to: string;
+  amountSol: string;
+}): Promise<{ signature: string; from: string }> {
+  const to = opts.to.trim();
+  const amount = formatSolAmount(opts.amountSol);
+  if (!isSolanaAddress(to)) throw new Error("Invoice address is not a valid Solana address.");
+  if (!amount || amount === "0") throw new Error("Invoice amount is not ready.");
+
+  const provider = readSolInjected(opts.wallet);
+  const name = opts.wallet === "phantom" ? "Phantom" : "Solflare";
+  if (!provider) throw new Error(`${name} extension not found.`);
+
+  if (!provider.publicKey) {
+    await provider.connect();
+  }
+  const from = provider.publicKey?.toString();
+  if (!from) throw new Error(`${name} returned no account.`);
+
+  const lamports = solToLamports(amount);
+  if (lamports > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error("Amount too large to send from this browser.");
+  }
+
+  const { Connection, PublicKey, SystemProgram, Transaction } = await import("@solana/web3.js");
+  const connection = new Connection(solRpcUrl(), "confirmed");
+  const tx = new Transaction().add(
+    SystemProgram.transfer({
+      fromPubkey: new PublicKey(from),
+      toPubkey: new PublicKey(to),
+      lamports: Number(lamports),
+    }),
+  );
+  tx.feePayer = new PublicKey(from);
+  const latest = await connection.getLatestBlockhash("confirmed");
+  tx.recentBlockhash = latest.blockhash;
+
+  const result = await provider.signAndSendTransaction(tx);
+  const signature = typeof result === "string" ? result : result?.signature;
+  if (!signature) throw new Error(`${name} did not return a signature.`);
+  return { signature, from };
 }
 
 export type WalletDeepLinkOpts = {
@@ -316,14 +458,14 @@ export const WALLET_OPTIONS: WalletOption[] = [
   {
     id: "phantom",
     name: "Phantom",
-    hint: "Android: native send. Other devices: copies the pay link (no in-app site login).",
+    hint: "Connect & pay in one tap (extension), or open native confirm on phone.",
     kind: "deeplink",
     assets: ["SOL"],
   },
   {
     id: "solflare",
     name: "Solflare",
-    hint: "Android: native send. Other devices: copies the pay link (no in-app site login).",
+    hint: "Connect & pay in one tap (extension), or open native confirm on phone.",
     kind: "deeplink",
     assets: ["SOL"],
   },

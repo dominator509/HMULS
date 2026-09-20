@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   androidSolanaPayIntent,
+  formatSolAmount,
   launchSolWallet,
   paymentUri,
   PHANTOM_ANDROID_PACKAGE,
@@ -12,12 +13,31 @@ import {
 const addr = "So11111111111111111111111111111111111111112";
 const amount = "0.05";
 
+describe("formatSolAmount", () => {
+  it("truncates float dust to 9 decimals (root cause of invalid pay links)", () => {
+    assert.equal(formatSolAmount("0.011459100000000001"), "0.0114591");
+    assert.equal(formatSolAmount("1.23e-7"), "0.000000123");
+    assert.equal(formatSolAmount("0.05"), "0.05");
+  });
+});
+
 describe("paymentUri SOL", () => {
-  it("builds native Solana Pay URI with decimal amount for copy escape hatch", () => {
+  it("builds native Solana Pay URI with decimal amount", () => {
     const uri = paymentUri("SOL", addr, "1.25");
     assert.equal(uri.startsWith("solana:"), true);
     assert.match(uri, /amount=1\.25/);
     assert.doesNotMatch(uri, /spl-token/);
+  });
+
+  it("normalizes >9 decimal amounts so wallets accept the URI", () => {
+    const uri = paymentUri("SOL", addr, "0.011459100000000001");
+    assert.match(uri, /amount=0\.0114591(?:&|$)/);
+    assert.doesNotMatch(uri, /0000000001/);
+  });
+
+  it("returns empty string for missing address or amount", () => {
+    assert.equal(paymentUri("SOL", "", amount), "");
+    assert.equal(paymentUri("SOL", addr, ""), "");
   });
 });
 
@@ -53,17 +73,23 @@ describe("launchSolWallet", () => {
     assert.match(launch.href, new RegExp(`package=${SOLFLARE_ANDROID_PACKAGE}`));
   });
 
-  it("iOS / desktop → copy Solana Pay URI (no browse, no bare window.open solana:)", () => {
-    for (const ua of [
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)",
-    ]) {
-      const launch = launchSolWallet("phantom", addr, amount, { userAgent: ua });
-      assert.equal(launch.kind, "copy");
-      if (launch.kind !== "copy") return;
-      assert.equal(launch.uri.startsWith("solana:"), true);
-      assert.match(launch.message, /wallet browser/i);
-    }
+  it("iOS → open Solana Pay URI (native confirm, not copy-first)", () => {
+    const launch = launchSolWallet("phantom", addr, amount, {
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
+    });
+    assert.equal(launch.kind, "open");
+    if (launch.kind !== "open") return;
+    assert.equal(launch.href.startsWith("solana:"), true);
+    assert.match(launch.message, /Confirm/i);
+  });
+
+  it("desktop → copy fallback for extension-less browsers", () => {
+    const launch = launchSolWallet("phantom", addr, amount, {
+      userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)",
+    });
+    assert.equal(launch.kind, "copy");
+    if (launch.kind !== "copy") return;
+    assert.equal(launch.uri.startsWith("solana:"), true);
   });
 });
 

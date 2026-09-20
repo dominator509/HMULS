@@ -197,6 +197,7 @@ function Login() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  onInput={(e) => setEmail((e.target as HTMLInputElement).value)}
                   className="field-input"
                   autoComplete="email"
                 />
@@ -225,6 +226,7 @@ function Login() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  onInput={(e) => setEmail((e.target as HTMLInputElement).value)}
                   className="field-input"
                   autoComplete="email"
                 />
