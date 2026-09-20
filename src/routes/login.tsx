@@ -74,7 +74,7 @@ function Login() {
     try {
       const redirectTo = `${window.location.origin}/reset-password`;
       const { error } = await authClient.requestPasswordReset({
-        email,
+        email: email.trim().toLowerCase(),
         redirectTo,
       });
       if (error) {
@@ -94,14 +94,15 @@ function Login() {
     e.preventDefault();
     setBusy(true);
     try {
+      const emailNorm = email.trim().toLowerCase();
       const run = () =>
         mode === "up"
           ? authClient.signUp.email({
-              email,
+              email: emailNorm,
               password,
-              name: name || email.split("@")[0],
+              name: name || emailNorm.split("@")[0],
             })
-          : authClient.signIn.email({ email, password });
+          : authClient.signIn.email({ email: emailNorm, password });
 
       let result = await run();
       // Workers often 1101 / Neon-pool the first pg hit (see PR #11 / #18).

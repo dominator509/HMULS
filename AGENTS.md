@@ -185,6 +185,16 @@ Put values that must reach **Nitro `process.env`** as **encrypted Worker secrets
 
 ---
 
+## SOL unlock / Phantom & Solflare (buyers)
+
+- **Do not** send buyers into Phantom/Solflare **in-app browsers** (`…/ul/browse/<https checkout>`). That WebView is a **separate cookie jar** from Safari/Chrome — they look “logged out” and sign-in errors are easy to misread as “wrong password” or “only one session.”
+- Better Auth **allows multiple concurrent sessions** by default. We do **not** revoke other sessions on email sign-in (only on password reset). Concurrent-login blocking is **not** a product rule.
+- **Preferred unlock UX** (see `src/lib/wallet.ts` + `PayWallet`):
+  1. **Copy pay link** (Solana Pay `solana:` URI with address + amount) as the primary CTA.
+  2. On **Android**, Phantom/Solflare buttons use **package-scoped `intent://` Solana Pay** (`app.phantom` / `com.solflare.mobile`) so the native send sheet opens without browsing sheundresses.com and without losing the shared `solana:` scheme to other wallets.
+  3. On **iOS/desktop**, those buttons **copy** the pay link and tell the buyer to paste/scan inside the wallet — there is **no** branded HTTPS deeplink that pre-fills a native Solana Pay send (only browse or encrypted connect/sign* APIs).
+- Never put backend/unlock jargon on the buyer paywall.
+
 ## Paid media storage (preserve)
 
 - Production **paid originals prefer Cloudflare R2** bucket `hmuls-vault` (Workers binding `HMULS_VAULT`, REST fallback via `CLOUDFLARE_API_TOKEN` / `R2_CF_API_TOKEN`). Keys: `vault/<safe basename>`. Vercel Blob is **optional/legacy** fallback (`access: "private"`). HMAC Blob pathnames are not access control; `/api/media` is the only collector read path.

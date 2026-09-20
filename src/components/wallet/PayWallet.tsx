@@ -10,6 +10,7 @@ import {
   paymentUri,
   sendInjectedEth,
   shortAddr,
+  launchSolWallet,
   walletDeepLink,
 } from "@/lib/wallet";
 import { Copy, ExternalLink, Loader2, Wallet } from "lucide-react";
@@ -35,6 +36,12 @@ export function PayWallet({
 
   const uri = paymentUri(inv.asset, inv.payAddress, inv.cryptoAmount);
 
+  async function copyPayLink() {
+    if (!uri) return;
+    await navigator.clipboard.writeText(uri);
+    toast.success("Pay link copied. Paste it in your wallet, or scan Solana Pay.");
+  }
+
   async function pick(id: string) {
     const opt = WALLET_OPTIONS.find((w) => w.id === id);
     if (!opt) return;
@@ -48,17 +55,23 @@ export function PayWallet({
         toast.success("Wallet connected.");
         return;
       }
-      // Branded Solana wallets must browse the HTTPS checkout, never a bare solana: URI.
-      const link = walletDeepLink(id, inv.asset, inv.payAddress, inv.cryptoAmount, {
-        checkoutUrl: window.location.href,
-      });
+      if ((id === "phantom" || id === "solflare") && inv.asset === "SOL") {
+        const launch = launchSolWallet(id as "phantom" | "solflare", inv.payAddress, inv.cryptoAmount);
+        if (launch.kind === "copy") {
+          await navigator.clipboard.writeText(launch.uri);
+          toast.message(launch.message);
+        } else {
+          // intent: / native — prefer top-level navigation so Android resolves the package.
+          window.location.href = launch.href;
+          toast.message(launch.message);
+        }
+        setOpen(false);
+        return;
+      }
+      const link = walletDeepLink(id, inv.asset, inv.payAddress, inv.cryptoAmount);
       window.open(link, "_blank", "noopener,noreferrer");
       setOpen(false);
-      toast.message(
-        inv.asset === "SOL"
-          ? `Opened ${opt.name} with Solana Pay. Confirm the amount, then mark sent here.`
-          : `Opened ${opt.name}. Send to the invoice address, then mark sent.`,
-      );
+      toast.message(`Opened ${opt.name}. Send to the invoice address, then mark sent.`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not connect.");
     }
@@ -178,13 +191,23 @@ export function PayWallet({
               No browser wallet detected. Use Open a mobile wallet below (MetaMask / Trust / Coinbase).
             </p>
           ) : null}
+          {inv.asset === "SOL" && uri ? (
+            <Button
+              size="xl"
+              variant="gold"
+              disabled={disabled || !inv.payAddress}
+              onClick={() => void copyPayLink()}
+            >
+              <Copy className="size-4" /> Copy pay link
+            </Button>
+          ) : null}
           <Button
-            size={inv.asset === "ETH" && injected ? "lg" : "xl"}
-            variant={inv.asset === "ETH" && injected ? "outline" : "gold"}
+            size={inv.asset === "ETH" && injected ? "lg" : inv.asset === "SOL" ? "lg" : "xl"}
+            variant={inv.asset === "SOL" || (inv.asset === "ETH" && injected) ? "outline" : "gold"}
             disabled={disabled || !inv.payAddress}
             onClick={() => setOpen(true)}
           >
-            Open a mobile wallet
+            {inv.asset === "SOL" ? "Phantom / Solflare / other" : "Open a mobile wallet"}
           </Button>
         </div>
       </Panel>
@@ -198,7 +221,7 @@ export function PayWallet({
               Open a wallet with this invoice
             </h3>
             <p className="mt-2 text-sm text-muted">
-              Pick an app, or copy the pay link for any other wallet.
+              Copy the pay link first when you can. Wallet buttons never reopen this site inside Phantom/Solflare (that would ask you to sign in again).
             </p>
             <ul className="mt-5 space-y-2">
               {options.map((w) => (
