@@ -213,6 +213,8 @@ export type LaunchSolWalletOpts = {
   /** Required on iOS for branded connect UL redirect back to checkout. */
   checkoutUrl?: string;
   appUrl?: string;
+  /** Persist terms ack for this invoice across the wallet round-trip. */
+  invoiceId?: string;
 };
 
 export function launchSolWallet(
@@ -263,6 +265,7 @@ export function launchSolWallet(
         amountSol: amount,
         checkoutUrl,
         appUrl: opts?.appUrl,
+        invoiceId: opts?.invoiceId,
       });
       return {
         kind: "open",

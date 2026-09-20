@@ -11,8 +11,17 @@ import {
 } from "./wallet.ts";
 import {
   buildSolConnectHref,
+  buildSolRedirectLink,
   buildSolSignAndSendHref,
+  cleanSolUlUrl,
+  clearSolCheckoutAck,
+  clearSolMobileSession,
   isBrandedSolWalletHref,
+  isSolUlReturnPending,
+  parseSolUlReturn,
+  peekSolCheckoutAck,
+  persistSolCheckoutAck,
+  shouldRestoreSolCheckoutAck,
   startSolMobileConnect,
 } from "./sol-mobile-deeplink.ts";
 
@@ -214,5 +223,100 @@ describe("walletDeepLink phantom/solflare", () => {
     });
     assert.doesNotMatch(solflare, /ul\/browse/i);
     assert.match(solflare, /package=com\.solflare\.mobile/);
+  });
+});
+
+describe("sol UL return resume helpers", () => {
+  it("parseSolUlReturn detects connect return with Phantom encryption params", () => {
+    const url =
+      "https://sheundresses.com/checkout/inv_abc?hmuls_sol=1&hmuls_wallet=phantom&hmuls_step=connect" +
+      "&phantom_encryption_public_key=pk&data=enc&nonce=n1";
+    const parsed = parseSolUlReturn(url);
+    assert.equal(parsed.active, true);
+    assert.equal(parsed.wallet, "phantom");
+    assert.equal(parsed.step, "connect");
+    assert.equal(parsed.encryptionPublicKey, "pk");
+    assert.equal(parsed.data, "enc");
+    assert.equal(parsed.nonce, "n1");
+    assert.equal(isSolUlReturnPending(url), true);
+  });
+
+  it("parseSolUlReturn detects Solflare sign return", () => {
+    const url =
+      "https://sheundresses.com/checkout/inv_abc?hmuls_sol=1&hmuls_wallet=solflare&hmuls_step=sign" +
+      "&solflare_encryption_public_key=pk&data=enc&nonce=n2";
+    const parsed = parseSolUlReturn(url);
+    assert.equal(parsed.active, true);
+    assert.equal(parsed.wallet, "solflare");
+    assert.equal(parsed.step, "sign");
+    assert.equal(parsed.encryptionPublicKey, "pk");
+  });
+
+  it("parseSolUlReturn inactive without markers", () => {
+    const url = "https://sheundresses.com/checkout/inv_abc";
+    assert.equal(parseSolUlReturn(url).active, false);
+    assert.equal(isSolUlReturnPending(url), false);
+  });
+
+  it("cleanSolUlUrl strips hmuls_* and wallet response params", () => {
+    const url =
+      "https://sheundresses.com/checkout/inv_abc?hmuls_sol=1&hmuls_wallet=phantom&hmuls_step=connect" +
+      "&phantom_encryption_public_key=pk&data=enc&nonce=n1&keep=1";
+    const cleaned = cleanSolUlUrl(url);
+    assert.match(cleaned, /^\/checkout\/inv_abc/);
+    assert.match(cleaned, /keep=1/);
+    assert.doesNotMatch(cleaned, /hmuls_sol/);
+    assert.doesNotMatch(cleaned, /phantom_encryption/);
+    assert.doesNotMatch(cleaned, /\bdata=/);
+    assert.doesNotMatch(cleaned, /nonce=/);
+  });
+
+  it("buildSolRedirectLink sets step markers and strips prior wallet params", () => {
+    const dirty =
+      "https://sheundresses.com/checkout/inv_abc?hmuls_sol=1&hmuls_wallet=phantom&hmuls_step=connect&data=old&nonce=old";
+    const link = buildSolRedirectLink(dirty, "solflare", "sign");
+    const u = new URL(link);
+    assert.equal(u.searchParams.get("hmuls_sol"), "1");
+    assert.equal(u.searchParams.get("hmuls_wallet"), "solflare");
+    assert.equal(u.searchParams.get("hmuls_step"), "sign");
+    assert.equal(u.searchParams.get("data"), null);
+    assert.equal(u.searchParams.get("nonce"), null);
+  });
+
+  it("persist/peek/clear checkout ack scoped to invoice id", () => {
+    assert.equal(peekSolCheckoutAck("inv_a"), false);
+    persistSolCheckoutAck("inv_a");
+    assert.equal(peekSolCheckoutAck("inv_a"), true);
+    assert.equal(peekSolCheckoutAck("inv_b"), false);
+    clearSolCheckoutAck();
+    assert.equal(peekSolCheckoutAck("inv_a"), false);
+  });
+
+  it("shouldRestoreSolCheckoutAck true when ack persisted or UL return pending", () => {
+    const returnUrl =
+      "https://sheundresses.com/checkout/inv_a?hmuls_sol=1&hmuls_wallet=phantom&hmuls_step=connect&data=x&nonce=y";
+    assert.equal(shouldRestoreSolCheckoutAck("inv_a", returnUrl), true);
+    assert.equal(
+      shouldRestoreSolCheckoutAck("inv_a", "https://sheundresses.com/checkout/inv_a"),
+      false,
+    );
+    persistSolCheckoutAck("inv_a");
+    assert.equal(
+      shouldRestoreSolCheckoutAck("inv_a", "https://sheundresses.com/checkout/inv_a"),
+      true,
+    );
+  });
+
+  it("startSolMobileConnect with invoiceId persists ack for resume", () => {
+    clearSolMobileSession();
+    clearSolCheckoutAck();
+    startSolMobileConnect({
+      wallet: "phantom",
+      to: addr,
+      amountSol: amount,
+      checkoutUrl: checkout,
+      invoiceId: "inv_test123",
+    });
+    assert.equal(peekSolCheckoutAck("inv_test123"), true);
   });
 });

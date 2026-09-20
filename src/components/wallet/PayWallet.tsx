@@ -20,9 +20,11 @@ import {
 } from "@/lib/wallet";
 import {
   cleanSolUlUrl,
+  clearSolCheckoutAck,
   continueSolMobileAfterConnect,
   finishSolMobileAfterSign,
   parseSolUlReturn,
+  persistSolCheckoutAck,
 } from "@/lib/sol-mobile-deeplink";
 import { Copy, ExternalLink, Loader2, Wallet } from "lucide-react";
 import { toast } from "sonner";
@@ -55,9 +57,11 @@ export function PayWallet({
   const busy = phase === "signing" || phase === "broadcast";
 
   // Resume encrypted Phantom/Solflare UL flow after iOS wallet redirects back to checkout.
+  // Do NOT gate on `disabled` (terms checkbox): Safari reloads wipe React state and would
+  // silently stall with an unchecked box. Ack is restored from sessionStorage on checkout.
   useEffect(() => {
     if (typeof window === "undefined" || ulHandled.current) return;
-    if (inv.asset !== "SOL" || disabled) return;
+    if (inv.asset !== "SOL") return;
     const parsed = parseSolUlReturn(window.location.href);
     if (!parsed.active) return;
     ulHandled.current = true;
@@ -91,6 +95,7 @@ export function PayWallet({
             toast.error(done.error);
             return;
           }
+          clearSolCheckoutAck();
           setAccount(done.from);
           await onSubmitted({ method: done.wallet, wallet: done.from, txHash: done.signature });
           toast.success(`Sent with ${name}. Waiting for unlock…`);
@@ -102,7 +107,7 @@ export function PayWallet({
         toast.error(err instanceof Error ? err.message : `Could not finish ${name} payment.`);
       }
     })();
-  }, [disabled, inv.asset, onSubmitted]);
+  }, [inv.asset, onSubmitted]);
 
   async function copyPayLink() {
     if (!uri) {
@@ -128,6 +133,8 @@ export function PayWallet({
     setMethod(id);
     const name = id === "phantom" ? "Phantom" : "Solflare";
     try {
+      // Buyer already checked terms to enable Pay — keep that across iOS UL return.
+      if (inv.id) persistSolCheckoutAck(inv.id);
       if (detectSolWallet(id)) {
         setPhase("signing");
         const { signature, from } = await sendSolWithWallet({
@@ -137,12 +144,14 @@ export function PayWallet({
         });
         setAccount(from);
         setPhase("broadcast");
+        clearSolCheckoutAck();
         await onSubmitted({ method: id, wallet: from, txHash: signature });
         toast.success(`Sent with ${name}. Waiting for unlock…`);
         return;
       }
       const launch = launchSolWallet(id, inv.payAddress, inv.cryptoAmount, {
         checkoutUrl: typeof window !== "undefined" ? window.location.href : undefined,
+        invoiceId: inv.id,
       });
       if (launch.kind === "open") {
         window.location.href = launch.href;
