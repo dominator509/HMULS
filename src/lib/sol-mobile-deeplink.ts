@@ -14,6 +14,8 @@ import { formatSolAmount, isSolanaAddress, solToLamports } from "./sol-amount.ts
 export type SolWalletId = "phantom" | "solflare";
 
 const STORAGE_KEY = "sheundresses.sol.deeplink.v1";
+/** Terms/ack checkbox — must survive iOS wallet UL round-trip (full Safari reload). */
+const ACK_STORAGE_KEY = "sheundresses.sol.checkout.ack.v1";
 
 /** Query markers on checkout HTTPS redirect_link so we can resume after wallet return. */
 export const SOL_UL_QUERY = {
@@ -118,6 +120,55 @@ export function clearSolMobileSession() {
 
 export function getSolMobileSession(): StoredSession | null {
   return loadSession();
+}
+
+type StoredAck = { invoiceId: string; at: number };
+
+/** Persist terms acknowledgement for this invoice across Phantom/Solflare return. */
+export function persistSolCheckoutAck(invoiceId: string) {
+  if (typeof sessionStorage === "undefined" || !invoiceId) return;
+  const payload: StoredAck = { invoiceId, at: Date.now() };
+  sessionStorage.setItem(ACK_STORAGE_KEY, JSON.stringify(payload));
+}
+
+export function peekSolCheckoutAck(invoiceId: string): boolean {
+  if (typeof sessionStorage === "undefined" || !invoiceId) return false;
+  try {
+    const raw = sessionStorage.getItem(ACK_STORAGE_KEY);
+    if (!raw) return false;
+    const s = JSON.parse(raw) as StoredAck;
+    return s?.invoiceId === invoiceId;
+  } catch {
+    return false;
+  }
+}
+
+export function clearSolCheckoutAck() {
+  if (typeof sessionStorage === "undefined") return;
+  sessionStorage.removeItem(ACK_STORAGE_KEY);
+}
+
+/**
+ * True when the current URL is a wallet UL return we must resume (connect→sign or
+ * sign→waiting). Used to restore ack UI and skip the disabled gate.
+ */
+export function isSolUlReturnPending(
+  url: string = typeof location !== "undefined" ? location.href : "",
+): boolean {
+  if (!url) return false;
+  return parseSolUlReturn(url).active;
+}
+
+/**
+ * Should the checkout terms checkbox auto-check on load?
+ * Yes if we persisted ack for this invoice, or URL is a mid-flow wallet return.
+ */
+export function shouldRestoreSolCheckoutAck(
+  invoiceId: string,
+  url: string = typeof location !== "undefined" ? location.href : "",
+): boolean {
+  if (peekSolCheckoutAck(invoiceId)) return true;
+  return isSolUlReturnPending(url);
 }
 
 function newDappKeyPair() {
@@ -256,6 +307,8 @@ export function startSolMobileConnect(opts: {
   checkoutUrl: string;
   /** Origin shown in wallet approve dialog (defaults to checkout origin). */
   appUrl?: string;
+  /** Invoice id — persists terms ack so return is not blocked by unchecked box. */
+  invoiceId?: string;
 }): { href: string; message: string } {
   const to = opts.to.trim();
   const amountSol = formatSolAmount(opts.amountSol);
@@ -269,6 +322,7 @@ export function startSolMobileConnect(opts: {
   const appUrl = opts.appUrl ?? checkout.origin + "/";
   const kp = newDappKeyPair();
   const redirectLink = buildSolRedirectLink(opts.checkoutUrl, opts.wallet, "connect");
+  if (opts.invoiceId) persistSolCheckoutAck(opts.invoiceId);
   saveSession({
     wallet: opts.wallet,
     to,

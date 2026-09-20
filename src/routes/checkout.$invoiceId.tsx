@@ -21,6 +21,11 @@ import { toast } from "sonner";
 import { Check } from "lucide-react";
 import { CHECKOUT_COPY } from "@/lib/copy";
 import { privateHead } from "@/lib/seo";
+import {
+  clearSolCheckoutAck,
+  persistSolCheckoutAck,
+  shouldRestoreSolCheckoutAck,
+} from "@/lib/sol-mobile-deeplink";
 
 export const Route = createFileRoute("/checkout/$invoiceId")({
   component: CheckoutPage,
@@ -52,7 +57,10 @@ function CheckoutPage() {
   const [clock, setClock] = useState<number | null>(null);
   const [dials, setDials] = useState<Dials>(DEFAULT_DIALS);
   const [surfaces, setSurfaces] = useState<Surfaces>(() => fallbackSurfaces(DEFAULT_DIALS));
-  const [licenseOk, setLicenseOk] = useState(false);
+  const [licenseOk, setLicenseOk] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return shouldRestoreSolCheckoutAck(invoiceId, window.location.href);
+  });
   const [isAdmin, setIsAdmin] = useState(false);
   const [softError, setSoftError] = useState<string | null>(null);
   const [underpaidMsg, setUnderpaidMsg] = useState<string | null>(null);
@@ -82,6 +90,18 @@ function CheckoutPage() {
       .then((r) => setIsAdmin(r.role === "admin"))
       .catch(() => setIsAdmin(false));
   }, [userId]);
+
+  // Restore terms ack after Phantom/Solflare UL return (Safari full reload clears React state).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (shouldRestoreSolCheckoutAck(invoiceId, window.location.href)) {
+      setLicenseOk(true);
+    }
+  }, [invoiceId]);
+
+  useEffect(() => {
+    if (licenseOk) persistSolCheckoutAck(invoiceId);
+  }, [licenseOk, invoiceId]);
 
   const applyRow = useCallback((row: InvoiceView) => {
     loadedRef.current = true;
@@ -222,6 +242,7 @@ function CheckoutPage() {
         },
       });
       if (res.settled) {
+        clearSolCheckoutAck();
         setGiftCode(res.giftCode);
         setPhase("done");
         setUnderpaidMsg(null);
@@ -339,7 +360,12 @@ function CheckoutPage() {
           <input
             type="checkbox"
             checked={licenseOk}
-            onChange={(e) => setLicenseOk(e.target.checked)}
+            onChange={(e) => {
+              const ok = e.target.checked;
+              setLicenseOk(ok);
+              if (ok) persistSolCheckoutAck(invoiceId);
+              else clearSolCheckoutAck();
+            }}
             className="mt-1 size-4 shrink-0 accent-[#c9a227]"
           />
           <span>
