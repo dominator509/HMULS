@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { authClient } from "@/lib/auth/client";
+import { readLoginFormCredentials } from "@/lib/auth/form-credentials";
 import { getMyRole } from "@/lib/server/catalog";
 import { Button } from "@/components/ui/button";
 import { Field, Kicker } from "@/components/ui/chrome";
@@ -72,9 +73,12 @@ function Login() {
     e.preventDefault();
     setBusy(true);
     try {
+      const form = e.currentTarget as HTMLFormElement;
+      const creds = readLoginFormCredentials(form, { email });
+      setEmail(creds.email);
       const redirectTo = `${window.location.origin}/reset-password`;
       const { error } = await authClient.requestPasswordReset({
-        email: email.trim().toLowerCase(),
+        email: creds.email,
         redirectTo,
       });
       if (error) {
@@ -94,15 +98,23 @@ function Login() {
     e.preventDefault();
     setBusy(true);
     try {
-      const emailNorm = email.trim().toLowerCase();
+      // DOM first — WebView autofill often skips React onChange (see form-credentials.ts).
+      const form = e.currentTarget as HTMLFormElement;
+      const creds = readLoginFormCredentials(form, { email, password, name });
+      setEmail(creds.email);
+      setPassword(creds.password);
+      if (creds.name) setName(creds.name);
+      const emailNorm = creds.email;
+      const passwordValue = creds.password;
+      const nameValue = creds.name || emailNorm.split("@")[0];
       const run = () =>
         mode === "up"
           ? authClient.signUp.email({
               email: emailNorm,
-              password,
-              name: name || emailNorm.split("@")[0],
+              password: passwordValue,
+              name: nameValue,
             })
-          : authClient.signIn.email({ email: emailNorm, password });
+          : authClient.signIn.email({ email: emailNorm, password: passwordValue });
 
       let result = await run();
       // Workers often 1101 / Neon-pool the first pg hit (see PR #11 / #18).
@@ -181,6 +193,7 @@ function Login() {
               <Field label="Email">
                 <input
                   type="email"
+                  name="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -197,6 +210,7 @@ function Login() {
               {mode === "up" ? (
                 <Field label="Name">
                   <input
+                    name="name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="field-input"
@@ -207,6 +221,7 @@ function Login() {
               <Field label="Email">
                 <input
                   type="email"
+                  name="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -217,10 +232,13 @@ function Login() {
               <Field label="Password">
                 <input
                   type="password"
+                  name="password"
                   required
                   minLength={8}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  // also catch autofill that fires input without change in some WebViews
+                  onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
                   className="field-input"
                   autoComplete={mode === "up" ? "new-password" : "current-password"}
                 />
