@@ -6,12 +6,17 @@ import {
   WALLET_OPTIONS,
   connectInjected,
   detectInjected,
+  detectSolWallet,
+  formatSolAmount,
+  isMobileUserAgent,
+  launchSolWallet,
   listInjectedProviders,
   paymentUri,
   sendInjectedEth,
+  sendSolWithWallet,
   shortAddr,
-  launchSolWallet,
   walletDeepLink,
+  type SolWalletId,
 } from "@/lib/wallet";
 import { Copy, ExternalLink, Loader2, Wallet } from "lucide-react";
 import { toast } from "sonner";
@@ -29,17 +34,72 @@ export function PayWallet({
 }) {
   const injected = useMemo(() => detectInjected(), []);
   const injectedList = useMemo(() => listInjectedProviders(), []);
+  const hasPhantom = useMemo(() => detectSolWallet("phantom"), []);
+  const hasSolflare = useMemo(() => detectSolWallet("solflare"), []);
+  const mobile = useMemo(() => isMobileUserAgent(), []);
   const [open, setOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [account, setAccount] = useState<string | null>(null);
   const [method, setMethod] = useState<string>("injected");
   const [phase, setPhase] = useState<Phase>("idle");
 
   const uri = paymentUri(inv.asset, inv.payAddress, inv.cryptoAmount);
+  const solAmount = inv.asset === "SOL" ? formatSolAmount(inv.cryptoAmount) : inv.cryptoAmount;
+  const busy = phase === "signing" || phase === "broadcast";
 
   async function copyPayLink() {
-    if (!uri) return;
+    if (!uri) {
+      toast.error("Pay link is not ready yet.");
+      return;
+    }
     await navigator.clipboard.writeText(uri);
-    toast.success("Pay link copied. Paste it in your wallet, or scan Solana Pay.");
+    toast.success("Pay link copied (backup). Prefer Pay with Phantom / Solflare above.");
+  }
+
+  async function copyAddress() {
+    if (!inv.payAddress) return;
+    await navigator.clipboard.writeText(inv.payAddress);
+    toast.success("Address copied.");
+  }
+
+  async function payWithSol(id: SolWalletId) {
+    if (disabled) return;
+    if (!inv.payAddress || !inv.paymentReady) {
+      toast.error("Payment address is not ready yet.");
+      return;
+    }
+    setMethod(id);
+    const name = id === "phantom" ? "Phantom" : "Solflare";
+    try {
+      if (detectSolWallet(id)) {
+        setPhase("signing");
+        const { signature, from } = await sendSolWithWallet({
+          wallet: id,
+          to: inv.payAddress,
+          amountSol: inv.cryptoAmount,
+        });
+        setAccount(from);
+        setPhase("broadcast");
+        await onSubmitted({ method: id, wallet: from, txHash: signature });
+        toast.success(`Sent with ${name}. Waiting for unlock…`);
+        return;
+      }
+      const launch = launchSolWallet(id, inv.payAddress, inv.cryptoAmount);
+      if (launch.kind === "open") {
+        window.location.href = launch.href;
+        toast.message(launch.message);
+        setOpen(false);
+        return;
+      }
+      if (launch.uri) {
+        await navigator.clipboard.writeText(launch.uri);
+      }
+      toast.message(launch.message);
+      setOpen(false);
+    } catch (err) {
+      setPhase("idle");
+      toast.error(err instanceof Error ? err.message : `Could not pay with ${name}.`);
+    }
   }
 
   async function pick(id: string) {
@@ -56,16 +116,7 @@ export function PayWallet({
         return;
       }
       if ((id === "phantom" || id === "solflare") && inv.asset === "SOL") {
-        const launch = launchSolWallet(id as "phantom" | "solflare", inv.payAddress, inv.cryptoAmount);
-        if (launch.kind === "copy") {
-          await navigator.clipboard.writeText(launch.uri);
-          toast.message(launch.message);
-        } else {
-          // intent: / native — prefer top-level navigation so Android resolves the package.
-          window.location.href = launch.href;
-          toast.message(launch.message);
-        }
-        setOpen(false);
+        await payWithSol(id);
         return;
       }
       const link = walletDeepLink(id, inv.asset, inv.payAddress, inv.cryptoAmount);
@@ -77,7 +128,7 @@ export function PayWallet({
     }
   }
 
-  async function pay() {
+  async function payEth() {
     if (disabled) return;
     if (!inv.payAddress || !inv.paymentReady) {
       toast.error("Payment address is not configured.");
@@ -99,6 +150,7 @@ export function PayWallet({
 
   const options = WALLET_OPTIONS.filter((w) => {
     if (w.id === "injected") return Boolean(injected) && inv.asset === "ETH";
+    if (w.id === "phantom" || w.id === "solflare") return false;
     return w.assets.includes(inv.asset);
   });
 
@@ -107,12 +159,14 @@ export function PayWallet({
       <Panel>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="kicker kicker-accent">Send</p>
+            <p className="kicker kicker-accent">Pay</p>
             <p className="mt-1 font-display text-2xl text-fg">
-              {inv.cryptoAmount} {inv.asset}
+              {solAmount} {inv.asset}
             </p>
             <p className="text-sm text-muted">
-              Send this exact amount to the invoice address. Access unlocks after payment confirms.
+              {inv.asset === "SOL"
+                ? "Pay the exact amount. Unlock continues after the network confirms."
+                : "Send this exact amount to the invoice address. Access unlocks after payment confirms."}
             </p>
           </div>
           <Wallet className="size-5 text-gold" />
@@ -125,12 +179,9 @@ export function PayWallet({
             <button
               type="button"
               className="mt-2 inline-flex items-center gap-1 text-xs text-gold"
-              onClick={() => {
-                void navigator.clipboard.writeText(inv.payAddress);
-                toast.success("Address copied.");
-              }}
+              onClick={() => void copyAddress()}
             >
-              <Copy className="size-3" /> Copy
+              <Copy className="size-3" /> Copy address
             </button>
           </div>
         ) : (
@@ -143,46 +194,77 @@ export function PayWallet({
           <p className="mt-3 text-xs text-subtle">Connected {shortAddr(account)}</p>
         ) : null}
 
-        {phase === "signing" || phase === "broadcast" ? (
+        {busy ? (
           <p className="mt-4 text-sm text-gold">
-            {phase === "signing" ? "Confirm the transfer in your wallet…" : "Waiting for confirmation…"}
+            {phase === "signing" ? "Confirm in your wallet…" : "Waiting for confirmation…"}
           </p>
         ) : null}
 
         <div className="mt-5 flex flex-col gap-2">
-          {inv.asset === "ETH" && injectedList.length && inv.paymentReady && !account ? (
-            injectedList.map((p) => (
+          {inv.asset === "SOL" && inv.paymentReady ? (
+            <>
               <Button
-                key={p.name}
                 size="xl"
-                disabled={disabled || phase === "signing" || phase === "broadcast"}
-                onClick={() => {
-                  void (async () => {
-                    try {
-                      const addr = await connectInjected(p.provider);
-                      setAccount(addr);
-                      setMethod("injected");
-                      setPhase("confirm");
-                      toast.success(`${p.name} connected.`);
-                    } catch (err) {
-                      toast.error(err instanceof Error ? err.message : "Could not connect.");
-                    }
-                  })();
-                }}
+                variant="gold"
+                disabled={disabled || !inv.payAddress || busy}
+                onClick={() => void payWithSol("phantom")}
               >
-                Connect {p.name}
+                {busy && method === "phantom" ? <Loader2 className="size-4 animate-spin" /> : null}
+                {hasPhantom
+                  ? `Pay ${solAmount} SOL with Phantom`
+                  : mobile
+                    ? "Pay with Phantom"
+                    : "Connect Phantom & pay"}
               </Button>
-            ))
+              <Button
+                size="xl"
+                disabled={disabled || !inv.payAddress || busy}
+                onClick={() => void payWithSol("solflare")}
+              >
+                {busy && method === "solflare" ? <Loader2 className="size-4 animate-spin" /> : null}
+                {hasSolflare
+                  ? `Pay ${solAmount} SOL with Solflare`
+                  : mobile
+                    ? "Pay with Solflare"
+                    : "Connect Solflare & pay"}
+              </Button>
+              <p className="text-xs text-subtle">
+                {hasPhantom || hasSolflare
+                  ? "Your wallet will ask you to confirm the exact amount."
+                  : mobile
+                    ? "Opens your wallet app to confirm the exact amount — stay signed in here."
+                    : "Install Phantom or Solflare in this browser, or pay from your phone."}
+              </p>
+            </>
           ) : null}
+
+          {inv.asset === "ETH" && injectedList.length && inv.paymentReady && !account
+            ? injectedList.map((p) => (
+                <Button
+                  key={p.name}
+                  size="xl"
+                  disabled={disabled || busy}
+                  onClick={() => {
+                    void (async () => {
+                      try {
+                        const addr = await connectInjected(p.provider);
+                        setAccount(addr);
+                        setMethod("injected");
+                        setPhase("confirm");
+                        toast.success(`${p.name} connected.`);
+                      } catch (err) {
+                        toast.error(err instanceof Error ? err.message : "Could not connect.");
+                      }
+                    })();
+                  }}
+                >
+                  Connect {p.name}
+                </Button>
+              ))
+            : null}
           {inv.asset === "ETH" && account ? (
-            <Button
-              size="xl"
-              disabled={disabled || !inv.paymentReady || phase === "signing" || phase === "broadcast"}
-              onClick={() => void pay()}
-            >
-              {phase === "signing" || phase === "broadcast" ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : null}
+            <Button size="xl" disabled={disabled || !inv.paymentReady || busy} onClick={() => void payEth()}>
+              {busy ? <Loader2 className="size-4 animate-spin" /> : null}
               Send {inv.cryptoAmount} ETH
             </Button>
           ) : null}
@@ -191,24 +273,38 @@ export function PayWallet({
               No browser wallet detected. Use Open a mobile wallet below (MetaMask / Trust / Coinbase).
             </p>
           ) : null}
-          {inv.asset === "SOL" && uri ? (
-            <Button
-              size="xl"
-              variant="gold"
-              disabled={disabled || !inv.payAddress}
-              onClick={() => void copyPayLink()}
+
+          {inv.asset === "SOL" ? (
+            <button
+              type="button"
+              className="mt-1 text-left text-xs text-subtle underline-offset-2 hover:text-muted hover:underline"
+              onClick={() => setMoreOpen((v) => !v)}
             >
-              <Copy className="size-4" /> Copy pay link
+              {moreOpen ? "Hide backup options" : "Backup: copy address or pay link"}
+            </button>
+          ) : null}
+          {inv.asset === "SOL" && moreOpen ? (
+            <div className="flex flex-col gap-2 rounded-lg border border-border/60 px-3 py-3">
+              <Button size="lg" variant="outline" disabled={disabled || !uri} onClick={() => void copyPayLink()}>
+                <Copy className="size-4" /> Copy pay link
+              </Button>
+              <p className="text-[11px] text-subtle">
+                Only if the buttons above are unavailable. Paste or scan inside your wallet — do not
+                reopen this site inside a wallet browser.
+              </p>
+            </div>
+          ) : null}
+
+          {inv.asset !== "SOL" ? (
+            <Button
+              size={inv.asset === "ETH" && injected ? "lg" : "xl"}
+              variant={inv.asset === "ETH" && injected ? "outline" : "gold"}
+              disabled={disabled || !inv.payAddress}
+              onClick={() => setOpen(true)}
+            >
+              Open a mobile wallet
             </Button>
           ) : null}
-          <Button
-            size={inv.asset === "ETH" && injected ? "lg" : inv.asset === "SOL" ? "lg" : "xl"}
-            variant={inv.asset === "SOL" || (inv.asset === "ETH" && injected) ? "outline" : "gold"}
-            disabled={disabled || !inv.payAddress}
-            onClick={() => setOpen(true)}
-          >
-            {inv.asset === "SOL" ? "Phantom / Solflare / other" : "Open a mobile wallet"}
-          </Button>
         </div>
       </Panel>
 
@@ -221,7 +317,8 @@ export function PayWallet({
               Open a wallet with this invoice
             </h3>
             <p className="mt-2 text-sm text-muted">
-              Copy the pay link first when you can. Wallet buttons never reopen this site inside Phantom/Solflare (that would ask you to sign in again).
+              Prefer a native send when offered. Wallet buttons never reopen this site inside
+              Phantom/Solflare (that would ask you to sign in again).
             </p>
             <ul className="mt-5 space-y-2">
               {options.map((w) => (
@@ -233,7 +330,7 @@ export function PayWallet({
                   >
                     <span>
                       <span className="block text-sm text-fg">
-                        {w.id === "injected" ? injected?.name ?? w.name : w.name}
+                        {w.id === "injected" ? (injected?.name ?? w.name) : w.name}
                       </span>
                       <span className="text-xs text-subtle">{w.hint}</span>
                     </span>
@@ -242,23 +339,6 @@ export function PayWallet({
                 </li>
               ))}
             </ul>
-            {uri ? (
-              <div className="mt-4">
-                <p className="break-all font-mono text-[11px] text-subtle">{uri}</p>
-                {inv.asset === "SOL" ? (
-                  <button
-                    type="button"
-                    className="mt-2 inline-flex items-center gap-1 text-xs text-gold"
-                    onClick={() => {
-                      void navigator.clipboard.writeText(uri);
-                      toast.success("Pay link copied.");
-                    }}
-                  >
-                    <Copy className="size-3" /> Copy pay link / other wallet
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
           </div>
         </Overlay>
       ) : null}

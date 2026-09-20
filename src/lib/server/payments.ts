@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { ipnCanonicalJson, normalizePaymentId, type IpnPayment } from "@/lib/nowpayments";
+import { formatSolAmount } from "@/lib/sol-amount";
 import { nowPayCurrency } from "@/lib/crypto";
 import type { CryptoAsset } from "@/lib/types";
 
@@ -126,7 +127,14 @@ export async function createNowpaymentsPayment(opts: {
     address: body.pay_address,
     provider: "nowpayments",
     paymentId,
-    payAmount: String(body.pay_amount ?? ""),
+    payAmount: (() => {
+      const raw = String(body.pay_amount ?? "");
+      if (opts.asset === "SOL") {
+        const normalized = formatSolAmount(raw);
+        return normalized || raw;
+      }
+      return raw;
+    })(),
     payCurrency: String(body.pay_currency || nowPayCurrency(opts.asset)).toLowerCase(),
     priceAmount: Number(body.price_amount ?? opts.amountCents / 100),
     expiresAt: body.expiration_estimate_date ?? null,
