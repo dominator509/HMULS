@@ -1,7 +1,7 @@
 import type { CryptoAsset } from "./types";
-import { formatSolAmount, isSolanaAddress, solToLamports } from "./sol-amount";
+import { formatSolAmount, isSolanaAddress, solToLamports } from "./sol-amount.ts";
 
-export { formatSolAmount, isSolanaAddress, solToLamports } from "./sol-amount";
+export { formatSolAmount, isSolanaAddress, solToLamports } from "./sol-amount.ts";
 
 const VAULT_KEY = "sheundresses.vault.wallet";
 
