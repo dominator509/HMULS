@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, beforeEach } from "node:test";
 import {
   androidSolanaPayIntent,
   formatSolAmount,
@@ -9,9 +9,43 @@ import {
   SOLFLARE_ANDROID_PACKAGE,
   walletDeepLink,
 } from "./wallet.ts";
+import {
+  buildSolConnectHref,
+  buildSolSignAndSendHref,
+  isBrandedSolWalletHref,
+  startSolMobileConnect,
+} from "./sol-mobile-deeplink.ts";
 
 const addr = "So11111111111111111111111111111111111111112";
 const amount = "0.05";
+const checkout = "https://sheundresses.com/checkout/inv_test123";
+const iosUA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15";
+const androidUA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36";
+
+/** Minimal sessionStorage for Node tests. */
+function installMemorySessionStorage() {
+  const map = new Map<string, string>();
+  const store = {
+    getItem: (k: string) => (map.has(k) ? map.get(k)! : null),
+    setItem: (k: string, v: string) => {
+      map.set(k, String(v));
+    },
+    removeItem: (k: string) => {
+      map.delete(k);
+    },
+    clear: () => map.clear(),
+    key: (i: number) => [...map.keys()][i] ?? null,
+    get length() {
+      return map.size;
+    },
+  };
+  (globalThis as unknown as { sessionStorage: typeof store }).sessionStorage = store;
+  return store;
+}
+
+beforeEach(() => {
+  installMemorySessionStorage();
+});
 
 describe("formatSolAmount", () => {
   it("truncates float dust to 9 decimals (root cause of invalid pay links)", () => {
@@ -53,10 +87,44 @@ describe("androidSolanaPayIntent", () => {
   });
 });
 
+describe("branded sol UL helpers", () => {
+  it("connect hrefs are wallet-owned HTTPS hosts", () => {
+    const phantom = buildSolConnectHref({
+      wallet: "phantom",
+      appUrl: "https://sheundresses.com/",
+      redirectLink: checkout,
+      dappEncryptionPublicKey: "11111111111111111111111111111111",
+    });
+    const solflare = buildSolConnectHref({
+      wallet: "solflare",
+      appUrl: "https://sheundresses.com/",
+      redirectLink: checkout,
+      dappEncryptionPublicKey: "11111111111111111111111111111111",
+    });
+    assert.equal(phantom.startsWith("https://phantom.app/ul/v1/connect"), true);
+    assert.equal(solflare.startsWith("https://solflare.com/ul/v1/connect"), true);
+    assert.equal(isBrandedSolWalletHref(phantom, "phantom"), true);
+    assert.equal(isBrandedSolWalletHref(solflare, "solflare"), true);
+    assert.equal(isBrandedSolWalletHref("solana:" + addr, "phantom"), false);
+  });
+
+  it("signAndSendTransaction hrefs stay on wallet hosts", () => {
+    const href = buildSolSignAndSendHref({
+      wallet: "phantom",
+      dappEncryptionPublicKey: "11111111111111111111111111111111",
+      nonce: "22222222222222222222222222222222",
+      redirectLink: checkout,
+      encryptedPayload: "33333333333333333333333333333333",
+    });
+    assert.equal(href.startsWith("https://phantom.app/ul/v1/signAndSendTransaction"), true);
+    assert.doesNotMatch(href, /^solana:/);
+  });
+});
+
 describe("launchSolWallet", () => {
   it("Android Phantom → package-scoped intent (no site browse)", () => {
     const launch = launchSolWallet("phantom", addr, amount, {
-      userAgent: "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36",
+      userAgent: androidUA,
     });
     assert.equal(launch.kind, "open");
     if (launch.kind !== "open") return;
@@ -66,21 +134,57 @@ describe("launchSolWallet", () => {
 
   it("Android Solflare → package-scoped intent", () => {
     const launch = launchSolWallet("solflare", addr, amount, {
-      userAgent: "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36",
+      userAgent: androidUA,
     });
     assert.equal(launch.kind, "open");
     if (launch.kind !== "open") return;
     assert.match(launch.href, new RegExp(`package=${SOLFLARE_ANDROID_PACKAGE}`));
   });
 
-  it("iOS → open Solana Pay URI (native confirm, not copy-first)", () => {
+  it("iOS Phantom → https://phantom.app/ connect UL (never bare solana:)", () => {
     const launch = launchSolWallet("phantom", addr, amount, {
-      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
+      userAgent: iosUA,
+      checkoutUrl: checkout,
     });
     assert.equal(launch.kind, "open");
     if (launch.kind !== "open") return;
-    assert.equal(launch.href.startsWith("solana:"), true);
-    assert.match(launch.message, /Confirm/i);
+    assert.equal(launch.href.startsWith("https://phantom.app/"), true);
+    assert.match(launch.href, /\/ul\/v1\/connect/);
+    assert.equal(launch.href.startsWith("solana:"), false);
+    assert.doesNotMatch(launch.href, /ul\/browse/i);
+    assert.match(launch.message, /Phantom|SOL/i);
+  });
+
+  it("iOS Solflare → https://solflare.com/ connect UL (never bare solana:)", () => {
+    const launch = launchSolWallet("solflare", addr, amount, {
+      userAgent: iosUA,
+      checkoutUrl: checkout,
+    });
+    assert.equal(launch.kind, "open");
+    if (launch.kind !== "open") return;
+    assert.equal(launch.href.startsWith("https://solflare.com/"), true);
+    assert.match(launch.href, /\/ul\/v1\/connect/);
+    assert.equal(launch.href.startsWith("solana:"), false);
+    assert.doesNotMatch(launch.href, /ul\/browse/i);
+  });
+
+  it("startSolMobileConnect persists session keys and redirect markers", () => {
+    const started = startSolMobileConnect({
+      wallet: "phantom",
+      to: addr,
+      amountSol: amount,
+      checkoutUrl: checkout,
+    });
+    assert.equal(started.href.startsWith("https://phantom.app/ul/v1/connect"), true);
+    assert.match(started.href, /dapp_encryption_public_key=/);
+    assert.match(started.href, /redirect_link=/);
+    const redirect = decodeURIComponent(
+      new URL(started.href).searchParams.get("redirect_link") || "",
+    );
+    assert.match(redirect, /hmuls_sol=1/);
+    assert.match(redirect, /hmuls_wallet=phantom/);
+    assert.match(redirect, /hmuls_step=connect/);
+    assert.equal(globalThis.sessionStorage.getItem("sheundresses.sol.deeplink.v1") != null, true);
   });
 
   it("desktop → copy fallback for extension-less browsers", () => {
@@ -94,16 +198,21 @@ describe("launchSolWallet", () => {
 });
 
 describe("walletDeepLink phantom/solflare", () => {
-  it("does not emit Phantom/Solflare browse links", () => {
+  it("iOS deeplink is branded Phantom host, not solana: or browse", () => {
     const phantom = walletDeepLink("phantom", "SOL", addr, amount, {
-      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
+      userAgent: iosUA,
+      checkoutUrl: checkout,
     });
-    const solflare = walletDeepLink("solflare", "SOL", addr, amount, {
-      userAgent: "Mozilla/5.0 (Linux; Android 14)",
-    });
+    assert.equal(phantom.startsWith("https://phantom.app/"), true);
+    assert.equal(phantom.startsWith("solana:"), false);
     assert.doesNotMatch(phantom, /ul\/browse/i);
+  });
+
+  it("Android deeplink stays package-scoped intent", () => {
+    const solflare = walletDeepLink("solflare", "SOL", addr, amount, {
+      userAgent: androidUA,
+    });
     assert.doesNotMatch(solflare, /ul\/browse/i);
-    assert.equal(phantom.startsWith("solana:"), true);
     assert.match(solflare, /package=com\.solflare\.mobile/);
   });
 });

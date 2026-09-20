@@ -189,15 +189,18 @@ Put values that must reach **Nitro `process.env`** as **encrypted Worker secrets
 
 - **Do not** send buyers into Phantom/Solflare **in-app browsers** (`…/ul/browse/<https checkout>`). That WebView is a **separate cookie jar** from Safari/Chrome — they look “logged out” and sign-in errors are easy to misread as “wrong password” or “only one session.”
 - Better Auth **allows multiple concurrent sessions** by default. We do **not** revoke other sessions on email sign-in (only on password reset). Concurrent-login blocking is **not** a product rule.
-- **Preferred unlock UX** (see `src/lib/wallet.ts` + `PayWallet`) — connect-and-pay first, never copy-link as primary:
+- **Preferred unlock UX** (see `src/lib/wallet.ts`, `src/lib/sol-mobile-deeplink.ts`, `PayWallet`) — connect-and-pay first, never copy-link as primary:
   1. **Desktop / extension:** primary CTAs are **Pay with Phantom** and **Pay with Solflare**. When the extension is present, call `connect` + `signAndSendTransaction` for a `SystemProgram.transfer` of the **exact** invoice SOL to the invoice address, then continue the existing waiting / IPN unlock path.
   2. **Android:** same buttons open **package-scoped `intent://` Solana Pay** (`app.phantom` / `com.solflare.mobile`) so the native send sheet opens — not Base via bare `solana:`, and not an in-app browse of sheundresses.com.
-  3. **iOS (no extension):** open the **valid** Solana Pay URI so the installed wallet shows native confirm. Stay on the signed-in Safari session; do not route through wallet browse.
+  3. **iOS Safari (no extension):** **never** open bare `solana:` (iOS has no app chooser — Base or whichever wallet registered first hijacks it). Use **wallet-owned HTTPS universal links** only:
+     - Phantom: `https://phantom.app/ul/v1/connect` → return to checkout HTTPS → `https://phantom.app/ul/v1/signAndSendTransaction` (encrypted session; `SystemProgram.transfer` for exact invoice SOL).
+     - Solflare: `https://solflare.com/ul/v1/connect` → same encrypted `signAndSendTransaction` pattern (`docs.solflare.com` deeplinks).
+     - Persist dapp keypair + session in `sessionStorage` (`sheundresses.sol.deeplink.v1`). `redirect_link` is the current checkout HTTPS URL on sheundresses.com (buyer returns signed-in).
   4. **Copy address / copy pay link** are **backup only** (collapsed under “Backup”).
 - **Pay URI validity:** Solana Pay rejects amounts with **>9 decimals** or scientific notation. Normalize with `formatSolAmount` (also when storing NOWPayments `pay_amount`) so links and transfers are not “invalid.” Empty address → do not emit a URI.
-- Optional RPC: `VITE_SOLANA_RPC_URL` (defaults to public mainnet) for blockhash when signing in-browser.
+- Optional RPC: `VITE_SOLANA_RPC_URL` (defaults to public mainnet) for blockhash when signing in-browser or building the iOS UL transfer.
 - Never put backend/unlock jargon (HMAC, Worker, underpay math) on the buyer paywall — plain exact amount + confirmation only.
-- Honest Phantom / Solflare labels. Never brand bare `solana:` as those apps (Base hijacks the shared scheme on Android).
+- Honest Phantom / Solflare labels. Never brand bare `solana:` as those apps (Base hijacks the shared scheme on Android **and** iOS).
 
 
 ## Paid media storage (preserve)
