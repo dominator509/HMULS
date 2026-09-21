@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { BTC_BELOW_MIN_FALLBACK, parseBtcMinFiatUsd } from "@/lib/btc-min";
 import { ipnCanonicalJson, normalizePaymentId, type IpnPayment } from "@/lib/nowpayments";
 import { formatSolAmount } from "@/lib/sol-amount";
 import { nowPayCurrency } from "@/lib/crypto";
@@ -37,6 +38,71 @@ export function paymentsMissing() {
   // Only if helper is empty (should be impossible after apex fallback).
   if (!nowpaymentsIpnUrl()) missing.push("NOWPAYMENTS_IPN_URL");
   return missing;
+}
+
+/** Isolate-local cache for BTC→BTC min (5–15 min; use 10). */
+const BTC_MIN_CACHE_TTL_MS = 10 * 60 * 1000;
+
+type BtcMinCacheEntry = {
+  fiatUsd: number;
+  minAmount: number;
+  expiresAt: number;
+};
+
+let btcMinCache: BtcMinCacheEntry | null = null;
+
+/** Test-only: clear the BTC min cache between cases. */
+export function resetBtcMinCacheForTests() {
+  btcMinCache = null;
+}
+
+/**
+ * Live NOWPayments BTC→BTC minimum with USD fiat_equivalent.
+ * Cached ~10 min. Returns null if API key missing or the call fails with no cache.
+ */
+export async function fetchNowpaymentsBtcMinFiatUsd(): Promise<{
+  fiatUsd: number;
+  minAmount: number;
+} | null> {
+  const now = Date.now();
+  if (btcMinCache && now < btcMinCache.expiresAt) {
+    return { fiatUsd: btcMinCache.fiatUsd, minAmount: btcMinCache.minAmount };
+  }
+  const key = nowpaymentsApiKey();
+  if (!key) return btcMinCache ? { fiatUsd: btcMinCache.fiatUsd, minAmount: btcMinCache.minAmount } : null;
+
+  const url =
+    "https://api.nowpayments.io/v1/min-amount?currency_from=btc&currency_to=btc&fiat_equivalent=usd";
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12_000);
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { "x-api-key": key },
+      signal: controller.signal,
+    });
+    const body = (await res.json()) as Parameters<typeof parseBtcMinFiatUsd>[0];
+    if (!res.ok) {
+      if (btcMinCache) return { fiatUsd: btcMinCache.fiatUsd, minAmount: btcMinCache.minAmount };
+      return null;
+    }
+    const parsed = parseBtcMinFiatUsd(body);
+    if (!parsed) {
+      if (btcMinCache) return { fiatUsd: btcMinCache.fiatUsd, minAmount: btcMinCache.minAmount };
+      return null;
+    }
+    btcMinCache = {
+      fiatUsd: parsed.fiatUsd,
+      minAmount: parsed.minAmount,
+      expiresAt: now + BTC_MIN_CACHE_TTL_MS,
+    };
+    return parsed;
+  } catch {
+    if (btcMinCache) return { fiatUsd: btcMinCache.fiatUsd, minAmount: btcMinCache.minAmount };
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 
@@ -116,7 +182,9 @@ export async function createNowpaymentsPayment(opts: {
     const raw = body.message || "NOWPayments did not return a payment.";
     if (/less than minimal/i.test(raw)) {
       throw new Error(
-        "This amount is below NOWPayments minimum for that coin — try a larger unlock or another asset.",
+        opts.asset === "BTC"
+          ? BTC_BELOW_MIN_FALLBACK
+          : "This amount is below the minimum for that coin — try a larger unlock or another asset.",
       );
     }
     throw new Error(raw);
