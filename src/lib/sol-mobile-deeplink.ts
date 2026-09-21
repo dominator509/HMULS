@@ -23,6 +23,10 @@
 import bs58 from "bs58";
 import nacl from "tweetnacl";
 import { formatSolAmount, isSolanaAddress, solToLamports } from "./sol-amount.ts";
+import {
+  fetchRecentBlockhashFromApi,
+  friendlySolPrepareError,
+} from "./sol-recent-blockhash.ts";
 
 export type SolWalletId = "phantom" | "solflare";
 
@@ -77,16 +81,6 @@ const UL_BASE: Record<SolWalletId, string> = {
   solflare: "https://solflare.com/ul/v1",
 };
 
-function solRpcUrl() {
-  try {
-    const env = (import.meta as unknown as { env?: Record<string, string> }).env;
-    const fromEnv = env?.VITE_SOLANA_RPC_URL?.trim();
-    if (fromEnv) return fromEnv;
-  } catch {
-    /* non-vite */
-  }
-  return "https://api.mainnet-beta.solana.com";
-}
 
 function bytesToB58(bytes: Uint8Array): string {
   return bs58.encode(bytes);
@@ -618,7 +612,7 @@ export async function continueSolMobileAfterConnect(returnUrl: string): Promise<
     clearSolMobileSession();
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "Could not build transfer.",
+      error: friendlySolPrepareError(err),
     };
   }
 }
@@ -632,8 +626,7 @@ async function buildSignHrefForPending(stored: StoredSession, currentUrl: string
     throw new Error("Amount too large to send from this browser.");
   }
 
-  const { Connection, PublicKey, SystemProgram, Transaction } = await import("@solana/web3.js");
-  const connection = new Connection(solRpcUrl(), "confirmed");
+  const { PublicKey, SystemProgram, Transaction } = await import("@solana/web3.js");
   const from = new PublicKey(stored.walletPublicKey);
   const to = new PublicKey(stored.to);
   const tx = new Transaction().add(
@@ -644,7 +637,8 @@ async function buildSignHrefForPending(stored: StoredSession, currentUrl: string
     }),
   );
   tx.feePayer = from;
-  const latest = await connection.getLatestBlockhash("confirmed");
+  // Same-origin Worker API — never browser→public Solana RPC (403 from many origins).
+  const latest = await fetchRecentBlockhashFromApi();
   tx.recentBlockhash = latest.blockhash;
 
   const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
