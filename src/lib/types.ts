@@ -1,4 +1,4 @@
-export type CryptoAsset = "BTC" | "ETH" | "USDT" | "SOL";
+export type CryptoAsset = "BTC" | "LTC" | "ETH" | "USDT" | "SOL";
 
 export type InvoiceKind = "shot" | "bundle" | "upsell" | "gift";
 

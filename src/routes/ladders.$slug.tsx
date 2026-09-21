@@ -44,18 +44,23 @@ import {
   isBtcBelowMin,
   isBtcBelowShotMin,
 } from "@/lib/btc-min";
+import {
+  isLtcBelowMin,
+  ltcBuyerTipForHide,
+  ltcHideReason,
+  ltcMinBuyerTip,
+} from "@/lib/ltc-min";
 import { alsoUnlocked, offerFrame, PAY_SHEET, stackNote, FAILED_TX, HOW_TO_CRYPTO } from "@/lib/copy";
 import { toast } from "sonner";
 import { Lock, Play } from "lucide-react";
-import { getDiscover } from "@/lib/server/discover";
 import { JsonLd, Crumbs, FaqList } from "@/components/seo/JsonLd";
-import { authorLadderSeo, headTags, jsonLdGraph, modelAlt } from "@/lib/seo";
+import { authorLadderSeo, headTags, jsonLdGraph, modelAlt, originOf } from "@/lib/seo";
 
 export const Route = createFileRoute("/ladders/$slug")({
   loader: async ({ params }) => {
     const ladder = await getLadderBySlug({ data: { slug: params.slug } });
-    const d = await getDiscover().catch(() => null);
-    return { ladder, origin: d?.origin ?? "" };
+    // Cheap origin constant — avoid full homepage discover on every ladder load.
+    return { ladder, origin: originOf() };
   },
   head: ({ loaderData, params }) => {
     const lad = loaderData?.ladder;
@@ -111,7 +116,7 @@ function LadderPage() {
   const [asset, setAsset] = useState<CryptoAsset>("ETH");
   const [gift, setGift] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [payStatus, setPayStatus] = useState<{ nowpayments: boolean; missing: string[]; btcMinUsdCents?: number | null } | null>(null);
+  const [payStatus, setPayStatus] = useState<{ nowpayments: boolean; missing: string[]; btcMinUsdCents?: number | null; ltcMinUsdCents?: number | null } | null>(null);
   const [clock, setClock] = useState<number | null>(null);
   const [dials, setDials] = useState<Dials>(DEFAULT_DIALS);
   const [surfaces, setSurfaces] = useState<Surfaces>(() => fallbackSurfaces(DEFAULT_DIALS));
@@ -131,10 +136,15 @@ function LadderPage() {
   }, []);
 
   useEffect(() => {
+    // Prefer SSR loader ladder — skip a second Neon round-trip when already hydrated.
+    if (loaded?.ladder && loaded.ladder.slug === slug) {
+      setRaw(loaded.ladder);
+      return;
+    }
     getLadderBySlug({ data: { slug } })
       .then(setRaw)
       .catch(() => setRaw(null));
-  }, [slug]);
+  }, [slug, loaded?.ladder]);
 
   useEffect(() => {
     getPsychology()
@@ -251,7 +261,7 @@ function LadderPage() {
     getPaymentStatus()
       .then(setPayStatus)
       .catch(() =>
-        setPayStatus({ nowpayments: false, missing: ["NOWPAYMENTS_API_KEY"], btcMinUsdCents: null }),
+        setPayStatus({ nowpayments: false, missing: ["NOWPAYMENTS_API_KEY"], btcMinUsdCents: null, ltcMinUsdCents: null }),
       );
   }, [payOpen, user]);
 
@@ -358,6 +368,11 @@ function LadderPage() {
       toast.error(btcMinBuyerTip(btcMin) + " — pick another asset or a larger unlock.");
       return;
     }
+    const ltcMin = payStatus.ltcMinUsdCents;
+    if (payAsset === "LTC" && ltcMin != null && isLtcBelowMin(amountForGate, ltcMin)) {
+      toast.error(ltcMinBuyerTip(ltcMin) + " — pick another asset or a larger unlock.");
+      return;
+    }
     setBusy(true);
     try {
       const inv = await Promise.race([
@@ -405,8 +420,13 @@ function LadderPage() {
   const btcHide = btcHideReason(payShotCount, payAmount, payStatus?.btcMinUsdCents);
   const btcHidden = btcHide != null;
   const btcHideTip = btcBuyerTipForHide(btcHide, payStatus?.btcMinUsdCents);
-  // Keep picker selection on a visible asset when BTC is omitted for this unlock.
+  const ltcHide = ltcHideReason(payAmount, payStatus?.ltcMinUsdCents);
+  const ltcHidden = ltcHide != null;
+  const ltcHideTip = ltcBuyerTipForHide(ltcHide, payStatus?.ltcMinUsdCents);
+  // Keep picker selection on a visible asset when BTC/LTC is omitted for this unlock.
   if (asset === "BTC" && btcHidden) {
+    setAsset("ETH");
+  } else if (asset === "LTC" && ltcHidden) {
     setAsset("ETH");
   }
 
@@ -930,7 +950,11 @@ function LadderPage() {
               />
             </p>
             <div className="mt-5 grid grid-cols-2 gap-2">
-              {CRYPTO_ASSETS.filter((a) => (a.id !== "BTC" ? true : !btcHidden)).map((a) => (
+              {CRYPTO_ASSETS.filter((a) => {
+                if (a.id === "BTC") return !btcHidden;
+                if (a.id === "LTC") return !ltcHidden;
+                return true;
+              }).map((a) => (
                 <button
                   key={a.id}
                   type="button"
@@ -948,6 +972,9 @@ function LadderPage() {
             </div>
             {btcHideTip ? (
               <p className="mt-2 text-xs text-subtle">{btcHideTip}</p>
+            ) : null}
+            {ltcHideTip ? (
+              <p className="mt-2 text-xs text-subtle">{ltcHideTip}</p>
             ) : null}
             <label className="mt-4 flex min-h-11 items-center gap-2 text-sm text-muted">
               <input

@@ -586,26 +586,53 @@ export const listLadders = createServerFn({ method: "GET" }).handler(async () =>
   return loadPublishedCatalog(sql);
 });
 
+
+/** Isolate memo for ladder-by-slug hot path (warm TTFB; mirrors getDiscover ~30s). */
+const LADDER_BY_SLUG_TTL_MS = 30_000;
+type LadderBySlugValue = Awaited<ReturnType<typeof mapLadder>> | null;
+const ladderBySlugCache = new Map<string, { at: number; value: LadderBySlugValue }>();
+const ladderBySlugInflight = new Map<string, Promise<LadderBySlugValue>>();
+
 export const getLadderBySlug = createServerFn({ method: "GET" })
   .validator((d: { slug: string }) => d)
   .handler(async ({ data }) => {
-    const sql = await getSql();
-    await ensureCatalog(sql);
-    const ladders = await sql<LadderRow>`
-      select * from ladders where slug = ${data.slug} and published = true
-    `;
-    const lad = ladders[0];
-    if (!lad) return null;
-    const shots = await sql<ShotRow>`
-      select * from shots where ladder_id = ${lad.id} order by step_index
-    `;
-    await sql`
-      insert into events (ladder_id, kind, meta)
-      values (${lad.id}, 'view', ${JSON.stringify({ slug: data.slug })})
-    `;
-    const muses = await loadMuseBibles(sql);
-    const muse = muses.get(lad.model_id || "") ?? LIORA;
-    return mapLadder(lad, shots, new Set(), muse);
+    const slug = data.slug;
+    const now = Date.now();
+    const cached = ladderBySlugCache.get(slug);
+    if (cached && now - cached.at < LADDER_BY_SLUG_TTL_MS) {
+      return cached.value;
+    }
+    let inflight = ladderBySlugInflight.get(slug);
+    if (!inflight) {
+      inflight = (async (): Promise<LadderBySlugValue> => {
+        const sql = await getSql();
+        await ensureCatalog(sql);
+        const ladders = await sql<LadderRow>`
+          select * from ladders where slug = ${slug} and published = true
+        `;
+        const lad = ladders[0];
+        if (!lad) return null;
+        const shots = await sql<ShotRow>`
+          select * from shots where ladder_id = ${lad.id} order by step_index
+        `;
+        await sql`
+          insert into events (ladder_id, kind, meta)
+          values (${lad.id}, 'view', ${JSON.stringify({ slug })})
+        `;
+        const muses = await loadMuseBibles(sql);
+        const muse = muses.get(lad.model_id || "") ?? LIORA;
+        return mapLadder(lad, shots, new Set(), muse);
+      })()
+        .then((value) => {
+          ladderBySlugCache.set(slug, { at: Date.now(), value });
+          return value;
+        })
+        .finally(() => {
+          ladderBySlugInflight.delete(slug);
+        });
+      ladderBySlugInflight.set(slug, inflight);
+    }
+    return inflight;
   });
 
 export const getMyUnlocks = createServerFn({ method: "GET" })

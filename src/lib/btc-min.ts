@@ -53,12 +53,12 @@ export const BTC_SHOT_MIN_BUYER_TIP =
 /** Same clear buyer message when createInvoice rejects BTC below the gated min. */
 export function btcBelowMinCreateError(minUsdCents: number): string {
   const dollars = btcMinTipDollars(minUsdCents);
-  return `Bitcoin is available from about $${dollars} — pick Solana, USDT, or Ethereum for this unlock, or choose a larger set.`;
+  return `Bitcoin is available from about $${dollars} — pick Solana, USDT, Ethereum, or Litecoin for this unlock, or choose a larger set.`;
 }
 
 /** Same clear buyer message when createInvoice rejects BTC below the shot-count gate. */
 export function btcBelowShotMinCreateError(): string {
-  return `${BTC_SHOT_MIN_BUYER_TIP} — pick Solana, USDT, or Ethereum for this unlock, or choose a larger set.`;
+  return `${BTC_SHOT_MIN_BUYER_TIP} — pick Solana, USDT, Ethereum, or Litecoin for this unlock, or choose a larger set.`;
 }
 
 /**
@@ -97,7 +97,7 @@ export function btcBuyerTipForHide(
 
 /** Fallback when live min is unknown but NOWPayments said “less than minimal”. */
 export const BTC_BELOW_MIN_FALLBACK =
-  "Bitcoin is below the minimum for this unlock — pick Solana, USDT, or Ethereum, or choose a larger set.";
+  "Bitcoin is below the minimum for this unlock — pick Solana, USDT, Ethereum, or Litecoin, or choose a larger set.";
 
 export type NowpaymentsMinAmountBody = {
   min_amount?: number | string;

@@ -10,6 +10,7 @@ export const FAILED_TX_ASSETS: { id: CryptoAsset; label: string }[] = [
   { id: "ETH", label: "ETH (Ethereum)" },
   { id: "USDT", label: "USDT (Ethereum)" },
   { id: "BTC", label: "BTC (Bitcoin)" },
+  { id: "LTC", label: "LTC (Litecoin)" },
 ];
 
 export const FAILED_TX_CONTACT = "contact@sheundresses.com";
@@ -103,7 +104,7 @@ export function normalizeFailedTxReport(
     return { ok: false, error: "Enter the account email you use on this site." };
   }
   if (!isFailedTxAsset(input.asset)) {
-    return { ok: false, error: "Pick the asset you sent (SOL, ETH, USDT, or BTC)." };
+    return { ok: false, error: "Pick the asset you sent (SOL, ETH, USDT, BTC, or LTC)." };
   }
   const { txid, explorerUrl } = extractTxId(input.txidOrLink);
   if (txid.length < 8) {

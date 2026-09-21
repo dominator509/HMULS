@@ -44,7 +44,7 @@ Never commit .env or secret values. Never put operator personal name/Gmail on pu
 | **Auth** | Better Auth via Neon HTTP Kysely dialect (`neonHttpDialect` → `getSql`) — same path as app SQL; **not** `pg` TCP or sticky serverless Pool |
 | **Paid media** | Cloudflare R2 bucket `hmuls-vault` (binding `HMULS_VAULT`; REST token fallback); optional private Vercel Blob; collector reads only via `/api/media` |
 | **AI** | xAI Grok / Imagine (Studio) when `XAI_API_KEY` is set |
-| **Payments** | NOWPayments; IPN HMAC + amount/currency match; ~**98%** underpay tolerance |
+| **Payments** | NOWPayments (SOL / USDT ERC-20 / ETH / BTC / **LTC**); IPN HMAC + amount/currency match; ~**98%** underpay tolerance |
 | **Outbound mail** | AgentMail (`AGENTMAIL_API_KEY` + inbox) |
 | **Inbound mail** | Cloudflare Email Routing → role addresses (legal@ / dmca@ / contact@) |
 | **Stamps** | Sidecar `https://stamps.sheundresses.com` (Contabo/VPS ffmpeg); Worker holds tokens in Neon + stamped PNG in R2 (`stamps/…`) or Blob |
@@ -211,6 +211,30 @@ Two gates — **both** required to offer BTC (`src/lib/btc-min.ts`):
 2. **Fiat min:** USD invoice (`amount_cents`) ≥ the live NOWPayments BTC→BTC minimum fiat (`GET /v1/min-amount?currency_from=btc&currency_to=btc&fiat_equivalent=usd`), plus a **5% buffer** (`BTC_MIN_BUFFER`). Do not hardcode the USD floor — mins move (~$21 recently). Cache ~**10 minutes** in the Worker isolate (`fetchNowpaymentsBtcMinFiatUsd` in `src/lib/server/payments.ts`). Tip: “Bitcoin available from about $XX” (dollar tip rounded up). `createInvoice` rejects below-min BTC with the same buyer wording.
 
 Ladder asset picker (`ladders.$slug.tsx`) hides BTC when either gate fails; tip prefers the shot-count reason over the amount reason. No Worker/NOWPayments jargon in buyer copy. SOL / USDT / ETH / Phantom / Solflare paths stay locked — do not change them for these gates.
+
+## Litecoin (NOWPayments gates)
+
+Litecoin mirrors Bitcoin’s NOWPayments flow (`pay_currency: ltc`) with **one important difference**:
+
+1. **No shot-count gate.** LTC is offered on **every unlock type** — single shot, any count, bundles — when the live fiat floor is met. Do **not** add `LTC_MIN_SHOTS`.
+2. **Fiat min only:** USD invoice ≥ live NOWPayments LTC→LTC minimum fiat (`GET /v1/min-amount?currency_from=ltc&currency_to=ltc&fiat_equivalent=usd`), plus a **5% buffer** (`LTC_MIN_BUFFER`). Cache ~**10 minutes** isolate-local (`fetchNowpaymentsLtcMinFiatUsd` in `src/lib/server/payments.ts`). Helpers live in `src/lib/ltc-min.ts`.
+
+Ladder picker hides LTC only when under the live fiat floor (plain tip: “Litecoin available from about $XX”). `createInvoice` rejects below-min LTC with the same buyer wording. BTC stays `BTC_MIN_SHOTS = 3` + live BTC fiat min — do not loosen BTC when wiring LTC.
+
+Wallet UX: Trust Wallet LTC send (`coin=2`, same pattern as BTC `coin=0`); `litecoin:` payment URI; no Coinbase/Base for LTC. Failed-transaction asset list and how-to-get-crypto include a brief Litecoin note. Do **not** touch SOL Phantom/Solflare connect-and-pay paths for LTC work.
+
+
+## Static asset + media cache (performance)
+
+- **Fingerprinted `/assets/*`** (Vite hashed JS/CSS): `Cache-Control: public, max-age=31536000, immutable` via Nitro `routeRules` in `vite.config.ts` and `server/middleware/static-cache.ts`. Safe because the filename changes on content change.
+- **Public `/media/*` marketing covers/teasers:** longer browser cache (`public, max-age=604800, stale-while-revalidate=86400`). These are public SFW covers only.
+- **Do not** loosen cache on private vault media (`/api/media` grant path stays `private` / short TTL).
+- **Do not** long-cache HTML SSR documents — keep HTML fresh so unlock state and SEO stay current.
+- Ladder pages: prefer SSR `loader` ladder data — skip client `getLadderBySlug` re-fetch when hydrated; ~30s isolate memo on `getLadderBySlug` (`LADDER_BY_SLUG_TTL_MS`); use cheap `originOf()` instead of full `getDiscover()` when only origin is needed for head tags.
+- Homepage hero LCP: preload `/media/hero.jpg` via `headTags({ preloadImage })` on the index route.
+- Keep oversized public covers compressed (target tens of KB, not hundreds). Prefer optimized JPEG; WebP optional when smaller.
+- **No keep-warm cron / ping** — do not add scheduled Worker pings to “warm” isolates.
+
 
 ## USDT unlock / MetaMask · Trust (buyers)
 
