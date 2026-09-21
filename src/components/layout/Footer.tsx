@@ -67,6 +67,9 @@ export function Footer() {
             <Link to="/how-to-get-crypto" className="inline-flex min-h-11 items-center text-muted hover:text-fg">
               How to get crypto
             </Link>
+            <Link to="/failed-transaction" className="inline-flex min-h-11 items-center text-muted hover:text-fg">
+              Failed transaction?
+            </Link>
             <Link to="/connectors" className="inline-flex min-h-11 items-center text-muted hover:text-fg">
               Agent connectors
             </Link>

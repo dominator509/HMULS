@@ -19,17 +19,29 @@ Relevant fields (Neon `invoices`): `pay_address`, `crypto_amount`, `provider_pay
 
 ## Customer path
 
-Tell them to email **contact@sheundresses.com** and include:
+**Preferred:** public form **`/failed-transaction`** (linked from checkout / paywall as **Failed transaction?**).  
+It emails **contact@sheundresses.com** (AgentMail) with a machine-parseable subject:
+
+`[FAILED-TX] {asset} {txid_short} {account_email}`
+
+Body is labeled `key=value` lines plus a JSON block (`type=FAILED_TX`) including account email, asset, txid, explorer URL, pay address, invoice id, unlock description, time/tz, notes, screenshot attachment and/or `screenshot_r2_key` (ops-only R2 key under `failed-tx/`).
+
+**Fallback:** freeform email to **contact@sheundresses.com** with the same fields:
 
 1. Account email used on the site  
 2. Shot / ladder if known  
-3. Asset (SOL / ETH / …)  
+3. Asset (SOL / ETH / USDT Ethereum / BTC)  
 4. Exact pay address from checkout (if they still have it)  
-5. Blockchain txid  
+5. Blockchain txid (or explorer link)  
 6. Screenshot of checkout crash / invoice / Coinbase (or exchange) send confirmation  
 7. Approx time + timezone  
 
 Acknowledge receipt. **Never ask them to pay again** until the payment is matched or proven unmatched.
+
+### Unlock vs refund
+
+- **Unlock / settle:** when on-chain proof matches **one** invoice (pay address, asset, amount within ~2% underpay, tx confirmed), the agent **may** settle that invoice only via `operatorGrantInvoice` / equivalent.  
+- **Refunds:** **never automatic.** Flag for human / operator approval. Do not initiate refunds in customer copy, runbook steps, or watchdog automation.
 
 ---
 
@@ -49,7 +61,8 @@ Acknowledge receipt. **Never ask them to pay again** until the payment is matche
    - Grant unlocks for **`shot_ids` on that invoice only**.  
    - Leave unrelated pending invoices unpaid.  
 6. **Reply via AgentMail** with confirmation, which shots unlocked, and hard-refresh instructions (sign out/in or hard refresh vault).  
-7. **If not proven:** say exactly what is missing. **Do not invent unlocks.**
+7. **If not proven:** say exactly what is missing. **Do not invent unlocks.**  
+8. **Refunds:** never auto-refund. If the buyer asks for money back or the tx cannot be matched to an unlock, **flag for human approval** and reply that an operator will review — do not initiate a refund.
 
 Log what was looked up, which invoice id was settled, txid, and what was unlocked.
 
@@ -82,5 +95,5 @@ Log what was looked up, which invoice id was settled, txid, and what was unlocke
 
 ## Optional — public FAQ /legal blurb (not required to ship UI)
 
-> **Paid on-chain but unlock missing?** Exchange withdrawals sometimes send slightly less than the exact checkout amount, so the payment processor may not mark the invoice finished even though the blockchain transfer succeeded. Email **contact@sheundresses.com** with your site account email, pay address, txid, asset, and approx time (timezone). Do not send a second payment until we reply. We match one invoice at a time after on-chain verification.
+> **Paid on-chain but unlock missing?** Exchange withdrawals sometimes send slightly less than the exact checkout amount, so the payment processor may not mark the invoice finished even though the blockchain transfer succeeded. Use **https://sheundresses.com/failed-transaction** (or email **contact@sheundresses.com**) with your site account email, pay address, txid, asset, screenshot, and approx time (timezone). Do not send a second payment until we reply. We match one invoice at a time after on-chain verification. Refunds need operator review — they are never automatic.
 

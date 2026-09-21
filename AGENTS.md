@@ -168,7 +168,7 @@ Put values that must reach **Nitro `process.env`** as **encrypted Worker secrets
 2. Settlement requires HMAC + finished/eligible status, amount, currency, payment id, pay address, pay currency match.
 3. Underpay: code accepts ~**98%** (`actually_paid >= pay_amount * 0.98`) for partials within tolerance (exchange withdrawals often land slightly short).
 4. Browser never grants; operator grant is explicit.
-5. Stranded on-chain / missing unlock → [`docs/payment-recovery-agentmail.md`](docs/payment-recovery-agentmail.md).
+5. Stranded on-chain / missing unlock → public form **`/failed-transaction`** (checkout link **Failed transaction?**) → AgentMail ticket `[FAILED-TX] …`; runbook [`docs/payment-recovery-agentmail.md`](docs/payment-recovery-agentmail.md). Agent may unlock **one** matched invoice; **refunds never automatic** (human approval).
 6. Confirm NOWPayments merchant eligibility for your legal entity before live US/EU/UK settlement (terms have excluded those residents/citizens — verify in writing).
 
 ### 11. CI + branch protection
@@ -191,6 +191,15 @@ Put values that must reach **Nitro `process.env`** as **encrypted Worker secrets
 - Public guide: **`/how-to-get-crypto`** (plain English: buy + send SOL / USDT ERC-20 / ETH / BTC).
 - Linked from primary nav (**Crypto**), homepage hero CTA, footer, and a small “New to crypto?” link on checkout + pay sheet.
 - Do **not** change SOL Phantom/Solflare deeplink pay paths when editing this page.
+
+## Buyer help — Failed transaction?
+
+- Public form: **`/failed-transaction`** (checkout / paywall / footer **Failed transaction?**).
+- Submits a structured AgentMail ticket to **`contact@sheundresses.com`** with subject **`[FAILED-TX] {asset} {txid_short} {account_email}`**, labeled body + JSON, screenshot attachment (and optional ops-only R2 key `failed-tx/…`).
+- Confirmation UI: do **not** ask the buyer to pay again until we reply.
+- **Unlocks:** agent may settle **one** matched invoice when on-chain proof is sufficient (~2% underpay OK).
+- **Refunds:** never automatic — flag for operator / human approval only.
+- Runbook: [`docs/payment-recovery-agentmail.md`](docs/payment-recovery-agentmail.md).
 
 ## Bitcoin (NOWPayments gates)
 
@@ -245,7 +254,7 @@ Ladder asset picker (`ladders.$slug.tsx`) hides BTC when either gate fails; tip 
 
 | Doc | Use |
 |---|---|
-| [`docs/payment-recovery-agentmail.md`](docs/payment-recovery-agentmail.md) | Stranded crypto / NOWPayments underpay; AgentMail recovery; ~2% tolerance; operator settle one invoice only |
+| [`docs/payment-recovery-agentmail.md`](docs/payment-recovery-agentmail.md) | Stranded crypto / NOWPayments underpay; customer form `/failed-transaction`; AgentMail `[FAILED-TX]`; ~2% tolerance; agent may settle one matched invoice; refunds human-only |
 | [`docs/muse-narrative-formula.md`](docs/muse-narrative-formula.md) | Muse / photoset voice; personal-fantasy hybrid / scene-trailer pattern; Engrish ban; Manual / Generate / Reverse modes |
 | [`docs/seo-taxonomy.md`](docs/seo-taxonomy.md) | SEO taxonomy |
 | [`docs/seo-content-calendar-8wk.md`](docs/seo-content-calendar-8wk.md) | 8-week content calendar |
