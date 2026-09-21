@@ -1,9 +1,15 @@
 /**
- * Bitcoin NOWPayments minimum gating (pure helpers — no I/O).
+ * Bitcoin NOWPayments gating (pure helpers — no I/O).
  *
- * Live fiat min comes from GET /v1/min-amount?currency_from=btc&currency_to=btc&fiat_equivalent=usd.
+ * Two gates, both required to offer BTC:
+ * 1. Shot-count: invoice unlocks ≥ BTC_MIN_SHOTS photos (bundled / multi-shot upsells).
+ * 2. Fiat min: USD invoice ≥ live NOWPayments BTC→BTC minimum fiat
+ *    (GET /v1/min-amount?currency_from=btc&currency_to=btc&fiat_equivalent=usd), plus buffer.
  * We apply a small buffer so borderline invoices do not fail at create after the picker showed BTC.
  */
+
+/** Minimum photos unlocked by the invoice before BTC is offered. */
+export const BTC_MIN_SHOTS = 3;
 
 /** 5% headroom over live fiat_equivalent (document: optional 5–10%; we use 5%). */
 export const BTC_MIN_BUFFER = 1.05;
@@ -28,16 +34,65 @@ export function isBtcBelowMin(amountCents: number, minUsdCents: number): boolean
   return amountCents < minUsdCents;
 }
 
-/** Buyer tip when BTC is hidden from the asset picker (no backend jargon). */
+/** True when this unlock grants fewer than BTC_MIN_SHOTS photos. */
+export function isBtcBelowShotMin(shotCount: number): boolean {
+  if (!Number.isFinite(shotCount)) return true;
+  return shotCount < BTC_MIN_SHOTS;
+}
+
+/** Buyer tip when BTC is hidden for the fiat floor (no backend jargon). */
 export function btcMinBuyerTip(minUsdCents: number): string {
   const dollars = btcMinTipDollars(minUsdCents);
   return `Bitcoin available from about $${dollars}`;
 }
 
+/** Buyer tip when BTC is hidden because the unlock is under 3 shots. */
+export const BTC_SHOT_MIN_BUYER_TIP =
+  "Bitcoin is available when unlocking 3 or more photos";
+
 /** Same clear buyer message when createInvoice rejects BTC below the gated min. */
 export function btcBelowMinCreateError(minUsdCents: number): string {
   const dollars = btcMinTipDollars(minUsdCents);
   return `Bitcoin is available from about $${dollars} — pick Solana, USDT, or Ethereum for this unlock, or choose a larger set.`;
+}
+
+/** Same clear buyer message when createInvoice rejects BTC below the shot-count gate. */
+export function btcBelowShotMinCreateError(): string {
+  return `${BTC_SHOT_MIN_BUYER_TIP} — pick Solana, USDT, or Ethereum for this unlock, or choose a larger set.`;
+}
+
+/**
+ * Why BTC is hidden in the asset picker. Shot-count takes precedence over amount
+ * so buyers see the actionable “unlock 3+” tip on single/2-shot gates.
+ */
+export type BtcHideReason = "shots" | "amount" | null;
+
+export function btcHideReason(
+  shotCount: number,
+  amountCents: number,
+  minUsdCents: number | null | undefined,
+): BtcHideReason {
+  if (isBtcBelowShotMin(shotCount)) return "shots";
+  if (
+    minUsdCents != null &&
+    minUsdCents > 0 &&
+    isBtcBelowMin(amountCents, minUsdCents)
+  ) {
+    return "amount";
+  }
+  return null;
+}
+
+/** Picker tip for the active hide reason (null when BTC should show). */
+export function btcBuyerTipForHide(
+  reason: BtcHideReason,
+  minUsdCents: number | null | undefined,
+): string | null {
+  if (reason === "shots") return BTC_SHOT_MIN_BUYER_TIP;
+  if (reason === "amount" && minUsdCents != null && minUsdCents > 0) {
+    return btcMinBuyerTip(minUsdCents);
+  }
+  return null;
 }
 
 /** Fallback when live min is unknown but NOWPayments said “less than minimal”. */

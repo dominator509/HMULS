@@ -77,7 +77,7 @@ const COINS = [
     id: "BTC",
     name: "Bitcoin (BTC)",
     blurb:
-      "Bitcoin may only appear for larger unlocks — for example bigger multi-photo sets or higher totals. If you do not see BTC in the picker, choose SOL, USDT, or ETH, or pick a larger unlock.",
+      "Bitcoin is offered on larger multi-photo unlocks (3 or more shots in one payment), and only when the total meets Bitcoin’s minimum. If you do not see BTC in the picker, choose SOL, USDT, or ETH, or unlock a bigger set.",
     tip: "Cash App and Coinbase can buy Bitcoin in many regions; then send on-chain to the invoice address.",
   },
 ] as const;

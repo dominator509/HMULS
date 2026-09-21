@@ -36,7 +36,14 @@ import {
   type Surfaces,
 } from "@/lib/psychology";
 import { CRYPTO_ASSETS } from "@/lib/crypto";
-import { btcMinBuyerTip, isBtcBelowMin } from "@/lib/btc-min";
+import {
+  btcBuyerTipForHide,
+  btcHideReason,
+  btcMinBuyerTip,
+  BTC_SHOT_MIN_BUYER_TIP,
+  isBtcBelowMin,
+  isBtcBelowShotMin,
+} from "@/lib/btc-min";
 import { alsoUnlocked, offerFrame, PAY_SHEET, stackNote, HOW_TO_CRYPTO } from "@/lib/copy";
 import { toast } from "sonner";
 import { Lock, Play } from "lucide-react";
@@ -335,8 +342,18 @@ function LadderPage() {
         : kind === "bundle"
           ? (progress?.bundleCents ?? 0)
           : upsellPrice;
+    const shotCountForGate =
+      kind === "shot"
+        ? 1
+        : kind === "bundle"
+          ? remainingShots.length
+          : Math.min(upsellN, remainingShots.length);
     const btcMin = payStatus.btcMinUsdCents;
     const payAsset = asset;
+    if (payAsset === "BTC" && isBtcBelowShotMin(shotCountForGate)) {
+      toast.error(BTC_SHOT_MIN_BUYER_TIP + " — pick another asset or a larger unlock.");
+      return;
+    }
     if (payAsset === "BTC" && btcMin != null && isBtcBelowMin(amountForGate, btcMin)) {
       toast.error(btcMinBuyerTip(btcMin) + " — pick another asset or a larger unlock.");
       return;
@@ -379,12 +396,17 @@ function LadderPage() {
 
   const payAmount =
     kind === "shot" ? nextPrice : kind === "bundle" ? progress.bundleCents : upsellPrice;
-  const btcHiddenForAmount =
-    payStatus?.btcMinUsdCents != null &&
-    payStatus.btcMinUsdCents > 0 &&
-    isBtcBelowMin(payAmount, payStatus.btcMinUsdCents);
-  // Keep picker selection on a visible asset when BTC is omitted for this amount.
-  if (asset === "BTC" && btcHiddenForAmount) {
+  const payShotCount =
+    kind === "shot"
+      ? 1
+      : kind === "bundle"
+        ? remainingShots.length
+        : Math.min(upsellN, remainingShots.length);
+  const btcHide = btcHideReason(payShotCount, payAmount, payStatus?.btcMinUsdCents);
+  const btcHidden = btcHide != null;
+  const btcHideTip = btcBuyerTipForHide(btcHide, payStatus?.btcMinUsdCents);
+  // Keep picker selection on a visible asset when BTC is omitted for this unlock.
+  if (asset === "BTC" && btcHidden) {
     setAsset("ETH");
   }
 
@@ -883,7 +905,7 @@ function LadderPage() {
               />
             </p>
             <div className="mt-5 grid grid-cols-2 gap-2">
-              {CRYPTO_ASSETS.filter((a) => (a.id !== "BTC" ? true : !btcHiddenForAmount)).map((a) => (
+              {CRYPTO_ASSETS.filter((a) => (a.id !== "BTC" ? true : !btcHidden)).map((a) => (
                 <button
                   key={a.id}
                   type="button"
@@ -899,8 +921,8 @@ function LadderPage() {
                 </button>
               ))}
             </div>
-            {btcHiddenForAmount && payStatus?.btcMinUsdCents != null ? (
-              <p className="mt-2 text-xs text-subtle">{btcMinBuyerTip(payStatus.btcMinUsdCents)}</p>
+            {btcHideTip ? (
+              <p className="mt-2 text-xs text-subtle">{btcHideTip}</p>
             ) : null}
             <label className="mt-4 flex min-h-11 items-center gap-2 text-sm text-muted">
               <input
@@ -921,7 +943,7 @@ function LadderPage() {
                 ? "Checking payments…"
                 : busy
                   ? "Opening invoice…"
-                  : PAY_SHEET.pay(asset === "BTC" && btcHiddenForAmount ? "ETH" : asset)}
+                  : PAY_SHEET.pay(asset === "BTC" && btcHidden ? "ETH" : asset)}
             </Button>
             <p className="mt-3 text-center text-xs text-subtle">
               Wallet checkout next — send from MetaMask, Rainbow, Trust, or Phantom.{" "}
