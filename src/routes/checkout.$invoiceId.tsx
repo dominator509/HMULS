@@ -388,7 +388,7 @@ function CheckoutPage() {
       ) : (
         <Button
           className="mt-4"
-          variant="ghost"
+          variant="outline"
           size="xl"
           disabled={!licenseOk}
           onClick={() => void markSent()}
