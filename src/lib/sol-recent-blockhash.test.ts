@@ -10,6 +10,7 @@ import {
   isBlockHeightExpired,
   isInsufficientFundsMessage,
   isPublicnodeRpcUrl,
+  isRpcSubmitEndpointRefuse,
   PUBLICNODE_RPC_URL,
   resolveSolanaRpcUrls,
   rpcUrlsForBlockHeight,
@@ -367,7 +368,7 @@ describe("sendRawTransactionViaRpc", () => {
           result: { value: [{ confirmationStatus: "confirmed", err: null }] },
         });
       }
-      if (body.method === "sendRawTransaction") {
+      if (body.method === "sendTransaction") {
         sendCalls += 1;
         const opts = (body.params?.[1] ?? {}) as {
           skipPreflight?: boolean;
@@ -400,7 +401,7 @@ describe("sendRawTransactionViaRpc", () => {
           result: { value: [null] },
         });
       }
-      if (body.method === "sendRawTransaction") {
+      if (body.method === "sendTransaction") {
         sendCalls += 1;
         return Response.json({ jsonrpc: "2.0", id: 1, result: "SigPendingOk" });
       }
@@ -428,7 +429,7 @@ describe("sendRawTransactionViaRpc", () => {
           result: { value: [{ confirmationStatus: "processed", err: { InstructionError: [0, "Custom"] } }] },
         });
       }
-      if (body.method === "sendRawTransaction") {
+      if (body.method === "sendTransaction") {
         return Response.json({ jsonrpc: "2.0", id: 1, result: "SigSentAnyway" });
       }
       return new Response("unexpected", { status: 500 });
@@ -439,6 +440,88 @@ describe("sendRawTransactionViaRpc", () => {
       fetchImpl as typeof fetch,
     );
     assert.equal(sig, "SigSentAnyway");
+  });
+
+
+  it("POSTs JSON-RPC method sendTransaction (not sendRawTransaction)", async () => {
+    // Solana JSON-RPC has no sendRawTransaction — web3.js Connection.sendRawTransaction
+    // calls method "sendTransaction" under the hood. Proving the wire method name.
+    const methods: string[] = [];
+    const fetchImpl = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { method?: string };
+      if (body.method) methods.push(body.method);
+      if (body.method === "getSignatureStatuses") {
+        return Response.json({
+          jsonrpc: "2.0",
+          id: 1,
+          result: { value: [{ confirmationStatus: "confirmed", err: null }] },
+        });
+      }
+      if (body.method === "sendTransaction") {
+        return Response.json({ jsonrpc: "2.0", id: 1, result: "SigMethodOk" });
+      }
+      if (body.method === "sendRawTransaction") {
+        return Response.json({
+          jsonrpc: "2.0",
+          id: 1,
+          error: { code: -32601, message: "Method not found" },
+        });
+      }
+      return new Response("unexpected", { status: 500 });
+    };
+    const sig = await sendRawTransactionViaRpc(
+      ["https://ok.example"],
+      new Uint8Array([1]),
+      fetchImpl as typeof fetch,
+    );
+    assert.equal(sig, "SigMethodOk");
+    assert.ok(methods.includes("sendTransaction"));
+    assert.equal(methods.includes("sendRawTransaction"), false);
+  });
+
+  it("continues to next RPC URL on HTTP 403 / Method not found", async () => {
+    const hosts: string[] = [];
+    const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const body = JSON.parse(String(init?.body ?? "{}")) as { method?: string };
+      if (body.method === "getSignatureStatuses") {
+        return Response.json({
+          jsonrpc: "2.0",
+          id: 1,
+          result: { value: [{ confirmationStatus: "confirmed", err: null }] },
+        });
+      }
+      if (body.method === "sendTransaction") {
+        hosts.push(url);
+        if (url.includes("mainnet")) {
+          return new Response("Your IP or provider is blocked", { status: 403 });
+        }
+        if (url.includes("broken")) {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: 1,
+            error: { code: -32601, message: "Method not found" },
+          });
+        }
+        return Response.json({ jsonrpc: "2.0", id: 1, result: "SigFallback" });
+      }
+      return new Response("unexpected", { status: 500 });
+    };
+    const sig = await sendRawTransactionViaRpc(
+      [
+        "https://api.mainnet-beta.solana.com",
+        "https://broken.example",
+        "https://solana-rpc.publicnode.com",
+      ],
+      new Uint8Array([1]),
+      fetchImpl as typeof fetch,
+    );
+    assert.equal(sig, "SigFallback");
+    // mainnet 403 → break to next; broken method-not-found → break; publicnode succeeds.
+    // Only one attempt per refused URL (no skipPreflight double-burn).
+    assert.equal(hosts.filter((h) => h.includes("mainnet")).length, 1);
+    assert.equal(hosts.filter((h) => h.includes("broken")).length, 1);
+    assert.ok(hosts.some((h) => h.includes("publicnode")));
   });
 
   it("falls back to preflight when skipPreflight fails non-expiry", async () => {
@@ -455,7 +538,7 @@ describe("sendRawTransactionViaRpc", () => {
           result: { value: [{ confirmationStatus: "confirmed", err: null }] },
         });
       }
-      if (body.method === "sendRawTransaction") {
+      if (body.method === "sendTransaction") {
         sendCalls += 1;
         const opts = (body.params?.[1] ?? {}) as { skipPreflight?: boolean };
         if (opts.skipPreflight) {
@@ -494,7 +577,7 @@ describe("safeRpcDetail / rpcUrlsForSend", () => {
   });
 });
 
-describe("isBlockhashExpiredMessage / solBroadcastErrorCode", () => {
+describe("isBlockhashExpiredMessage / solBroadcastErrorCode / isRpcSubmitEndpointRefuse", () => {
   it("detects expiry wording and maps codes", () => {
     assert.equal(isBlockhashExpiredMessage("BlockhashNotFound"), true);
     assert.equal(isBlockhashExpiredMessage("block height exceeded"), true);
@@ -504,6 +587,14 @@ describe("isBlockhashExpiredMessage / solBroadcastErrorCode", () => {
     assert.equal(solBroadcastErrorCode(SOL_BROADCAST_ERROR), "BROADCAST_FAILED");
     assert.equal(isBlockHeightExpired(150, 150), true);
     assert.equal(isBlockHeightExpired(149, 150), false);
+  });
+
+  it("detects 403 / method-not-found endpoint refuse", () => {
+    assert.equal(isRpcSubmitEndpointRefuse("HTTP 403 Your IP or provider is blocked", 403), true);
+    assert.equal(isRpcSubmitEndpointRefuse("Method not found", undefined), true);
+    assert.equal(isRpcSubmitEndpointRefuse("Method not found", undefined) || isRpcSubmitEndpointRefuse("-32601", undefined), true);
+    assert.equal(isRpcSubmitEndpointRefuse("BlockhashNotFound"), false);
+    assert.equal(isRpcSubmitEndpointRefuse("insufficient lamports"), false);
   });
 });
 

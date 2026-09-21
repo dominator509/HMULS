@@ -425,6 +425,23 @@ export type SendRawTransactionOptions = {
   preferSkipPreflight?: boolean;
 };
 
+/**
+ * True when this RPC endpoint refused submit — try the next URL (do not burn
+ * skipPreflight variants on the same dead host).
+ * HTTP 403 / IP blocked, or JSON-RPC -32601 Method not found.
+ */
+export function isRpcSubmitEndpointRefuse(message: string, httpStatus?: number): boolean {
+  if (httpStatus === 403) return true;
+  return /Method not found|-32601|HTTP 403|Access forbidden|Your IP or provider is blocked/i.test(
+    message,
+  );
+}
+
+/**
+ * One JSON-RPC send against a single URL.
+ * Solana JSON-RPC method is **`sendTransaction`** (what `@solana/web3.js`
+ * `Connection.sendRawTransaction` POSTs). There is no `sendRawTransaction` RPC method.
+ */
 async function rpcSendRawOnce(
   url: string,
   encoded: string,
@@ -440,7 +457,8 @@ async function rpcSendRawOnce(
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: 1,
-      method: "sendRawTransaction",
+      // Correct Solana JSON-RPC method — NOT "sendRawTransaction" (that returns -32601).
+      method: "sendTransaction",
       params: [
         encoded,
         {
@@ -462,7 +480,11 @@ async function rpcSendRawOnce(
   }
   const json = (await res.json()) as SendRpcJson;
   if (json.error) {
-    return { ok: false, message: json.error.message || String(json.error.code) };
+    return {
+      ok: false,
+      message: json.error.message || String(json.error.code),
+      httpStatus: json.error.code === -32601 ? 404 : undefined,
+    };
   }
   if (typeof json.result === "string" && json.result.length > 0) {
     return { ok: true, signature: json.result };
@@ -519,10 +541,11 @@ export async function confirmSignatureViaRpc(
 }
 
 /**
- * sendRawTransaction — returns base58 signature.
+ * Broadcast signed bytes via JSON-RPC **`sendTransaction`** (JS helper name keeps sendRaw*).
  * Default: skipPreflight:true + maxRetries first (Phantom mobile resilience), then
  * optional preflight attempt. Tries every RPC URL (SOLANA_RPC_URL / mainnet before publicnode).
- * If any send returns a signature, that is success — confirm poll never converts to BROADCAST_FAILED.
+ * On HTTP 403 / Method not found, continues to the next URL. If any send returns a signature,
+ * that is success — confirm poll never converts to BROADCAST_FAILED.
  */
 export async function sendRawTransactionViaRpc(
   rpcUrls: string[],
@@ -577,6 +600,11 @@ export async function sendRawTransactionViaRpc(
           sawBlockhashExpiry = true;
           // Do not burn remaining attempts on this URL once hash is dead.
           errors.push(`${url}: ${msg}`);
+          break;
+        }
+        // 403 / Method not found → next RPC URL (publicnode / SOLANA_RPC_URL after mainnet).
+        if (isRpcSubmitEndpointRefuse(msg, sent.httpStatus)) {
+          errors.push(`${url} skipPreflight=${attempt.skipPreflight}: ${msg}`);
           break;
         }
         errors.push(`${url} skipPreflight=${attempt.skipPreflight}: ${msg}`);
