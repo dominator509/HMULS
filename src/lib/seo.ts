@@ -159,7 +159,7 @@ export function authorModelSeo(m: ModelSeoIn) {
     },
     {
       q: `Is ${name} 18 or older?`,
-      a: `Yes. ${name} is portrayed ${age} or older. ${BRAND} does not host anyone under 18, and portrayed age on this vault is 21+.`,
+      a: `Yes. ${name} is portrayed ${age} or older. ${BRAND} does not host anyone under 18, and portrayed age on this vault is 24+.`,
     },
     {
       q: `Is ${name} AI-generated?`,
@@ -407,7 +407,7 @@ export function homeFaqs(models: { stageName: string }[]): FaqItem[] {
     },
     {
       q: "Are all models 18+?",
-      a: "Yes. Every muse is portrayed 21 or older. Human performers require 2257 records before explicit frames publish. Synthetic muses are fictional adults. No under-21 framing.",
+      a: "Yes. Every muse is portrayed 24 or older (brand OCs 24–34). Human performers require 2257 records before explicit frames publish. Synthetic muses are fictional adults. No under-21 framing.",
     },
     {
       q: "Can I share unlocked photos or videos?",
