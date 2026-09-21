@@ -186,12 +186,14 @@ Put values that must reach **Nitro `process.env`** as **encrypted Worker secrets
 
 ---
 
-## Bitcoin (NOWPayments min gate)
+## Bitcoin (NOWPayments gates)
 
-- Offer **BTC** only when the USD invoice (`amount_cents`) is ≥ the live NOWPayments BTC→BTC minimum fiat (`GET /v1/min-amount?currency_from=btc&currency_to=btc&fiat_equivalent=usd`), plus a **5% buffer** (`BTC_MIN_BUFFER` in `src/lib/btc-min.ts`). Do not hardcode the USD floor — mins move (~$21 recently).
-- Cache the min ~**10 minutes** in the Worker isolate (`fetchNowpaymentsBtcMinFiatUsd` in `src/lib/server/payments.ts`).
-- Ladder asset picker **hides** BTC on smaller unlocks; tip: “Bitcoin available from about $XX” (dollar tip rounded up). `createInvoice` rejects below-min BTC with the same buyer wording (no Worker/NOWPayments jargon).
-- SOL / Phantom / Solflare paths stay locked — do not change them for this gate.
+Two gates — **both** required to offer BTC (`src/lib/btc-min.ts`):
+
+1. **Shot-count (`BTC_MIN_SHOTS = 3`):** Offer BTC only when the payment unlocks **≥ 3 photos** (bundle / multi-shot upsell; `shot_ids.length` on create). Single-shot and 2-shot gates never show BTC. Tip / `createInvoice` reject: “Bitcoin is available when unlocking 3 or more photos” (`BTC_SHOT_MIN_BUYER_TIP` / `btcBelowShotMinCreateError`).
+2. **Fiat min:** USD invoice (`amount_cents`) ≥ the live NOWPayments BTC→BTC minimum fiat (`GET /v1/min-amount?currency_from=btc&currency_to=btc&fiat_equivalent=usd`), plus a **5% buffer** (`BTC_MIN_BUFFER`). Do not hardcode the USD floor — mins move (~$21 recently). Cache ~**10 minutes** in the Worker isolate (`fetchNowpaymentsBtcMinFiatUsd` in `src/lib/server/payments.ts`). Tip: “Bitcoin available from about $XX” (dollar tip rounded up). `createInvoice` rejects below-min BTC with the same buyer wording.
+
+Ladder asset picker (`ladders.$slug.tsx`) hides BTC when either gate fails; tip prefers the shot-count reason over the amount reason. No Worker/NOWPayments jargon in buyer copy. SOL / USDT / ETH / Phantom / Solflare paths stay locked — do not change them for these gates.
 
 ## USDT unlock / MetaMask · Trust (buyers)
 
