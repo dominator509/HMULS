@@ -4,9 +4,6 @@ import {
   androidSolanaPayIntent,
   formatSolAmount,
   launchSolWallet,
-  launchWalletDeepLink,
-  coinbaseUsdtPasteMessage,
-  COINBASE_USDT_SEND_HREF,
   metamaskUsdtErc20SendHref,
   paymentUri,
   PHANTOM_ANDROID_PACKAGE,
@@ -15,6 +12,7 @@ import {
   USDT_ERC20_CONTRACT,
   usdtErc20PaymentUri,
   usdtToBaseUnits,
+  WALLET_OPTIONS,
   walletDeepLink,
 } from "./wallet.ts";
 import {
@@ -762,32 +760,16 @@ describe("USDT ERC-20 paymentUri + deeplinks", () => {
     assert.equal(href, trustUsdtErc20SendHref(pay, amount));
   });
 
-  it("Coinbase USDT never uses dapp?cb_url= bare address (Invalid URL)", () => {
-    const href = walletDeepLink("coinbase", "USDT", pay, amount, {
-      payCurrency: "usdterc20",
-    });
-    assert.doesNotMatch(href, /dapp\?cb_url=/);
-    assert.doesNotMatch(href, new RegExp(encodeURIComponent(pay)));
-    assert.equal(href, "https://go.cb-w.com/send?");
-    const launch = launchWalletDeepLink("coinbase", "USDT", pay, amount, {
-      payCurrency: "usdterc20",
-    });
-    assert.equal(launch.kind, "copy");
-    if (launch.kind !== "copy") return;
-    // Address-only clipboard so Coinbase Send "Paste" fills To (not address+amount multiline).
-    assert.equal(launch.text, pay);
-    assert.doesNotMatch(launch.text, /USDT/);
-    assert.equal(launch.href, "https://go.cb-w.com/send?");
-    assert.match(launch.message, /Paste in To/i);
-    assert.match(launch.message, /USDT \(Ethereum\)/i);
-    assert.match(launch.message, /12\.34 USDT/);
-  });
-
-  it("coinbaseUsdtPasteMessage names Paste + USDT (Ethereum) and amount", () => {
-    assert.match(coinbaseUsdtPasteMessage("9.5"), /Paste in To/);
-    assert.match(coinbaseUsdtPasteMessage("9.5"), /USDT \(Ethereum\)/);
-    assert.match(coinbaseUsdtPasteMessage("9.5"), /9\.5 USDT/);
-    assert.equal(COINBASE_USDT_SEND_HREF, "https://go.cb-w.com/send?");
+  it("USDT mobile wallet options are MetaMask + Trust only (no Coinbase)", () => {
+    const usdt = WALLET_OPTIONS.filter((w) => w.assets.includes("USDT") && w.kind === "deeplink");
+    assert.deepEqual(
+      usdt.map((w) => w.id).sort(),
+      ["metamask", "trust"],
+    );
+    const coinbase = WALLET_OPTIONS.find((w) => w.id === "coinbase");
+    assert.ok(coinbase);
+    assert.equal(coinbase.assets.includes("USDT"), false);
+    assert.equal(coinbase.assets.includes("ETH"), true);
   });
 
   it("defaults USDT to ERC-20 when payCurrency omitted", () => {
