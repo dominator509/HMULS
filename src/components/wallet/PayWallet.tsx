@@ -58,7 +58,7 @@ export function PayWallet({
 
   // Resume encrypted Phantom/Solflare UL flow after iOS wallet redirects back to checkout.
   // Do NOT gate on `disabled` (terms checkbox): Safari reloads wipe React state and would
-  // silently stall with an unchecked box. Ack is restored from sessionStorage on checkout.
+  // silently stall with an unchecked box. Ack is restored from localStorage on checkout (cross-tab; Phantom return may be a new tab).
   useEffect(() => {
     if (typeof window === "undefined" || ulHandled.current) return;
     if (inv.asset !== "SOL") return;
