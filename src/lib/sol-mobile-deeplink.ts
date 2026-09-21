@@ -10,8 +10,8 @@
  * - App MUST store the wallet session and pass it on every later method:
  *   https://docs.phantom.com/phantom-deeplinks/handling-sessions
  * - Phantom `signAndSendTransaction` deeplink is **DEPRECATED** — use
- *   `signTransaction`, then broadcast with sendRawTransaction (server
- *   `POST /api/sol/send-raw`):
+ *   `signTransaction`, then broadcast via server `POST /api/sol/send-raw`
+ *   (JSON-RPC method `sendTransaction`):
  *   https://docs.phantom.com/phantom-deeplinks/provider-methods/signandsendtransaction
  * - Solflare still documents `signAndSendTransaction` — keep that path.
  * - Connect always passes `cluster=mainnet-beta`. Refresh blockhash immediately

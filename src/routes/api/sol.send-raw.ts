@@ -11,7 +11,7 @@ import {
 } from "@/lib/sol-recent-blockhash";
 
 /**
- * POST /api/sol/send-raw — server-side sendRawTransaction.
+ * POST /api/sol/send-raw — server-side broadcast of signed bytes via JSON-RPC `sendTransaction`.
  * Body: `{ transaction: "<base58 signed serialized tx>", lastValidBlockHeight?: number }`.
  * Used after Phantom `signTransaction` UL return (signAndSendTransaction deeplink
  * is deprecated — see https://docs.phantom.com/phantom-deeplinks/provider-methods/signandsendtransaction).
