@@ -144,9 +144,10 @@ Put values that must reach **Nitro `process.env`** as **encrypted Worker secrets
 3. Object keys: `vault/<basename>` matching grant keys (e.g. `vault/crv_1.jpg`, `vault/rev_1.jpg`) — **not** Vercel Blob HMAC pathnames. Stamps: `stamps/<userId>/<shotId>.png`.
 4. Seed unlocks use `media_url` like `grant:rev_1.jpg`. Files ship in git `private-media/` for local/Nitro, but **the Worker has no durable private-media disk**.
 5. Cold starts **kick off** `syncBundledVaultOriginals()` from `ensureCatalog` once per isolate (**fire-and-forget — not awaited**). Auth / `getMyRole` / other server fns must not wait on R2 seed sync or full-ladder `syncLiveCounts` (throttled background) (that blocked login after the R2 cutover → client "Sign-in timed out"). Existence for bulk sync uses **one `vault/` list** (not N REST HEADs); R2 REST fetches use ~5s AbortSignal timeouts. Per-file seed repair still runs on `/api/media` miss.
-6. Ops can re-run via admin seed vault sync (`syncVaultOriginals` on the Stamps panel).
-7. Optional/legacy: private Vercel Blob via `BLOB_READ_WRITE_TOKEN`. Prefer R2 in production; Blob Hobby transfer caps can suspend the store.
-8. Teasers/covers stay under `public/media/` (or public Blob). **Never** copy a paid original into `public/`.
+6. **Homepage / `getDiscover` hot path:** when published ladders (and legal models/docs) already exist, `ensureCatalog` / `ensureLegal` skip seed/ALTER/upsert and memoize per isolate. `getDiscover` parallelizes ensure + loads and caches ~30s in-isolate. Do **not** re-await vault R2 sync on auth/catalog. Homepage should prefer SSR `boot.ladders` — avoid a client `listLadders()` double-fetch on every visit. Goal: warm TTFB well under ~1–2s.
+7. Ops can re-run via admin seed vault sync (`syncVaultOriginals` on the Stamps panel).
+8. Optional/legacy: private Vercel Blob via `BLOB_READ_WRITE_TOKEN`. Prefer R2 in production; Blob Hobby transfer caps can suspend the store.
+9. Teasers/covers stay under `public/media/` (or public Blob). **Never** copy a paid original into `public/`.
 
 ### 8. Stamp sidecar (optional but required for pixel stamps)
 

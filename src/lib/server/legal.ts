@@ -154,7 +154,22 @@ async function upsertModelSeed(sql: Sql, m: MuseModel) {
 
 export async function ensureLegal(sql: Sql) {
   if (legalReady) return;
-  await sql`alter table models add column if not exists owner_brief text not null default ''`;
+
+  // Soft hot path: models + docs already present → skip ALTER/upsert on wake.
+  // Schema changes belong in migrations; do not ALTER on every Worker isolate.
+  try {
+    const [models, docs] = await Promise.all([
+      sql<{ c: number }>`select count(*)::int as c from models`,
+      sql<{ c: number }>`select count(*)::int as c from legal_docs`,
+    ]);
+    if ((models[0]?.c ?? 0) > 0 && (docs[0]?.c ?? 0) > 0) {
+      legalReady = true;
+      return;
+    }
+  } catch {
+    // Fall through to seed (empty DB / first boot).
+  }
+
   await upsertModelSeed(sql, LIORA_SEED);
   await upsertModelSeed(sql, NYX_SEED);
   const docs = await sql<{ c: number }>`select count(*)::int as c from legal_docs`;

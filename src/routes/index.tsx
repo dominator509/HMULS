@@ -61,16 +61,20 @@ function Home() {
   void clock;
 
   useEffect(() => {
-    listLadders()
-      .then(setLadders)
-      .catch(() => setLadders([]));
+    // Prefer SSR discover ladders — avoid a second ensureCatalog/Neon round-trip
+    // on every homepage visit (loader already hydrated `boot.ladders`).
+    if (!boot?.ladders?.length) {
+      listLadders()
+        .then(setLadders)
+        .catch(() => setLadders([]));
+    }
     getPsychology()
       .then((p) => {
         setDials(p.dials);
         setSurfaces(p.surfaces);
       })
       .catch(() => undefined);
-  }, []);
+  }, [boot?.ladders?.length]);
 
   const userId = user?.id ?? null;
   useEffect(() => {
@@ -124,33 +128,31 @@ function Home() {
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
             {unfinished[0] ? (
-              <Link
-                to="/ladders/$slug"
-                params={{ slug: unfinished[0].slug }}
-                search={{ pay: undefined }}
-                className="sm:w-auto"
-              >
-                <Button size="xl" className="sm:w-auto">
+              <Button asChild size="xl" className="sm:w-auto">
+                <Link
+                  to="/ladders/$slug"
+                  params={{ slug: unfinished[0].slug }}
+                  search={{ pay: undefined }}
+                >
                   {LETTER.heroCtaContinue} · {unfinished[0].title}
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             ) : (
-              <a href="#ladders" className="sm:w-auto">
-                <Button size="xl" className="sm:w-auto">
-                  {LETTER.heroCta}
-                </Button>
-              </a>
+              <Button asChild size="xl" className="sm:w-auto">
+                <a href="#ladders">{LETTER.heroCta}</a>
+              </Button>
             )}
-            <Link to="/vault" className="sm:w-auto">
-              <Button variant="outline" size="xl" className="sm:w-auto">
-                {LETTER.vaultCta}
-              </Button>
-            </Link>
-            <Link to="/how-to-get-crypto" className="sm:w-auto">
-              <Button variant="outline" size="xl" className="border-gold/50 text-gold sm:w-auto">
-                {HOW_TO_CRYPTO.homeCta}
-              </Button>
-            </Link>
+            <Button asChild variant="outline" size="xl" className="sm:w-auto">
+              <Link to="/vault">{LETTER.vaultCta}</Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              size="xl"
+              className="border-gold/50 text-gold sm:w-auto"
+            >
+              <Link to="/how-to-get-crypto">{HOW_TO_CRYPTO.homeCta}</Link>
+            </Button>
           </div>
           {user ? (
             <p className="mt-6 text-xs tracking-[0.16em] text-gold uppercase">

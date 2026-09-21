@@ -61,6 +61,9 @@ let copySynced = false;
 let voiceColsReady = false;
 let grantVaultSynced = false;
 export let grantVaultReady = false;
+/** Isolate memo: skip seed/Nyx probes once catalog is known ready. */
+let catalogReady = false;
+let nyxReady = false;
 
 /** Don't hammer Neon with full-ladder count UPDATEs on every ensureCatalog. */
 const LIVE_COUNTS_MIN_INTERVAL_MS = 60_000;
@@ -133,11 +136,18 @@ async function ensureVaultBlobSeedSync() {
  *  Idempotent — safe when Liora ladders already exist.
  */
 async function ensureNyxCatalog(sql: Sql) {
+  if (nyxReady) return;
+  // One probe for Nyx rows — avoid N round-trips on every wake.
+  const existingRows = await sql<{ id: string }>`
+    select id from ladders where model_id = ${NYX_MODEL_ID}
+  `;
+  const have = new Set(existingRows.map((r) => r.id));
+  if (have.size >= NYX_SEED_LADDERS.length) {
+    nyxReady = true;
+    return;
+  }
   for (const lad of NYX_SEED_LADDERS) {
-    const existing = await sql<{ c: number }>`
-      select count(*)::int as c from ladders where id = ${lad.id}
-    `;
-    if ((existing[0]?.c ?? 0) > 0) continue;
+    if (have.has(lad.id)) continue;
     await sql`
       insert into ladders (
         id, slug, title, theme, tagline, description, cover_url, sort_order,
@@ -165,9 +175,58 @@ async function ensureNyxCatalog(sql: Sql) {
       `;
     }
   }
+  nyxReady = true;
+}
+
+function markCatalogHotReady() {
+  catalogReady = true;
+  copySynced = true;
+  if (!grantVaultSynced) {
+    // Teaser/SEO vault sweeps stay off the hot path (Workers 1101 risk).
+    // Seed → R2/Blob sync is memoized once per isolate but MUST NOT be awaited
+    // here — REST HEADs on cold start blocked login/getMyRole (1101 / client
+    // "Sign-in timed out"). Miss path: /api/media syncs one file; Ops can re-run.
+    grantVaultSynced = true;
+    grantVaultReady = true;
+  }
+}
+
+function kickCatalogBackground(sql: Sql) {
+  void ensureVaultBlobSeedSync();
+  // Live collector counts are nice-to-have UI; awaiting them on every catalog
+  // touch (login getPsychology, getMyRole, …) saturated Neon HTTP (8s abort in
+  // db.ts) and produced empty 500s on /api/auth/sign-in/email.
+  void scheduleLiveCounts(sql);
 }
 
 export async function ensureCatalog(sql: Sql) {
+  // Warm isolate: zero Neon work on the request path.
+  if (catalogReady) {
+    kickCatalogBackground(sql);
+    return;
+  }
+
+  // Soft hot path: published catalog already exists → skip seed/upsert.
+  // Nyx backfill (if ever missing) runs in the background so homepage TTFB
+  // is not blocked by ALTER/seed loops on every Worker isolate wake.
+  try {
+    const published = await sql<{ c: number }>`
+      select count(*)::int as c from ladders where published = true
+    `;
+    if ((published[0]?.c ?? 0) > 0) {
+      markCatalogHotReady();
+      if (!nyxReady) {
+        void ensureNyxCatalog(sql).catch((err) => {
+          console.error("[catalog] ensureNyxCatalog bg failed", err);
+        });
+      }
+      kickCatalogBackground(sql);
+      return;
+    }
+  } catch {
+    // Fall through to full seed (empty DB / missing table on first boot).
+  }
+
   if (!seedPromise) {
     seedPromise = (async () => {
       const existing = await sql<{ c: number }>`select count(*)::int as c from ladders`;
@@ -207,20 +266,8 @@ export async function ensureCatalog(sql: Sql) {
   }
   await seedPromise;
   await ensureNyxCatalog(sql);
-  copySynced = true;
-  if (!grantVaultSynced) {
-    // Teaser/SEO vault sweeps stay off the hot path (Workers 1101 risk).
-    // Seed → R2/Blob sync is memoized once per isolate but MUST NOT be awaited
-    // here — REST HEADs on cold start blocked login/getMyRole (1101 / client
-    // "Sign-in timed out"). Miss path: /api/media syncs one file; Ops can re-run.
-    grantVaultSynced = true;
-    grantVaultReady = true;
-  }
-  void ensureVaultBlobSeedSync();
-  // Live collector counts are nice-to-have UI; awaiting them on every catalog
-  // touch (login getPsychology, getMyRole, …) saturated Neon HTTP (8s abort in
-  // db.ts) and produced empty 500s on /api/auth/sign-in/email.
-  void scheduleLiveCounts(sql);
+  markCatalogHotReady();
+  kickCatalogBackground(sql);
 }
 
 function scheduleLiveCounts(sql: Sql) {
