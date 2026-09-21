@@ -13,6 +13,7 @@ import {
   buildSolConnectHref,
   buildSolRedirectLink,
   buildSolSignAndSendHref,
+  buildSolSignTransactionHref,
   cleanSolUlUrl,
   clearSolCheckoutAck,
   clearSolMobileSession,
@@ -125,16 +126,41 @@ describe("branded sol UL helpers", () => {
     assert.equal(isBrandedSolWalletHref("solana:" + addr, "phantom"), false);
   });
 
-  it("signAndSendTransaction hrefs stay on wallet hosts", () => {
-    const href = buildSolSignAndSendHref({
+  it("Phantom signTransaction href stays on phantom.app (not deprecated signAndSend)", () => {
+    const href = buildSolSignTransactionHref({
       wallet: "phantom",
       dappEncryptionPublicKey: "11111111111111111111111111111111",
       nonce: "22222222222222222222222222222222",
       redirectLink: checkout,
       encryptedPayload: "33333333333333333333333333333333",
     });
-    assert.equal(href.startsWith("https://phantom.app/ul/v1/signAndSendTransaction"), true);
+    assert.equal(href.startsWith("https://phantom.app/ul/v1/signTransaction"), true);
+    assert.doesNotMatch(href, /signAndSendTransaction/);
     assert.doesNotMatch(href, /^solana:/);
+  });
+
+  it("Solflare signAndSendTransaction href stays on solflare.com", () => {
+    const href = buildSolSignAndSendHref({
+      wallet: "solflare",
+      dappEncryptionPublicKey: "11111111111111111111111111111111",
+      nonce: "22222222222222222222222222222222",
+      redirectLink: checkout,
+      encryptedPayload: "33333333333333333333333333333333",
+    });
+    assert.equal(href.startsWith("https://solflare.com/ul/v1/signAndSendTransaction"), true);
+    assert.doesNotMatch(href, /^solana:/);
+  });
+
+  it("connect UL always includes cluster=mainnet-beta", () => {
+    for (const wallet of ["phantom", "solflare"] as const) {
+      const href = buildSolConnectHref({
+        wallet,
+        appUrl: "https://sheundresses.com/",
+        redirectLink: checkout,
+        dappEncryptionPublicKey: "11111111111111111111111111111111",
+      });
+      assert.match(href, /[?&]cluster=mainnet-beta/);
+    }
   });
 });
 
@@ -398,6 +424,8 @@ describe("sol UL return resume helpers", () => {
       assert.doesNotMatch(result.error, /No pending wallet session|storage and return link empty/i);
     } else {
       assert.equal(result.href.startsWith("https://phantom.app/"), true);
+      assert.match(result.href, /\/ul\/v1\/signTransaction/);
+      assert.doesNotMatch(result.href, /signAndSendTransaction/);
       assert.doesNotMatch(result.href, /^solana:/);
     }
     // Session was written before navigation; still never solana: on iOS path.
@@ -447,6 +475,8 @@ describe("sol UL return resume helpers", () => {
       assert.doesNotMatch(result.error, /No pending wallet session|storage and return link empty/i);
     } else {
       assert.equal(result.href.startsWith("https://phantom.app/"), true);
+      assert.match(result.href, /\/ul\/v1\/signTransaction/);
+      assert.doesNotMatch(result.href, /signAndSendTransaction/);
       assert.doesNotMatch(result.href, /^solana:/);
     }
   });
@@ -463,12 +493,12 @@ describe("sol UL return resume helpers", () => {
     assert.match(result.error, /storage and return link empty/i);
   });
 
-  it("finishSolMobileAfterSign prefers localStorage then blob; clear on success", () => {
+  it("finishSolMobileAfterSign (Solflare) takes signature and clears session", async () => {
     const dapp = nacl.box.keyPair();
     const wallet = nacl.box.keyPair();
     const shared = nacl.box.before(wallet.publicKey, dapp.secretKey);
     const session = {
-      wallet: "phantom" as const,
+      wallet: "solflare" as const,
       to: addr,
       amountSol: amount,
       dappPublicKey: bs58.encode(dapp.publicKey),
@@ -488,13 +518,64 @@ describe("sol UL return resume helpers", () => {
       shared,
     );
     const returnUrl =
-      "https://sheundresses.com/checkout/inv?hmuls_sol=1&hmuls_wallet=phantom&hmuls_step=sign" +
+      "https://sheundresses.com/checkout/inv?hmuls_sol=1&hmuls_wallet=solflare&hmuls_step=sign" +
       `&data=${bs58.encode(encrypted)}&nonce=${bs58.encode(nonce)}`;
-    const done = finishSolMobileAfterSign(returnUrl);
+    const done = await finishSolMobileAfterSign(returnUrl);
     assert.equal(done.ok, true);
     if (!done.ok) return;
     assert.equal(done.signature, "sig123");
     assert.equal(globalThis.localStorage.getItem("sheundresses.sol.deeplink.v1"), null);
+  });
+
+  it("finishSolMobileAfterSign (Phantom) broadcasts signed tx via /api/sol/send-raw", async () => {
+    const dapp = nacl.box.keyPair();
+    const wallet = nacl.box.keyPair();
+    const shared = nacl.box.before(wallet.publicKey, dapp.secretKey);
+    const session = {
+      wallet: "phantom" as const,
+      to: addr,
+      amountSol: amount,
+      dappPublicKey: bs58.encode(dapp.publicKey),
+      dappSecretKey: bs58.encode(dapp.secretKey),
+      sharedSecret: bs58.encode(shared),
+      session: "sess",
+      walletPublicKey: addr,
+      stage: "sign" as const,
+      at: Date.now(),
+    };
+    globalThis.localStorage.setItem("sheundresses.sol.deeplink.v1", JSON.stringify(session));
+
+    const signedTxB58 = bs58.encode(Buffer.from("fake-signed-tx"));
+    const nonce = nacl.randomBytes(24);
+    const encrypted = nacl.box.after(
+      Buffer.from(JSON.stringify({ transaction: signedTxB58 }), "utf8"),
+      nonce,
+      shared,
+    );
+    const returnUrl =
+      "https://sheundresses.com/checkout/inv?hmuls_sol=1&hmuls_wallet=phantom&hmuls_step=sign" +
+      `&data=${bs58.encode(encrypted)}&nonce=${bs58.encode(nonce)}`;
+
+    const prevFetch = globalThis.fetch;
+    const calls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push(String(input));
+      assert.equal(String(input), "/api/sol/send-raw");
+      const body = JSON.parse(String(init?.body ?? "{}")) as { transaction?: string };
+      assert.equal(body.transaction, signedTxB58);
+      return Response.json({ signature: "broadcastSig999" });
+    }) as typeof fetch;
+    try {
+      const done = await finishSolMobileAfterSign(returnUrl);
+      assert.equal(done.ok, true);
+      if (!done.ok) return;
+      assert.equal(done.signature, "broadcastSig999");
+      assert.equal(done.wallet, "phantom");
+      assert.deepEqual(calls, ["/api/sol/send-raw"]);
+      assert.equal(globalThis.localStorage.getItem("sheundresses.sol.deeplink.v1"), null);
+    } finally {
+      globalThis.fetch = prevFetch;
+    }
   });
 
   it("encode/decode resume blob round-trip", () => {

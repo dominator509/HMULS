@@ -195,7 +195,8 @@ export type SolWalletLaunch =
  *
  * - Android: package-scoped `intent://` Solana Pay (native send; not Base).
  * - iOS: branded HTTPS universal links — `https://phantom.app/ul/v1/connect`
- *   then `…/signAndSendTransaction` (encrypted session). Never bare `solana:`
+ *   then Phantom `…/signTransaction` (deprecated signAndSend) + server
+ *   sendRaw; Solflare `…/signAndSendTransaction`. Never bare `solana:`
  *   (iOS has no chooser; Base hijacks the shared scheme).
  * - Desktop: extension `sendSolWithWallet`; copy is fallback only.
  * - Never `…/ul/browse/<checkout>` as the primary pay path (logged-out WebView).
@@ -248,7 +249,7 @@ export function launchSolWallet(
       message: `Confirm ${amt} SOL in ${name}.`,
     };
   }
-  // iOS / other mobile: wallet-owned HTTPS UL (connect → signAndSend). Never bare solana:.
+  // iOS / other mobile: wallet-owned HTTPS UL (connect → sign / signAndSend). Never bare solana:.
   if (isMobileUserAgent(ua) || isIosUserAgent(ua)) {
     const checkoutUrl =
       opts?.checkoutUrl ||

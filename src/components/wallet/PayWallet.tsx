@@ -74,7 +74,7 @@ export function PayWallet({
       try {
         if (parsed.step === "connect") {
           setPhase("signing");
-          toast.message(`Connected to ${name}. Confirm the transfer…`);
+          toast.message(`Confirm in ${name}…`);
           const next = await continueSolMobileAfterConnect(window.location.href);
           if (!next.ok) {
             setPhase("idle");
@@ -89,7 +89,7 @@ export function PayWallet({
         }
         if (parsed.step === "sign") {
           setPhase("broadcast");
-          const done = finishSolMobileAfterSign(window.location.href);
+          const done = await finishSolMobileAfterSign(window.location.href);
           window.history.replaceState({}, "", cleanSolUlUrl(window.location.href));
           if (!done.ok) {
             setPhase("idle");
@@ -99,7 +99,7 @@ export function PayWallet({
           clearSolCheckoutAck();
           setAccount(done.from);
           await onSubmitted({ method: done.wallet, wallet: done.from, txHash: done.signature });
-          toast.success(`Sent with ${name}. Waiting for unlock…`);
+          toast.success("Payment sent. Waiting for unlock…");
           return;
         }
       } catch (err) {
@@ -147,7 +147,7 @@ export function PayWallet({
         setPhase("broadcast");
         clearSolCheckoutAck();
         await onSubmitted({ method: id, wallet: from, txHash: signature });
-        toast.success(`Sent with ${name}. Waiting for unlock…`);
+        toast.success("Payment sent. Waiting for unlock…");
         return;
       }
       const launch = launchSolWallet(id, inv.payAddress, inv.cryptoAmount, {

@@ -5,7 +5,14 @@ import {
   fetchRecentBlockhashFromApi,
   fetchRecentBlockhashFromRpc,
   friendlySolPrepareError,
+  isInsufficientFundsMessage,
   resolveSolanaRpcUrls,
+  sendRawTransactionViaApi,
+  sendRawTransactionViaRpc,
+  simulateTransactionViaApi,
+  simulateTransactionViaRpc,
+  SOL_BROADCAST_ERROR,
+  SOL_INSUFFICIENT_FUNDS_ERROR,
   SOL_PREPARE_TRANSFER_ERROR,
 } from "./sol-recent-blockhash.ts";
 
@@ -111,5 +118,130 @@ describe("friendlySolPrepareError", () => {
     );
     assert.equal(friendlySolPrepareError(new Error(SOL_PREPARE_TRANSFER_ERROR)), SOL_PREPARE_TRANSFER_ERROR);
     assert.equal(friendlySolPrepareError(new Error("Wallet declined.")), "Wallet declined.");
+  });
+});
+
+describe("isInsufficientFundsMessage", () => {
+  it("detects common RPC / sim wording", () => {
+    assert.equal(isInsufficientFundsMessage("insufficient lamports"), true);
+    assert.equal(isInsufficientFundsMessage('{"InsufficientFundsForFee":{}}'), true);
+    assert.equal(isInsufficientFundsMessage("AccountNotFound"), false);
+  });
+});
+
+describe("simulateTransactionViaRpc", () => {
+  it("ok when err is null", async () => {
+    const fetchImpl = async () =>
+      Response.json({
+        jsonrpc: "2.0",
+        id: 1,
+        result: { value: { err: null, logs: [] } },
+      });
+    const out = await simulateTransactionViaRpc(
+      ["https://ok.example"],
+      new Uint8Array([1, 2, 3]),
+      fetchImpl as typeof fetch,
+    );
+    assert.deepEqual(out, { ok: true });
+  });
+
+  it("maps insufficient funds from sim err", async () => {
+    const fetchImpl = async () =>
+      Response.json({
+        jsonrpc: "2.0",
+        id: 1,
+        result: {
+          value: {
+            err: "InsufficientFundsForRent",
+            logs: ["Program log: insufficient lamports"],
+          },
+        },
+      });
+    const out = await simulateTransactionViaRpc(
+      ["https://ok.example"],
+      new Uint8Array([1]),
+      fetchImpl as typeof fetch,
+    );
+    assert.equal(out.ok, false);
+    if (out.ok) return;
+    assert.equal(out.insufficientFunds, true);
+  });
+
+  it("marks infraFailure when all RPCs fail", async () => {
+    const fetchImpl = async () => new Response("no", { status: 503 });
+    const out = await simulateTransactionViaRpc(
+      ["https://a.example"],
+      new Uint8Array([1]),
+      fetchImpl as typeof fetch,
+    );
+    assert.equal(out.ok, false);
+    if (out.ok) return;
+    assert.equal(out.infraFailure, true);
+  });
+});
+
+describe("sendRawTransactionViaRpc", () => {
+  it("returns signature from first success", async () => {
+    const fetchImpl = async () =>
+      Response.json({ jsonrpc: "2.0", id: 1, result: "SigABC" });
+    const sig = await sendRawTransactionViaRpc(
+      ["https://ok.example"],
+      new Uint8Array([9, 9]),
+      fetchImpl as typeof fetch,
+    );
+    assert.equal(sig, "SigABC");
+  });
+
+  it("throws broadcast error when all fail", async () => {
+    const fetchImpl = async () => new Response("no", { status: 500 });
+    await assert.rejects(
+      () =>
+        sendRawTransactionViaRpc(
+          ["https://a.example"],
+          new Uint8Array([1]),
+          fetchImpl as typeof fetch,
+        ),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.equal(err.message, SOL_BROADCAST_ERROR);
+        return true;
+      },
+    );
+  });
+});
+
+describe("simulateTransactionViaApi / sendRawTransactionViaApi", () => {
+  it("simulate API maps JSON body", async () => {
+    const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit) => {
+      assert.equal(String(input), "/api/sol/simulate");
+      assert.equal(init?.method, "POST");
+      return Response.json({ ok: false, insufficientFunds: true, detail: "nope" });
+    };
+    const out = await simulateTransactionViaApi("txb58", fetchImpl as typeof fetch);
+    assert.equal(out.ok, false);
+    if (out.ok) return;
+    assert.equal(out.insufficientFunds, true);
+  });
+
+  it("send-raw API returns signature", async () => {
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      assert.equal(String(input), "/api/sol/send-raw");
+      return Response.json({ signature: "S1" });
+    };
+    assert.equal(await sendRawTransactionViaApi("txb58", fetchImpl as typeof fetch), "S1");
+  });
+});
+
+describe("friendlySolPrepareError extras", () => {
+  it("maps insufficient + broadcast", () => {
+    assert.equal(
+      friendlySolPrepareError(new Error(SOL_INSUFFICIENT_FUNDS_ERROR)),
+      SOL_INSUFFICIENT_FUNDS_ERROR,
+    );
+    assert.equal(friendlySolPrepareError(new Error(SOL_BROADCAST_ERROR)), SOL_BROADCAST_ERROR);
+    assert.equal(
+      friendlySolPrepareError(new Error("Transaction simulation failed: insufficient lamports")),
+      SOL_INSUFFICIENT_FUNDS_ERROR,
+    );
   });
 });
