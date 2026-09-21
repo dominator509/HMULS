@@ -558,9 +558,10 @@ export function walletDeepLink(
 }
 
 /**
- * Open a mobile wallet for an invoice. Coinbase USDT copies pay address only
- * (for Paste in To), opens go.cb-w.com/send (blank To — no official prefill),
- * and guides Paste → USDT (Ethereum). Never dapp?cb_url= bare address → Invalid URL.
+ * Open a mobile wallet for an invoice.
+ * Coinbase / Base is not offered for USDT in WALLET_OPTIONS (no reliable Tether send).
+ * Harmless legacy path: if called for Coinbase + usdterc20, copies address only and
+ * opens go.cb-w.com/send (never dapp?cb_url= bare address → Invalid URL).
  */
 export function launchWalletDeepLink(
   wallet: string,
@@ -659,9 +660,9 @@ export const WALLET_OPTIONS: WalletOption[] = [
   {
     id: "coinbase",
     name: "Coinbase / Base Wallet",
-    hint: "Opens Send. Tap Paste in To, then choose USDT (Ethereum).",
+    hint: "Opens Coinbase / Base Wallet with the pay link.",
     kind: "deeplink",
-    assets: ["ETH", "USDT"],
+    assets: ["ETH"],
   },
   {
     id: "phantom",

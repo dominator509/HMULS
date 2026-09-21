@@ -51,8 +51,6 @@ export function PayWallet({
   const [account, setAccount] = useState<string | null>(null);
   const [method, setMethod] = useState<string>("injected");
   const [phase, setPhase] = useState<Phase>("idle");
-  /** Shown after Coinbase USDT open — blank To + Paste is expected; guide the buyer. */
-  const [coinbasePasteTip, setCoinbasePasteTip] = useState<string | null>(null);
   const ulHandled = useRef(false);
 
   const uri = paymentUri(inv.asset, inv.payAddress, inv.cryptoAmount, "SHE UNDRESSES", {
@@ -210,12 +208,7 @@ export function PayWallet({
           window.open(launch.href, "_blank", "noopener,noreferrer");
         }
         setOpen(false);
-        if (id === "coinbase" && inv.asset === "USDT") {
-          setCoinbasePasteTip(launch.message);
-          toast.message(launch.message, { duration: 14000 });
-        } else {
-          toast.message(launch.message);
-        }
+        toast.message(launch.message);
         return;
       }
       window.open(launch.href, "_blank", "noopener,noreferrer");
@@ -289,12 +282,6 @@ export function PayWallet({
             Payment address is unavailable right now. Refresh in a moment or contact support.
           </p>
         )}
-
-        {coinbasePasteTip && inv.asset === "USDT" ? (
-          <p className="mt-3 rounded-lg border border-gold/50 bg-gold/10 px-3 py-2 text-sm text-fg">
-            {coinbasePasteTip}
-          </p>
-        ) : null}
 
         {account ? (
           <p className="mt-3 text-xs text-subtle">Connected {shortAddr(account)}</p>
@@ -424,7 +411,7 @@ export function PayWallet({
             </h3>
             <p className="mt-2 text-sm text-muted">
               {inv.asset === "USDT"
-                ? "USDT is ERC-20 on Ethereum. MetaMask/Trust prefill; Coinbase opens blank Send — tap Paste in To, then choose USDT (Ethereum)."
+                ? "USDT is ERC-20 on Ethereum. MetaMask and Trust Wallet prefill the send. Coinbase / Base Wallet is not offered for USDT."
                 : "Prefer a native send when offered. Wallet buttons never reopen this site inside Phantom/Solflare (that would ask you to sign in again)."}
             </p>
             <ul className="mt-5 space-y-2">

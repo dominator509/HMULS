@@ -186,13 +186,13 @@ Put values that must reach **Nitro `process.env`** as **encrypted Worker secrets
 
 ---
 
-## USDT unlock / MetaMask · Trust · Coinbase (buyers)
+## USDT unlock / MetaMask · Trust (buyers)
 
 - NOWPayments USDT is **`usdterc20`** (Ethereum ERC-20, contract `0xdAC17F958D2ee523a2206206994597C13D831ec7`, 6 decimals). Never treat the pay address as a payment URI.
-- Mobile deeplinks (`src/lib/wallet.ts`, `PayWallet`):
+- Mobile “Open a mobile wallet” for USDT (`WALLET_OPTIONS` in `src/lib/wallet.ts`, `PayWallet`): **MetaMask** and **Trust** only.
   - **MetaMask:** `metamask.app.link/send/<contract>@1/transfer?address=&uint256=` (not `/dapp/` — bare address → blank in-app browser).
   - **Trust:** `link.trustwallet.com/send` with `asset=c60_t<contract>` (and `coin=60&token=`) + human amount.
-  - **Coinbase / Base:** no documented send prefill (`go.cb-w.com/send?` opens blank To + Paste). Do **not** pass a bare address to `dapp?cb_url=` (Invalid URL). Copy **address only**, open send home, toast/UI: **Tap Paste in To, then choose USDT (Ethereum)**.
+  - **Do not** offer **Coinbase / Base Wallet** for USDT (no reliable Tether send / prefill). Coinbase remains available for **ETH** only.
 - Buyer copy: remind **USDT on Ethereum (ERC-20)** — wrong network risks lost funds.
 - **Do not** change SOL locked paths (`sol-mobile-deeplink` / Phantom / Solflare pay).
 
