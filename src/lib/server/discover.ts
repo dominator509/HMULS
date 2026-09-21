@@ -76,6 +76,7 @@ export function sitemapXml(input: {
     { path: "/", priority: "1.0", changefreq: "daily" },
     { path: "/models", priority: "0.9", changefreq: "daily" },
     { path: "/how-to-get-crypto", priority: "0.8", changefreq: "monthly" },
+    { path: "/failed-transaction", priority: "0.5", changefreq: "monthly" },
     { path: "/legal", priority: "0.5", changefreq: "weekly" },
     { path: "/legal/terms", priority: "0.4", changefreq: "monthly" },
     { path: "/legal/privacy", priority: "0.4", changefreq: "monthly" },
@@ -167,6 +168,7 @@ Allow: /models
 Allow: /ladders
 Allow: /legal
 Allow: /how-to-get-crypto
+Allow: /failed-transaction
 Allow: /llms.txt
 Allow: /sitemap.xml
 Disallow: /admin

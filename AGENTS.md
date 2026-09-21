@@ -53,6 +53,7 @@ Never commit .env or secret values. Never put operator personal name/Gmail on pu
 
 - `README.md` still describes attaching the domain to a **Vercel** project and registrar `A 76.76.21.21` / `cname.vercel-dns.com`. **Production DNS and HTTPS terminate on Cloudflare for Worker `hmuls`.** Prefer CF zone records / Worker custom domains + www→apex 301.
 - `vite.config.ts` still uses Nitro **`preset: "vercel"`**. Cloudflare Workers Builds wraps that build into Worker `hmuls`. Do **not** assume a committed Cloudflare Nitro preset exists — do not “fix” the preset unless you are intentionally changing the deploy pipeline.
+- PWA: `public/__grok/manifest.webmanifest` + `icon-180.png` are committed static assets (linked from `__root`). Nitro `server/middleware/grok-pwa.ts` does **not** run on the CF Worker wrap — do not rely on it for production `/__grok/*`.
 - Local/`npm run build` may still mention Vercel function output paths for private-media copy; that is build scaffolding, not the live edge host.
 
 ---
