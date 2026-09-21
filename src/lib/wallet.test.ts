@@ -5,6 +5,8 @@ import {
   formatSolAmount,
   launchSolWallet,
   launchWalletDeepLink,
+  coinbaseUsdtPasteMessage,
+  COINBASE_USDT_SEND_HREF,
   metamaskUsdtErc20SendHref,
   paymentUri,
   PHANTOM_ANDROID_PACKAGE,
@@ -766,15 +768,26 @@ describe("USDT ERC-20 paymentUri + deeplinks", () => {
     });
     assert.doesNotMatch(href, /dapp\?cb_url=/);
     assert.doesNotMatch(href, new RegExp(encodeURIComponent(pay)));
+    assert.equal(href, "https://go.cb-w.com/send?");
     const launch = launchWalletDeepLink("coinbase", "USDT", pay, amount, {
       payCurrency: "usdterc20",
     });
     assert.equal(launch.kind, "copy");
     if (launch.kind !== "copy") return;
-    assert.match(launch.text, new RegExp(pay));
-    assert.match(launch.text, /12\.34 USDT/);
-    assert.equal(launch.href?.startsWith("https://go.cb-w.com/"), true);
-    assert.match(launch.message, /ERC-20|Ethereum/i);
+    // Address-only clipboard so Coinbase Send "Paste" fills To (not address+amount multiline).
+    assert.equal(launch.text, pay);
+    assert.doesNotMatch(launch.text, /USDT/);
+    assert.equal(launch.href, "https://go.cb-w.com/send?");
+    assert.match(launch.message, /Paste in To/i);
+    assert.match(launch.message, /USDT \(Ethereum\)/i);
+    assert.match(launch.message, /12\.34 USDT/);
+  });
+
+  it("coinbaseUsdtPasteMessage names Paste + USDT (Ethereum) and amount", () => {
+    assert.match(coinbaseUsdtPasteMessage("9.5"), /Paste in To/);
+    assert.match(coinbaseUsdtPasteMessage("9.5"), /USDT \(Ethereum\)/);
+    assert.match(coinbaseUsdtPasteMessage("9.5"), /9\.5 USDT/);
+    assert.equal(COINBASE_USDT_SEND_HREF, "https://go.cb-w.com/send?");
   });
 
   it("defaults USDT to ERC-20 when payCurrency omitted", () => {

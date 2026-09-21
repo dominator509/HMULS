@@ -455,8 +455,22 @@ export type WalletDeepLinkLaunch =
   | { kind: "open"; href: string; message: string }
   | { kind: "copy"; text: string; href?: string; message: string };
 
-const COINBASE_USDT_COPY_MSG =
-  "Paste address in Coinbase Wallet · send exact USDT (ERC-20) on Ethereum";
+/**
+ * Coinbase Wallet / Base has no documented universal-link params that prefill
+ * Send (To / asset / amount). Official + community reports: `https://go.cb-w.com/send?`
+ * opens a blank To field with Paste. EIP-681 works in-app but cannot target Coinbase
+ * when multiple wallets are installed. Merchants copy address + guide Paste → USDT.
+ * @see https://github.com/coinbase/coinbase-wallet-sdk/issues/1679
+ */
+export const COINBASE_USDT_SEND_HREF = "https://go.cb-w.com/send?";
+
+/** Clipboard must be address-only so Coinbase Send "Paste" fills To correctly. */
+export function coinbaseUsdtPasteMessage(amount: string): string {
+  const amt = (amount || "").trim();
+  return amt
+    ? `Address copied. Tap Paste in To, then choose USDT (Ethereum). Send exactly ${amt} USDT.`
+    : "Address copied. Tap Paste in To, then choose USDT (Ethereum).";
+}
 
 /**
  * MetaMask ERC-20 send universal link (not /dapp/ — bare address opens a blank browser).
@@ -512,8 +526,8 @@ export function walletDeepLink(
     case "coinbase":
       if (usdtErc20) {
         // go.cb-w.com/dapp?cb_url= expects an https URL — bare address / EIP-681 → "Invalid URL".
-        // Prefill ERC-20 send is unreliable; launchWalletDeepLink copies + opens send home.
-        return "https://go.cb-w.com/send?";
+        // No documented send prefill; launchWalletDeepLink copies address + opens send home.
+        return COINBASE_USDT_SEND_HREF;
       }
       return `https://go.cb-w.com/dapp?cb_url=${encoded}`;
     case "trust":
@@ -544,8 +558,9 @@ export function walletDeepLink(
 }
 
 /**
- * Open a mobile wallet for an invoice. Coinbase USDT copies address+amount and
- * opens a safe send entry (never dapp?cb_url= bare address → Invalid URL).
+ * Open a mobile wallet for an invoice. Coinbase USDT copies pay address only
+ * (for Paste in To), opens go.cb-w.com/send (blank To — no official prefill),
+ * and guides Paste → USDT (Ethereum). Never dapp?cb_url= bare address → Invalid URL.
  */
 export function launchWalletDeepLink(
   wallet: string,
@@ -558,12 +573,12 @@ export function launchWalletDeepLink(
   if (wallet === "coinbase" && usdtErc20) {
     const addr = (address || "").trim();
     const amt = (amount || "").trim();
-    const text = amt ? `${addr}\n${amt} USDT` : addr;
+    // Address only — Coinbase Send To has a Paste control; multi-line clipboard breaks it.
     return {
       kind: "copy",
-      text,
-      href: "https://go.cb-w.com/send?",
-      message: COINBASE_USDT_COPY_MSG,
+      text: addr,
+      href: COINBASE_USDT_SEND_HREF,
+      message: coinbaseUsdtPasteMessage(amt),
     };
   }
   const href = walletDeepLink(wallet, asset, address, amount, opts);
@@ -644,7 +659,7 @@ export const WALLET_OPTIONS: WalletOption[] = [
   {
     id: "coinbase",
     name: "Coinbase / Base Wallet",
-    hint: "Opens Coinbase Wallet. USDT: paste address, send ERC-20 on Ethereum.",
+    hint: "Opens Send. Tap Paste in To, then choose USDT (Ethereum).",
     kind: "deeplink",
     assets: ["ETH", "USDT"],
   },
