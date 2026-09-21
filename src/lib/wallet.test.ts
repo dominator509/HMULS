@@ -16,6 +16,11 @@ import {
   cleanSolUlUrl,
   clearSolCheckoutAck,
   clearSolMobileSession,
+  continueSolMobileAfterConnect,
+  decodeSolResumeBlob,
+  encodeSolResumeBlob,
+  finishSolMobileAfterSign,
+  getSolMobileSession,
   isBrandedSolWalletHref,
   isSolUlReturnPending,
   parseSolUlReturn,
@@ -24,6 +29,8 @@ import {
   shouldRestoreSolCheckoutAck,
   startSolMobileConnect,
 } from "./sol-mobile-deeplink.ts";
+import nacl from "tweetnacl";
+import bs58 from "bs58";
 
 const addr = "So11111111111111111111111111111111111111112";
 const amount = "0.05";
@@ -31,8 +38,8 @@ const checkout = "https://sheundresses.com/checkout/inv_test123";
 const iosUA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15";
 const androidUA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36";
 
-/** Minimal sessionStorage for Node tests. */
-function installMemorySessionStorage() {
+/** Minimal Web Storage for Node tests. */
+function installMemoryStorage(name: "localStorage" | "sessionStorage") {
   const map = new Map<string, string>();
   const store = {
     getItem: (k: string) => (map.has(k) ? map.get(k)! : null),
@@ -48,12 +55,13 @@ function installMemorySessionStorage() {
       return map.size;
     },
   };
-  (globalThis as unknown as { sessionStorage: typeof store }).sessionStorage = store;
+  (globalThis as unknown as Record<string, typeof store>)[name] = store;
   return store;
 }
 
 beforeEach(() => {
-  installMemorySessionStorage();
+  installMemoryStorage("localStorage");
+  installMemoryStorage("sessionStorage");
 });
 
 describe("formatSolAmount", () => {
@@ -177,12 +185,13 @@ describe("launchSolWallet", () => {
     assert.doesNotMatch(launch.href, /ul\/browse/i);
   });
 
-  it("startSolMobileConnect persists session keys and redirect markers", () => {
+  it("startSolMobileConnect persists session keys in localStorage and redirect markers+blob", () => {
     const started = startSolMobileConnect({
       wallet: "phantom",
       to: addr,
       amountSol: amount,
       checkoutUrl: checkout,
+      invoiceId: "inv_test123",
     });
     assert.equal(started.href.startsWith("https://phantom.app/ul/v1/connect"), true);
     assert.match(started.href, /dapp_encryption_public_key=/);
@@ -193,7 +202,17 @@ describe("launchSolWallet", () => {
     assert.match(redirect, /hmuls_sol=1/);
     assert.match(redirect, /hmuls_wallet=phantom/);
     assert.match(redirect, /hmuls_step=connect/);
-    assert.equal(globalThis.sessionStorage.getItem("sheundresses.sol.deeplink.v1") != null, true);
+    assert.match(redirect, /hmuls_blob=/);
+    assert.equal(globalThis.localStorage.getItem("sheundresses.sol.deeplink.v1") != null, true);
+    const blobParam = new URL(redirect).searchParams.get("hmuls_blob");
+    const blob = decodeSolResumeBlob(blobParam);
+    assert.ok(blob);
+    assert.equal(blob!.wallet, "phantom");
+    assert.equal(blob!.to, addr);
+    assert.equal(blob!.amountSol, amount);
+    assert.equal(blob!.invoiceId, "inv_test123");
+    assert.ok(blob!.dappPublicKey);
+    assert.ok(blob!.dappSecretKey);
   });
 
   it("desktop → copy fallback for extension-less browsers", () => {
@@ -258,36 +277,48 @@ describe("sol UL return resume helpers", () => {
     assert.equal(isSolUlReturnPending(url), false);
   });
 
-  it("cleanSolUlUrl strips hmuls_* and wallet response params", () => {
+  it("cleanSolUlUrl strips hmuls_* including blob and wallet response params", () => {
     const url =
       "https://sheundresses.com/checkout/inv_abc?hmuls_sol=1&hmuls_wallet=phantom&hmuls_step=connect" +
-      "&phantom_encryption_public_key=pk&data=enc&nonce=n1&keep=1";
+      "&hmuls_blob=abc&phantom_encryption_public_key=pk&data=enc&nonce=n1&keep=1";
     const cleaned = cleanSolUlUrl(url);
     assert.match(cleaned, /^\/checkout\/inv_abc/);
     assert.match(cleaned, /keep=1/);
     assert.doesNotMatch(cleaned, /hmuls_sol/);
+    assert.doesNotMatch(cleaned, /hmuls_blob/);
     assert.doesNotMatch(cleaned, /phantom_encryption/);
     assert.doesNotMatch(cleaned, /\bdata=/);
     assert.doesNotMatch(cleaned, /nonce=/);
   });
 
-  it("buildSolRedirectLink sets step markers and strips prior wallet params", () => {
+  it("buildSolRedirectLink sets step markers, optional blob, strips prior wallet params", () => {
     const dirty =
-      "https://sheundresses.com/checkout/inv_abc?hmuls_sol=1&hmuls_wallet=phantom&hmuls_step=connect&data=old&nonce=old";
-    const link = buildSolRedirectLink(dirty, "solflare", "sign");
+      "https://sheundresses.com/checkout/inv_abc?hmuls_sol=1&hmuls_wallet=phantom&hmuls_step=connect&data=old&nonce=old&hmuls_blob=old";
+    const link = buildSolRedirectLink(dirty, "solflare", "sign", {
+      dappPublicKey: "pk",
+      dappSecretKey: "sk",
+      to: addr,
+      amountSol: amount,
+      wallet: "solflare",
+    });
     const u = new URL(link);
     assert.equal(u.searchParams.get("hmuls_sol"), "1");
     assert.equal(u.searchParams.get("hmuls_wallet"), "solflare");
     assert.equal(u.searchParams.get("hmuls_step"), "sign");
     assert.equal(u.searchParams.get("data"), null);
     assert.equal(u.searchParams.get("nonce"), null);
+    const blob = decodeSolResumeBlob(u.searchParams.get("hmuls_blob"));
+    assert.ok(blob);
+    assert.equal(blob!.wallet, "solflare");
+    assert.equal(blob!.dappSecretKey, "sk");
   });
 
-  it("persist/peek/clear checkout ack scoped to invoice id", () => {
+  it("persist/peek/clear checkout ack scoped to invoice id (localStorage)", () => {
     assert.equal(peekSolCheckoutAck("inv_a"), false);
     persistSolCheckoutAck("inv_a");
     assert.equal(peekSolCheckoutAck("inv_a"), true);
     assert.equal(peekSolCheckoutAck("inv_b"), false);
+    assert.equal(globalThis.localStorage.getItem("sheundresses.sol.checkout.ack.v1") != null, true);
     clearSolCheckoutAck();
     assert.equal(peekSolCheckoutAck("inv_a"), false);
   });
@@ -318,5 +349,166 @@ describe("sol UL return resume helpers", () => {
       invoiceId: "inv_test123",
     });
     assert.equal(peekSolCheckoutAck("inv_test123"), true);
+  });
+
+  it("resume from localStorage when sessionStorage is empty (Phantom new-tab)", async () => {
+    const started = startSolMobileConnect({
+      wallet: "phantom",
+      to: addr,
+      amountSol: amount,
+      checkoutUrl: checkout,
+      invoiceId: "inv_test123",
+    });
+    // Simulate Phantom HTTPS return opening a new tab: wipe sessionStorage only.
+    globalThis.sessionStorage.clear();
+    assert.equal(globalThis.sessionStorage.getItem("sheundresses.sol.deeplink.v1"), null);
+    assert.ok(globalThis.localStorage.getItem("sheundresses.sol.deeplink.v1"));
+
+    const stored = getSolMobileSession();
+    assert.ok(stored);
+    assert.equal(stored!.wallet, "phantom");
+
+    // Encrypt a fake connect response with the stored dapp secret + a wallet keypair.
+    const walletKp = nacl.box.keyPair();
+    const shared = nacl.box.before(
+      bs58.decode(stored!.dappPublicKey),
+      walletKp.secretKey,
+    );
+    // sharedSecretFromConnect uses nacl.box.before(walletEncPub, dappSecret)
+    const sharedFromDapp = nacl.box.before(walletKp.publicKey, bs58.decode(stored!.dappSecretKey));
+    assert.deepEqual([...shared], [...sharedFromDapp]);
+
+    const nonce = nacl.randomBytes(24);
+    const payloadObj = { public_key: addr, session: "sess_abc" };
+    const encrypted = nacl.box.after(
+      Buffer.from(JSON.stringify(payloadObj), "utf8"),
+      nonce,
+      sharedFromDapp,
+    );
+    const returnUrl =
+      "https://sheundresses.com/checkout/inv_test123?hmuls_sol=1&hmuls_wallet=phantom&hmuls_step=connect" +
+      `&phantom_encryption_public_key=${bs58.encode(walletKp.publicKey)}` +
+      `&data=${bs58.encode(encrypted)}&nonce=${bs58.encode(nonce)}`;
+
+    // Avoid live RPC: stub will fail at buildSign — we only assert session load path succeeds past null.
+    // Instead verify load + decrypt by calling continue and accepting network error OR success.
+    const result = await continueSolMobileAfterConnect(returnUrl);
+    // Either ok (if RPC works) or a build-transfer error — never "No pending wallet session" / lost session.
+    if (!result.ok) {
+      assert.doesNotMatch(result.error, /No pending wallet session|storage and return link empty/i);
+    } else {
+      assert.equal(result.href.startsWith("https://phantom.app/"), true);
+      assert.doesNotMatch(result.href, /^solana:/);
+    }
+    // Session was written before navigation; still never solana: on iOS path.
+    assert.equal(started.href.startsWith("solana:"), false);
+  });
+
+  it("resume from hmuls_blob when both storages are empty", async () => {
+    const started = startSolMobileConnect({
+      wallet: "phantom",
+      to: addr,
+      amountSol: amount,
+      checkoutUrl: checkout,
+      invoiceId: "inv_blob",
+    });
+    const redirect = decodeURIComponent(
+      new URL(started.href).searchParams.get("redirect_link") || "",
+    );
+    const blobParam = new URL(redirect).searchParams.get("hmuls_blob");
+    assert.ok(blobParam);
+
+    // Wipe all storage — only blob on URL remains (storage blocked / new context).
+    globalThis.localStorage.clear();
+    globalThis.sessionStorage.clear();
+    assert.equal(getSolMobileSession(), null);
+
+    const blob = decodeSolResumeBlob(blobParam)!;
+    const walletKp = nacl.box.keyPair();
+    const sharedFromDapp = nacl.box.before(
+      walletKp.publicKey,
+      bs58.decode(blob.dappSecretKey),
+    );
+    const nonce = nacl.randomBytes(24);
+    const encrypted = nacl.box.after(
+      Buffer.from(JSON.stringify({ public_key: addr, session: "sess_blob" }), "utf8"),
+      nonce,
+      sharedFromDapp,
+    );
+    const returnUrl =
+      `https://sheundresses.com/checkout/inv_blob?hmuls_sol=1&hmuls_wallet=phantom&hmuls_step=connect` +
+      `&hmuls_blob=${encodeURIComponent(blobParam!)}` +
+      `&phantom_encryption_public_key=${bs58.encode(walletKp.publicKey)}` +
+      `&data=${bs58.encode(encrypted)}&nonce=${bs58.encode(nonce)}`;
+
+    assert.ok(getSolMobileSession(returnUrl));
+    const result = await continueSolMobileAfterConnect(returnUrl);
+    if (!result.ok) {
+      assert.doesNotMatch(result.error, /No pending wallet session|storage and return link empty/i);
+    } else {
+      assert.equal(result.href.startsWith("https://phantom.app/"), true);
+      assert.doesNotMatch(result.href, /^solana:/);
+    }
+  });
+
+  it("better error when storage and blob both missing", async () => {
+    globalThis.localStorage.clear();
+    globalThis.sessionStorage.clear();
+    const returnUrl =
+      "https://sheundresses.com/checkout/inv_x?hmuls_sol=1&hmuls_wallet=phantom&hmuls_step=connect" +
+      "&phantom_encryption_public_key=pk&data=enc&nonce=n1";
+    const result = await continueSolMobileAfterConnect(returnUrl);
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.match(result.error, /storage and return link empty/i);
+  });
+
+  it("finishSolMobileAfterSign prefers localStorage then blob; clear on success", () => {
+    const dapp = nacl.box.keyPair();
+    const wallet = nacl.box.keyPair();
+    const shared = nacl.box.before(wallet.publicKey, dapp.secretKey);
+    const session = {
+      wallet: "phantom" as const,
+      to: addr,
+      amountSol: amount,
+      dappPublicKey: bs58.encode(dapp.publicKey),
+      dappSecretKey: bs58.encode(dapp.secretKey),
+      sharedSecret: bs58.encode(shared),
+      session: "sess",
+      walletPublicKey: addr,
+      stage: "sign" as const,
+      at: Date.now(),
+    };
+    globalThis.localStorage.setItem("sheundresses.sol.deeplink.v1", JSON.stringify(session));
+
+    const nonce = nacl.randomBytes(24);
+    const encrypted = nacl.box.after(
+      Buffer.from(JSON.stringify({ signature: "sig123" }), "utf8"),
+      nonce,
+      shared,
+    );
+    const returnUrl =
+      "https://sheundresses.com/checkout/inv?hmuls_sol=1&hmuls_wallet=phantom&hmuls_step=sign" +
+      `&data=${bs58.encode(encrypted)}&nonce=${bs58.encode(nonce)}`;
+    const done = finishSolMobileAfterSign(returnUrl);
+    assert.equal(done.ok, true);
+    if (!done.ok) return;
+    assert.equal(done.signature, "sig123");
+    assert.equal(globalThis.localStorage.getItem("sheundresses.sol.deeplink.v1"), null);
+  });
+
+  it("encode/decode resume blob round-trip", () => {
+    const raw = encodeSolResumeBlob({
+      dappPublicKey: "pk",
+      dappSecretKey: "sk",
+      to: addr,
+      amountSol: "0.01",
+      wallet: "solflare",
+      invoiceId: "inv1",
+    });
+    assert.doesNotMatch(raw, /[+/=]/);
+    const decoded = decodeSolResumeBlob(raw);
+    assert.equal(decoded?.wallet, "solflare");
+    assert.equal(decoded?.invoiceId, "inv1");
   });
 });

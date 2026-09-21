@@ -3,6 +3,19 @@
  * signAndSendTransaction). Never use bare `solana:` on iOS — Base (or whatever
  * registered first) hijacks the shared scheme with no app chooser.
  *
+ * Official constraints (do not regress):
+ * - Phantom redirect_link HTTPS “Opens in the mobile browser” (often a **new tab**),
+ *   not the originating page — sessionStorage is empty on return:
+ *   https://docs.phantom.com/phantom-deeplinks/specifying-redirects
+ * - App MUST store the wallet session and pass it on every later method:
+ *   https://docs.phantom.com/phantom-deeplinks/handling-sessions
+ * - Dynamic’s Phantom redirect extension notes mobile web return opens a new tab
+ *   and original page context/promises are lost — restore app state on return.
+ * - Solflare: same https://solflare.com/ul/v1/connect + signAndSendTransaction.
+ *
+ * Persistence: localStorage (same-origin, cross-tab) + short TTL, with
+ * `hmuls_blob` base64url resume payload on redirect_link as defense-in-depth.
+ *
  * Docs:
  * - https://phantom.app/ul/v1/connect | …/signAndSendTransaction
  * - https://solflare.com/ul/v1/connect | …/signAndSendTransaction
@@ -14,14 +27,18 @@ import { formatSolAmount, isSolanaAddress, solToLamports } from "./sol-amount.ts
 export type SolWalletId = "phantom" | "solflare";
 
 const STORAGE_KEY = "sheundresses.sol.deeplink.v1";
-/** Terms/ack checkbox — must survive iOS wallet UL round-trip (full Safari reload). */
+/** Terms/ack checkbox — must survive iOS wallet UL round-trip (new Safari tab). */
 const ACK_STORAGE_KEY = "sheundresses.sol.checkout.ack.v1";
+/** Cross-tab resume window (Phantom HTTPS return often opens a fresh tab). */
+export const SOL_MOBILE_SESSION_TTL_MS = 45 * 60 * 1000;
 
 /** Query markers on checkout HTTPS redirect_link so we can resume after wallet return. */
 export const SOL_UL_QUERY = {
   flag: "hmuls_sol",
   wallet: "hmuls_wallet",
   step: "hmuls_step",
+  /** base64url JSON resume blob — survives when localStorage is empty/blocked. */
+  blob: "hmuls_blob",
 } as const;
 
 export type SolUlStep = "connect" | "sign";
@@ -36,6 +53,23 @@ type StoredSession = {
   session?: string;
   walletPublicKey?: string;
   stage: SolUlStep;
+  invoiceId?: string;
+  /** Epoch ms when written — used for TTL eviction. */
+  at: number;
+};
+
+/** Compact resume payload embedded on redirect_link (`hmuls_blob`). */
+export type SolResumeBlob = {
+  dappPublicKey: string;
+  dappSecretKey: string;
+  to: string;
+  amountSol: string;
+  wallet: SolWalletId;
+  invoiceId?: string;
+  sharedSecret?: string;
+  session?: string;
+  walletPublicKey?: string;
+  stage?: SolUlStep;
 };
 
 const UL_BASE: Record<SolWalletId, string> = {
@@ -73,6 +107,129 @@ function utf8Decode(bytes: Uint8Array): string {
   return new TextDecoder().decode(bytes);
 }
 
+function toBase64Url(utf8: string): string {
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(utf8, "utf8").toString("base64url");
+  }
+  const bytes = utf8Encode(utf8);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function fromBase64Url(s: string): string {
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(s, "base64url").toString("utf8");
+  }
+  const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
+  const bin = atob(b64 + pad);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return utf8Decode(bytes);
+}
+
+export function encodeSolResumeBlob(blob: SolResumeBlob): string {
+  return toBase64Url(JSON.stringify(blob));
+}
+
+export function decodeSolResumeBlob(raw: string | null | undefined): SolResumeBlob | null {
+  if (!raw) return null;
+  try {
+    const o = JSON.parse(fromBase64Url(raw)) as SolResumeBlob;
+    if (!o?.wallet || !o.dappSecretKey || !o.dappPublicKey || !o.to || !o.amountSol) {
+      return null;
+    }
+    if (o.wallet !== "phantom" && o.wallet !== "solflare") return null;
+    return o;
+  } catch {
+    return null;
+  }
+}
+
+function blobFromSession(s: StoredSession): SolResumeBlob {
+  return {
+    dappPublicKey: s.dappPublicKey,
+    dappSecretKey: s.dappSecretKey,
+    to: s.to,
+    amountSol: s.amountSol,
+    wallet: s.wallet,
+    invoiceId: s.invoiceId,
+    sharedSecret: s.sharedSecret,
+    session: s.session,
+    walletPublicKey: s.walletPublicKey,
+    stage: s.stage,
+  };
+}
+
+function sessionFromBlob(blob: SolResumeBlob): StoredSession {
+  return {
+    wallet: blob.wallet,
+    to: blob.to,
+    amountSol: blob.amountSol,
+    dappPublicKey: blob.dappPublicKey,
+    dappSecretKey: blob.dappSecretKey,
+    sharedSecret: blob.sharedSecret,
+    session: blob.session,
+    walletPublicKey: blob.walletPublicKey,
+    stage: blob.stage === "sign" ? "sign" : "connect",
+    invoiceId: blob.invoiceId,
+    at: Date.now(),
+  };
+}
+
+function storageGet(key: string): string | null {
+  if (typeof localStorage !== "undefined") {
+    try {
+      const v = localStorage.getItem(key);
+      if (v != null) return v;
+    } catch {
+      /* blocked / private mode */
+    }
+  }
+  // Legacy: older builds used sessionStorage (empty on Phantom’s new return tab).
+  if (typeof sessionStorage !== "undefined") {
+    try {
+      return sessionStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function storageSet(key: string, value: string) {
+  if (typeof localStorage !== "undefined") {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      /* blocked */
+    }
+  }
+}
+
+function storageRemove(key: string) {
+  if (typeof localStorage !== "undefined") {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* blocked */
+    }
+  }
+  if (typeof sessionStorage !== "undefined") {
+    try {
+      sessionStorage.removeItem(key);
+    } catch {
+      /* blocked */
+    }
+  }
+}
+
+function isFresh(at: number | undefined): boolean {
+  if (typeof at !== "number" || !Number.isFinite(at)) return false;
+  return Date.now() - at <= SOL_MOBILE_SESSION_TTL_MS;
+}
+
 export function encryptPayload(payload: object, sharedSecret: Uint8Array): {
   nonce: string;
   payload: string;
@@ -92,60 +249,81 @@ export function decryptPayload(
   return JSON.parse(utf8Decode(opened)) as Record<string, unknown>;
 }
 
-function loadSession(): StoredSession | null {
-  if (typeof sessionStorage === "undefined") return null;
+/**
+ * Prefer localStorage (cross-tab); fall back to `hmuls_blob` on the return URL
+ * when storage is empty/blocked (Phantom HTTPS redirect often opens a new tab).
+ */
+function loadSession(returnUrl?: string): StoredSession | null {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const s = JSON.parse(raw) as StoredSession;
-    if (!s?.wallet || !s.dappSecretKey || !s.dappPublicKey) return null;
-    return s;
+    const raw = storageGet(STORAGE_KEY);
+    if (raw) {
+      const s = JSON.parse(raw) as StoredSession;
+      if (s?.wallet && s.dappSecretKey && s.dappPublicKey && isFresh(s.at)) {
+        return s;
+      }
+      if (s && !isFresh(s.at)) storageRemove(STORAGE_KEY);
+    }
   } catch {
-    return null;
+    /* ignore corrupt storage */
   }
+
+  if (returnUrl) {
+    try {
+      const u = new URL(returnUrl, "https://sheundresses.com");
+      const blob = decodeSolResumeBlob(u.searchParams.get(SOL_UL_QUERY.blob));
+      if (blob) return sessionFromBlob(blob);
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
 }
 
 function saveSession(s: StoredSession | null) {
-  if (typeof sessionStorage === "undefined") return;
   if (!s) {
-    sessionStorage.removeItem(STORAGE_KEY);
+    storageRemove(STORAGE_KEY);
     return;
   }
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+  const withAt: StoredSession = { ...s, at: s.at || Date.now() };
+  storageSet(STORAGE_KEY, JSON.stringify(withAt));
 }
 
 export function clearSolMobileSession() {
   saveSession(null);
 }
 
-export function getSolMobileSession(): StoredSession | null {
-  return loadSession();
+export function getSolMobileSession(returnUrl?: string): StoredSession | null {
+  return loadSession(returnUrl);
 }
 
 type StoredAck = { invoiceId: string; at: number };
 
 /** Persist terms acknowledgement for this invoice across Phantom/Solflare return. */
 export function persistSolCheckoutAck(invoiceId: string) {
-  if (typeof sessionStorage === "undefined" || !invoiceId) return;
+  if (!invoiceId) return;
   const payload: StoredAck = { invoiceId, at: Date.now() };
-  sessionStorage.setItem(ACK_STORAGE_KEY, JSON.stringify(payload));
+  storageSet(ACK_STORAGE_KEY, JSON.stringify(payload));
 }
 
 export function peekSolCheckoutAck(invoiceId: string): boolean {
-  if (typeof sessionStorage === "undefined" || !invoiceId) return false;
+  if (!invoiceId) return false;
   try {
-    const raw = sessionStorage.getItem(ACK_STORAGE_KEY);
+    const raw = storageGet(ACK_STORAGE_KEY);
     if (!raw) return false;
     const s = JSON.parse(raw) as StoredAck;
-    return s?.invoiceId === invoiceId;
+    if (!s?.invoiceId || s.invoiceId !== invoiceId) return false;
+    if (!isFresh(s.at)) {
+      storageRemove(ACK_STORAGE_KEY);
+      return false;
+    }
+    return true;
   } catch {
     return false;
   }
 }
 
 export function clearSolCheckoutAck() {
-  if (typeof sessionStorage === "undefined") return;
-  sessionStorage.removeItem(ACK_STORAGE_KEY);
+  storageRemove(ACK_STORAGE_KEY);
 }
 
 /**
@@ -179,14 +357,25 @@ function newDappKeyPair() {
   };
 }
 
+const WALLET_RESPONSE_PARAMS = [
+  "phantom_encryption_public_key",
+  "solflare_encryption_public_key",
+  "data",
+  "nonce",
+  "errorCode",
+  "errorMessage",
+] as const;
+
 /**
  * Build checkout HTTPS redirect_link with step markers (wallet returns here).
- * Strips prior hmuls_* markers so returns stay clean.
+ * Strips prior hmuls_* markers so returns stay clean. Optionally embeds
+ * `hmuls_blob` so a new Safari tab can resume without localStorage.
  */
 export function buildSolRedirectLink(
   checkoutHttpsUrl: string,
   wallet: SolWalletId,
   step: SolUlStep,
+  resume?: SolResumeBlob | null,
 ): string {
   const u = new URL(checkoutHttpsUrl);
   if (u.protocol !== "https:") {
@@ -195,20 +384,16 @@ export function buildSolRedirectLink(
   u.searchParams.delete(SOL_UL_QUERY.flag);
   u.searchParams.delete(SOL_UL_QUERY.wallet);
   u.searchParams.delete(SOL_UL_QUERY.step);
-  // Drop leftover wallet response params if any.
-  for (const k of [
-    "phantom_encryption_public_key",
-    "solflare_encryption_public_key",
-    "data",
-    "nonce",
-    "errorCode",
-    "errorMessage",
-  ]) {
+  u.searchParams.delete(SOL_UL_QUERY.blob);
+  for (const k of WALLET_RESPONSE_PARAMS) {
     u.searchParams.delete(k);
   }
   u.searchParams.set(SOL_UL_QUERY.flag, "1");
   u.searchParams.set(SOL_UL_QUERY.wallet, wallet);
   u.searchParams.set(SOL_UL_QUERY.step, step);
+  if (resume) {
+    u.searchParams.set(SOL_UL_QUERY.blob, encodeSolResumeBlob(resume));
+  }
   return u.toString();
 }
 
@@ -221,6 +406,7 @@ export function parseSolUlReturn(url: string | URL): {
   encryptionPublicKey: string | null;
   data: string | null;
   nonce: string | null;
+  blob: SolResumeBlob | null;
 } {
   const u = typeof url === "string" ? new URL(url, "https://sheundresses.com") : url;
   const walletRaw = u.searchParams.get(SOL_UL_QUERY.wallet);
@@ -241,6 +427,7 @@ export function parseSolUlReturn(url: string | URL): {
     encryptionPublicKey,
     data: u.searchParams.get("data"),
     nonce: u.searchParams.get("nonce"),
+    blob: decodeSolResumeBlob(u.searchParams.get(SOL_UL_QUERY.blob)),
   };
 }
 
@@ -252,12 +439,8 @@ export function cleanSolUlUrl(url: string = typeof location !== "undefined" ? lo
     SOL_UL_QUERY.flag,
     SOL_UL_QUERY.wallet,
     SOL_UL_QUERY.step,
-    "phantom_encryption_public_key",
-    "solflare_encryption_public_key",
-    "data",
-    "nonce",
-    "errorCode",
-    "errorMessage",
+    SOL_UL_QUERY.blob,
+    ...WALLET_RESPONSE_PARAMS,
   ]) {
     u.searchParams.delete(k);
   }
@@ -295,9 +478,14 @@ export function buildSolSignAndSendHref(opts: {
   return `${UL_BASE[opts.wallet]}/signAndSendTransaction?${params.toString()}`;
 }
 
+const MISSING_SESSION_ERROR =
+  "Wallet session was lost (storage and return link empty). Tap Pay again.";
+
 /**
- * Start iOS pay: persist session keys + pending invoice, return branded connect UL.
- * href always starts with https://phantom.app/ or https://solflare.com/ — never solana:.
+ * Start iOS pay: persist session keys + pending invoice to localStorage **before**
+ * returning the branded connect UL (caller navigates). Also embeds `hmuls_blob`
+ * on redirect_link. href always starts with https://phantom.app/ or
+ * https://solflare.com/ — never solana:.
  */
 export function startSolMobileConnect(opts: {
   wallet: SolWalletId;
@@ -321,16 +509,25 @@ export function startSolMobileConnect(opts: {
   }
   const appUrl = opts.appUrl ?? checkout.origin + "/";
   const kp = newDappKeyPair();
-  const redirectLink = buildSolRedirectLink(opts.checkoutUrl, opts.wallet, "connect");
-  if (opts.invoiceId) persistSolCheckoutAck(opts.invoiceId);
-  saveSession({
+  const session: StoredSession = {
     wallet: opts.wallet,
     to,
     amountSol,
     dappPublicKey: kp.publicKey,
     dappSecretKey: kp.secretKey,
     stage: "connect",
-  });
+    invoiceId: opts.invoiceId,
+    at: Date.now(),
+  };
+  // Write storage before any navigation; Phantom return may be a different tab.
+  if (opts.invoiceId) persistSolCheckoutAck(opts.invoiceId);
+  saveSession(session);
+  const redirectLink = buildSolRedirectLink(
+    opts.checkoutUrl,
+    opts.wallet,
+    "connect",
+    blobFromSession(session),
+  );
   const href = buildSolConnectHref({
     wallet: opts.wallet,
     appUrl,
@@ -374,9 +571,9 @@ export async function continueSolMobileAfterConnect(returnUrl: string): Promise<
     return { ok: false, error: "Wallet connect response was incomplete." };
   }
 
-  const stored = loadSession();
+  const stored = loadSession(returnUrl);
   if (!stored || stored.wallet !== parsed.wallet) {
-    return { ok: false, error: "No pending wallet session. Tap Pay again." };
+    return { ok: false, error: MISSING_SESSION_ERROR };
   }
 
   const sharedSecret = sharedSecretFromConnect(
@@ -398,22 +595,18 @@ export async function continueSolMobileAfterConnect(returnUrl: string): Promise<
     return { ok: false, error: "Wallet did not return a session." };
   }
 
-  saveSession({
+  const next: StoredSession = {
     ...stored,
     sharedSecret: bytesToB58(sharedSecret),
     session,
     walletPublicKey,
     stage: "sign",
-  });
+    at: Date.now(),
+  };
+  saveSession(next);
 
   try {
-    const href = await buildSignHrefForPending({
-      ...stored,
-      sharedSecret: bytesToB58(sharedSecret),
-      session,
-      walletPublicKey,
-      stage: "sign",
-    }, returnUrl);
+    const href = await buildSignHrefForPending(next, returnUrl);
     const name = parsed.wallet === "phantom" ? "Phantom" : "Solflare";
     return {
       ok: true,
@@ -461,7 +654,12 @@ async function buildSignHrefForPending(stored: StoredSession, currentUrl: string
   };
   const shared = b58ToBytes(stored.sharedSecret);
   const { nonce, payload: encryptedPayload } = encryptPayload(payload, shared);
-  const redirectLink = buildSolRedirectLink(currentUrl, stored.wallet, "sign");
+  const redirectLink = buildSolRedirectLink(
+    currentUrl,
+    stored.wallet,
+    "sign",
+    blobFromSession(stored),
+  );
   return buildSolSignAndSendHref({
     wallet: stored.wallet,
     dappEncryptionPublicKey: stored.dappPublicKey,
@@ -491,9 +689,9 @@ export function finishSolMobileAfterSign(returnUrl: string):
   if (!parsed.data || !parsed.nonce) {
     return { ok: false, error: "Wallet sign response was incomplete." };
   }
-  const stored = loadSession();
+  const stored = loadSession(returnUrl);
   if (!stored?.sharedSecret || stored.wallet !== parsed.wallet) {
-    return { ok: false, error: "No pending wallet session. Tap Pay again." };
+    return { ok: false, error: MISSING_SESSION_ERROR };
   }
   let signData: Record<string, unknown>;
   try {
