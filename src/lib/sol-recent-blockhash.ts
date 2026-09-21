@@ -7,6 +7,8 @@
 export type RecentBlockhash = {
   blockhash: string;
   lastValidBlockHeight: number;
+  /** Current chain block height when known (from getBlockHeight alongside getLatestBlockhash). */
+  blockHeight?: number;
 };
 
 /** Buyer-facing copy when blockhash prep fails. Tech detail stays in logs / Error.cause. */
@@ -20,6 +22,16 @@ export const SOL_INSUFFICIENT_FUNDS_ERROR =
 /** Buyer toast when signed tx cannot be submitted. */
 export const SOL_BROADCAST_ERROR =
   "Couldn't submit the payment. Try again in a moment.";
+
+/** Buyer toast when the signed tx's recent blockhash / lastValidBlockHeight expired (Phantom confirm took too long). */
+export const SOL_BLOCKHASH_EXPIRED_ERROR =
+  "That confirm took too long. Tap Pay with Phantom again.";
+
+/** Machine codes returned by POST /api/sol/send-raw for client mapping (not shown to buyers). */
+export type SolBroadcastErrorCode =
+  | "BLOCKHASH_EXPIRED"
+  | "INSUFFICIENT_FUNDS"
+  | "BROADCAST_FAILED";
 
 /** Primary public mainnet + secondary CORS-friendly free endpoint (verified from Worker/box). */
 export const DEFAULT_SOLANA_RPC_URLS = [
@@ -48,6 +60,21 @@ export function isInsufficientFundsMessage(msg: string): boolean {
   return /insufficient(?:\s+lamports|\s+funds|Funds)|InsufficientFunds|Attempt to debit an account but found no record of a prior credit/i.test(
     msg,
   );
+}
+
+/** Preflight / RPC wording for expired recent blockhash. */
+export function isBlockhashExpiredMessage(msg: string): boolean {
+  return /BlockhashNotFound|blockhash not found|block height exceeded|blockhash.?expired|Transaction expired|expired blockhash/i.test(
+    msg,
+  );
+}
+
+export function solBroadcastErrorCode(message: string): SolBroadcastErrorCode {
+  if (message === SOL_INSUFFICIENT_FUNDS_ERROR) return "INSUFFICIENT_FUNDS";
+  if (message === SOL_BLOCKHASH_EXPIRED_ERROR || isBlockhashExpiredMessage(message)) {
+    return "BLOCKHASH_EXPIRED";
+  }
+  return "BROADCAST_FAILED";
 }
 
 type RpcJson = {
@@ -104,9 +131,32 @@ export async function fetchRecentBlockhashFromRpc(
         errors.push(`${url}: missing blockhash`);
         continue;
       }
+      let blockHeight: number | undefined;
+      try {
+        const hRes = await fetchImpl(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 2,
+            method: "getBlockHeight",
+            params: [{ commitment: "confirmed" }],
+          }),
+        });
+        if (hRes.ok) {
+          const hJson = (await hRes.json()) as { result?: number; error?: unknown };
+          if (typeof hJson.result === "number") blockHeight = hJson.result;
+        }
+      } catch {
+        /* optional */
+      }
       return {
         blockhash: value.blockhash,
         lastValidBlockHeight: value.lastValidBlockHeight,
+        ...(typeof blockHeight === "number" ? { blockHeight } : {}),
       };
     } catch (err) {
       errors.push(`${url}: ${err instanceof Error ? err.message : "fetch failed"}`);
@@ -115,6 +165,70 @@ export async function fetchRecentBlockhashFromRpc(
   throw Object.assign(new Error(SOL_PREPARE_TRANSFER_ERROR), {
     cause: errors.join("; "),
   });
+}
+
+/**
+ * JSON-RPC getBlockHeight — used to detect expired lastValidBlockHeight before broadcast.
+ */
+export async function fetchBlockHeightFromRpc(
+  rpcUrls: string[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<number> {
+  if (!rpcUrls.length) {
+    throw Object.assign(new Error(SOL_PREPARE_TRANSFER_ERROR), { cause: "no rpc urls" });
+  }
+  const errors: string[] = [];
+  for (const url of rpcUrls) {
+    try {
+      const res = await fetchImpl(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "getBlockHeight",
+          params: [{ commitment: "confirmed" }],
+        }),
+      });
+      if (!res.ok) {
+        errors.push(`${url}: HTTP ${res.status}`);
+        continue;
+      }
+      const json = (await res.json()) as { result?: number; error?: { message?: string } };
+      if (json.error) {
+        errors.push(`${url}: ${json.error.message || "rpc error"}`);
+        continue;
+      }
+      if (typeof json.result === "number") return json.result;
+      errors.push(`${url}: missing block height`);
+    } catch (err) {
+      errors.push(`${url}: ${err instanceof Error ? err.message : "fetch failed"}`);
+    }
+  }
+  throw Object.assign(new Error(SOL_PREPARE_TRANSFER_ERROR), {
+    cause: errors.join("; "),
+  });
+}
+
+/** Same-origin current block height (via recent-blockhash which may include blockHeight). */
+export async function fetchBlockHeightFromApi(
+  fetchImpl: typeof fetch = fetch,
+  apiPath = "/api/sol/recent-blockhash",
+): Promise<number> {
+  const latest = await fetchRecentBlockhashFromApi(fetchImpl, apiPath);
+  if (typeof latest.blockHeight === "number") return latest.blockHeight;
+  // Fallback: lastValid from a fresh hash is ahead of current — not usable as current height.
+  throw Object.assign(new Error(SOL_PREPARE_TRANSFER_ERROR), {
+    cause: "api missing blockHeight",
+  });
+}
+
+/** True when current height has reached/passed the tx's lastValidBlockHeight. */
+export function isBlockHeightExpired(currentHeight: number, lastValidBlockHeight: number): boolean {
+  return currentHeight >= lastValidBlockHeight;
 }
 
 /** Same-origin Worker API used by browser wallet / iOS UL sign builders. */
@@ -142,6 +256,7 @@ export async function fetchRecentBlockhashFromApi(
     return {
       blockhash: json.blockhash,
       lastValidBlockHeight: json.lastValidBlockHeight,
+      ...(typeof json.blockHeight === "number" ? { blockHeight: json.blockHeight } : {}),
     };
   } catch (err) {
     if (err instanceof Error && err.message === SOL_PREPARE_TRANSFER_ERROR) throw err;
@@ -242,20 +357,67 @@ export async function simulateTransactionViaRpc(
 
 type SendRpcJson = {
   result?: string;
-  error?: { message?: string; code?: number };
+  error?: { message?: string; code?: number; data?: unknown };
 };
 
-/** sendRawTransaction — returns base58 signature. */
-export async function sendRawTransactionViaRpc(
-  rpcUrls: string[],
-  signedTxBytes: Uint8Array,
-  fetchImpl: typeof fetch = fetch,
-): Promise<string> {
-  if (!rpcUrls.length) {
-    throw Object.assign(new Error(SOL_BROADCAST_ERROR), { cause: "no rpc urls" });
+export type SendRawTransactionOptions = {
+  /** When set, blockhash-expiry errors map to re-sign toast; skipPreflight retry only if still valid. */
+  lastValidBlockHeight?: number;
+  /** Prefer confirm via getSignatureStatuses after a successful send (best-effort). */
+  confirm?: boolean;
+};
+
+async function rpcSendRawOnce(
+  url: string,
+  encoded: string,
+  opts: { skipPreflight: boolean; maxRetries?: number },
+  fetchImpl: typeof fetch,
+): Promise<{ ok: true; signature: string } | { ok: false; message: string; httpStatus?: number }> {
+  const res = await fetchImpl(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "sendRawTransaction",
+      params: [
+        encoded,
+        {
+          encoding: "base64",
+          skipPreflight: opts.skipPreflight,
+          preflightCommitment: "confirmed",
+          ...(typeof opts.maxRetries === "number" ? { maxRetries: opts.maxRetries } : {}),
+        },
+      ],
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    return {
+      ok: false,
+      message: `HTTP ${res.status}${body ? ` ${body.slice(0, 160)}` : ""}`,
+      httpStatus: res.status,
+    };
   }
-  const encoded = bytesToBase64(signedTxBytes);
-  const errors: string[] = [];
+  const json = (await res.json()) as SendRpcJson;
+  if (json.error) {
+    return { ok: false, message: json.error.message || String(json.error.code) };
+  }
+  if (typeof json.result === "string" && json.result.length > 0) {
+    return { ok: true, signature: json.result };
+  }
+  return { ok: false, message: "missing signature" };
+}
+
+/** Best-effort confirmation — returns without throwing if status is still pending. */
+export async function confirmSignatureViaRpc(
+  rpcUrls: string[],
+  signature: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ confirmed: boolean; err?: string }> {
   for (const url of rpcUrls) {
     try {
       const res = await fetchImpl(url, {
@@ -267,43 +429,140 @@ export async function sendRawTransactionViaRpc(
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 1,
-          method: "sendRawTransaction",
-          params: [
-            encoded,
-            {
-              encoding: "base64",
-              skipPreflight: false,
-              preflightCommitment: "confirmed",
-            },
-          ],
+          method: "getSignatureStatuses",
+          params: [[signature], { searchTransactionHistory: true }],
         }),
       });
-      if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        errors.push(`${url}: HTTP ${res.status}${body ? ` ${body.slice(0, 160)}` : ""}`);
-        continue;
+      if (!res.ok) continue;
+      const json = (await res.json()) as {
+        result?: { value?: Array<{ confirmationStatus?: string; err?: unknown } | null> };
+        error?: { message?: string };
+      };
+      if (json.error) continue;
+      const st = json.result?.value?.[0];
+      if (!st) continue;
+      if (st.err != null) {
+        return {
+          confirmed: false,
+          err: typeof st.err === "string" ? st.err : JSON.stringify(st.err),
+        };
       }
-      const json = (await res.json()) as SendRpcJson;
-      if (json.error) {
-        const msg = json.error.message || String(json.error.code);
-        if (isInsufficientFundsMessage(msg)) {
-          throw Object.assign(new Error(SOL_INSUFFICIENT_FUNDS_ERROR), { cause: msg });
+      const status = st.confirmationStatus;
+      if (status === "confirmed" || status === "finalized") {
+        return { confirmed: true };
+      }
+      // processed / unknown — treat as landed enough for unlock path
+      if (status === "processed") return { confirmed: true };
+    } catch {
+      /* try next */
+    }
+  }
+  return { confirmed: false };
+}
+
+function throwMappedBroadcastError(msg: string, cause: string): never {
+  if (isInsufficientFundsMessage(msg)) {
+    throw Object.assign(new Error(SOL_INSUFFICIENT_FUNDS_ERROR), { cause });
+  }
+  if (isBlockhashExpiredMessage(msg)) {
+    throw Object.assign(new Error(SOL_BLOCKHASH_EXPIRED_ERROR), { cause });
+  }
+  throw Object.assign(new Error(SOL_BROADCAST_ERROR), { cause });
+}
+
+/**
+ * sendRawTransaction — returns base58 signature.
+ * Tries skipPreflight:false first; on blockhash/preflight expiry, retries once with
+ * skipPreflight:true + maxRetries only if still within lastValidBlockHeight.
+ */
+export async function sendRawTransactionViaRpc(
+  rpcUrls: string[],
+  signedTxBytes: Uint8Array,
+  fetchImpl: typeof fetch = fetch,
+  options: SendRawTransactionOptions = {},
+): Promise<string> {
+  if (!rpcUrls.length) {
+    throw Object.assign(new Error(SOL_BROADCAST_ERROR), { cause: "no rpc urls" });
+  }
+  const encoded = bytesToBase64(signedTxBytes);
+  const errors: string[] = [];
+  let sawBlockhashExpiry = false;
+
+  for (const url of rpcUrls) {
+    try {
+      const first = await rpcSendRawOnce(
+        url,
+        encoded,
+        { skipPreflight: false },
+        fetchImpl,
+      );
+      if (first.ok) {
+        if (options.confirm !== false) {
+          const conf = await confirmSignatureViaRpc([url, ...rpcUrls.filter((u) => u !== url)], first.signature, fetchImpl);
+          if (conf.err) {
+            throwMappedBroadcastError(conf.err, conf.err);
+          }
         }
-        errors.push(`${url}: ${msg}`);
+        return first.signature;
+      }
+
+      const msg = first.message;
+      if (isInsufficientFundsMessage(msg)) {
+        throw Object.assign(new Error(SOL_INSUFFICIENT_FUNDS_ERROR), { cause: msg });
+      }
+
+      if (isBlockhashExpiredMessage(msg)) {
+        sawBlockhashExpiry = true;
+        // Only skip-preflight retry if we know lastValidBlockHeight and still have runway.
+        let stillValid = false;
+        if (typeof options.lastValidBlockHeight === "number") {
+          try {
+            const height = await fetchBlockHeightFromRpc([url, ...rpcUrls.filter((u) => u !== url)], fetchImpl);
+            stillValid = !isBlockHeightExpired(height, options.lastValidBlockHeight);
+          } catch {
+            stillValid = false;
+          }
+        }
+        if (!stillValid) {
+          throw Object.assign(new Error(SOL_BLOCKHASH_EXPIRED_ERROR), { cause: msg });
+        }
+        const retry = await rpcSendRawOnce(
+          url,
+          encoded,
+          { skipPreflight: true, maxRetries: 3 },
+          fetchImpl,
+        );
+        if (retry.ok) {
+          if (options.confirm !== false) {
+            await confirmSignatureViaRpc([url], retry.signature, fetchImpl);
+          }
+          return retry.signature;
+        }
+        if (isBlockhashExpiredMessage(retry.message) || isInsufficientFundsMessage(retry.message)) {
+          throwMappedBroadcastError(retry.message, retry.message);
+        }
+        errors.push(`${url}: ${msg} | retry: ${retry.message}`);
         continue;
       }
-      if (typeof json.result === "string" && json.result.length > 0) {
-        return json.result;
-      }
-      errors.push(`${url}: missing signature`);
+
+      errors.push(`${url}: ${msg}`);
     } catch (err) {
-      if (err instanceof Error && err.message === SOL_INSUFFICIENT_FUNDS_ERROR) throw err;
+      if (
+        err instanceof Error &&
+        (err.message === SOL_INSUFFICIENT_FUNDS_ERROR ||
+          err.message === SOL_BLOCKHASH_EXPIRED_ERROR)
+      ) {
+        throw err;
+      }
       errors.push(`${url}: ${err instanceof Error ? err.message : "fetch failed"}`);
     }
   }
-  throw Object.assign(new Error(SOL_BROADCAST_ERROR), {
-    cause: errors.join("; "),
-  });
+
+  const cause = errors.join("; ");
+  if (sawBlockhashExpiry || isBlockhashExpiredMessage(cause)) {
+    throw Object.assign(new Error(SOL_BLOCKHASH_EXPIRED_ERROR), { cause });
+  }
+  throw Object.assign(new Error(SOL_BROADCAST_ERROR), { cause });
 }
 
 /** Same-origin simulate for unsigned/partial txs before opening wallet UL. */
@@ -356,21 +615,32 @@ export async function sendRawTransactionViaApi(
   txBase58: string,
   fetchImpl: typeof fetch = fetch,
   apiPath = "/api/sol/send-raw",
+  options: { lastValidBlockHeight?: number } = {},
 ): Promise<string> {
   try {
+    const body: { transaction: string; lastValidBlockHeight?: number } = {
+      transaction: txBase58,
+    };
+    if (typeof options.lastValidBlockHeight === "number") {
+      body.lastValidBlockHeight = options.lastValidBlockHeight;
+    }
     const res = await fetchImpl(apiPath, {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
       credentials: "same-origin",
-      body: JSON.stringify({ transaction: txBase58 }),
+      body: JSON.stringify(body),
     });
     const json = (await res.json().catch(() => ({}))) as {
       signature?: string;
       error?: string;
+      code?: SolBroadcastErrorCode;
     };
     if (!res.ok) {
-      if (json.error === SOL_INSUFFICIENT_FUNDS_ERROR) {
+      if (json.error === SOL_INSUFFICIENT_FUNDS_ERROR || json.code === "INSUFFICIENT_FUNDS") {
         throw new Error(SOL_INSUFFICIENT_FUNDS_ERROR);
+      }
+      if (json.error === SOL_BLOCKHASH_EXPIRED_ERROR || json.code === "BLOCKHASH_EXPIRED") {
+        throw new Error(SOL_BLOCKHASH_EXPIRED_ERROR);
       }
       throw Object.assign(new Error(json.error || SOL_BROADCAST_ERROR), {
         cause: `api HTTP ${res.status}`,
@@ -383,7 +653,9 @@ export async function sendRawTransactionViaApi(
   } catch (err) {
     if (
       err instanceof Error &&
-      (err.message === SOL_BROADCAST_ERROR || err.message === SOL_INSUFFICIENT_FUNDS_ERROR)
+      (err.message === SOL_BROADCAST_ERROR ||
+        err.message === SOL_INSUFFICIENT_FUNDS_ERROR ||
+        err.message === SOL_BLOCKHASH_EXPIRED_ERROR)
     ) {
       throw err;
     }
@@ -401,6 +673,9 @@ export function friendlySolPrepareError(err: unknown): string {
   if (err instanceof Error && err.message === SOL_INSUFFICIENT_FUNDS_ERROR) {
     return SOL_INSUFFICIENT_FUNDS_ERROR;
   }
+  if (err instanceof Error && err.message === SOL_BLOCKHASH_EXPIRED_ERROR) {
+    return SOL_BLOCKHASH_EXPIRED_ERROR;
+  }
   if (err instanceof Error && err.message === SOL_BROADCAST_ERROR) {
     return SOL_BROADCAST_ERROR;
   }
@@ -408,7 +683,14 @@ export function friendlySolPrepareError(err: unknown): string {
   if (isInsufficientFundsMessage(raw)) {
     return SOL_INSUFFICIENT_FUNDS_ERROR;
   }
-  if (/blockhash|403|Access forbidden|failed to get recent|jsonrpc/i.test(raw)) {
+  if (isBlockhashExpiredMessage(raw) || /took too long|Tap Pay with Phantom/i.test(raw)) {
+    return SOL_BLOCKHASH_EXPIRED_ERROR;
+  }
+  // Generic "blockhash" during *prepare* (fetch latest) — not post-sign expiry.
+  if (/403|Access forbidden|failed to get recent|jsonrpc/i.test(raw)) {
+    return SOL_PREPARE_TRANSFER_ERROR;
+  }
+  if (/blockhash/i.test(raw) && !/sendRaw|broadcast|preflight|submit/i.test(raw)) {
     return SOL_PREPARE_TRANSFER_ERROR;
   }
   if (/sendRaw|broadcast|preflight|submit the payment/i.test(raw)) {

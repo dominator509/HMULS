@@ -28,10 +28,13 @@ import bs58 from "bs58";
 import nacl from "tweetnacl";
 import { formatSolAmount, isSolanaAddress, solToLamports } from "./sol-amount.ts";
 import {
+  fetchBlockHeightFromApi,
   fetchRecentBlockhashFromApi,
   friendlySolPrepareError,
+  isBlockHeightExpired,
   sendRawTransactionViaApi,
   simulateTransactionViaApi,
+  SOL_BLOCKHASH_EXPIRED_ERROR,
   SOL_INSUFFICIENT_FUNDS_ERROR,
   SOL_PREPARE_TRANSFER_ERROR,
 } from "./sol-recent-blockhash.ts";
@@ -66,6 +69,10 @@ type StoredSession = {
   walletPublicKey?: string;
   stage: SolUlStep;
   invoiceId?: string;
+  /** Recent blockhash baked into the unsigned tx sent to Phantom signTransaction. */
+  blockhash?: string;
+  /** Expiry height for that blockhash — checked before broadcast. */
+  lastValidBlockHeight?: number;
   /** Epoch ms when written — used for TTL eviction. */
   at: number;
 };
@@ -82,6 +89,8 @@ export type SolResumeBlob = {
   session?: string;
   walletPublicKey?: string;
   stage?: SolUlStep;
+  blockhash?: string;
+  lastValidBlockHeight?: number;
 };
 
 const UL_BASE: Record<SolWalletId, string> = {
@@ -161,6 +170,8 @@ function blobFromSession(s: StoredSession): SolResumeBlob {
     session: s.session,
     walletPublicKey: s.walletPublicKey,
     stage: s.stage,
+    blockhash: s.blockhash,
+    lastValidBlockHeight: s.lastValidBlockHeight,
   };
 }
 
@@ -176,6 +187,8 @@ function sessionFromBlob(blob: SolResumeBlob): StoredSession {
     walletPublicKey: blob.walletPublicKey,
     stage: blob.stage === "sign" ? "sign" : "connect",
     invoiceId: blob.invoiceId,
+    blockhash: blob.blockhash,
+    lastValidBlockHeight: blob.lastValidBlockHeight,
     at: Date.now(),
   };
 }
@@ -669,6 +682,14 @@ async function buildSignHrefForPending(stored: StoredSession, currentUrl: string
   // Fresh blockhash immediately before opening sign UL (stale hash → wallet sim fail).
   const latest = await fetchRecentBlockhashFromApi();
   tx.recentBlockhash = latest.blockhash;
+  // Persist expiry so finishSolMobileAfterSign can refuse broadcast if Phantom took too long.
+  const pending: StoredSession = {
+    ...stored,
+    blockhash: latest.blockhash,
+    lastValidBlockHeight: latest.lastValidBlockHeight,
+    at: Date.now(),
+  };
+  saveSession(pending);
 
   const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
   const txB58 = bytesToB58(serialized);
@@ -685,26 +706,26 @@ async function buildSignHrefForPending(stored: StoredSession, currentUrl: string
   }
 
   const payload = {
-    session: stored.session,
+    session: pending.session,
     transaction: txB58,
   };
-  const shared = b58ToBytes(stored.sharedSecret);
+  const shared = b58ToBytes(pending.sharedSecret!);
   const { nonce, payload: encryptedPayload } = encryptPayload(payload, shared);
   const redirectLink = buildSolRedirectLink(
     currentUrl,
-    stored.wallet,
+    pending.wallet,
     "sign",
-    blobFromSession(stored),
+    blobFromSession(pending),
   );
   const common = {
-    wallet: stored.wallet,
-    dappEncryptionPublicKey: stored.dappPublicKey,
+    wallet: pending.wallet,
+    dappEncryptionPublicKey: pending.dappPublicKey,
     nonce,
     redirectLink,
     encryptedPayload,
   };
   // Phantom: signTransaction (deprecated signAndSend). Solflare: keep signAndSend.
-  if (stored.wallet === "phantom") {
+  if (pending.wallet === "phantom") {
     return buildSolSignTransactionHref(common);
   }
   return buildSolSignAndSendHref(common);
@@ -754,7 +775,21 @@ export async function finishSolMobileAfterSign(returnUrl: string): Promise<
   // Phantom (signTransaction) returns signed tx bytes; Solflare (signAndSend) returns signature.
   if (signedTx) {
     try {
-      const signature = await sendRawTransactionViaApi(signedTx);
+      const lastValid = stored.lastValidBlockHeight;
+      if (typeof lastValid === "number") {
+        try {
+          const height = await fetchBlockHeightFromApi();
+          if (isBlockHeightExpired(height, lastValid)) {
+            clearSolMobileSession();
+            return { ok: false, error: SOL_BLOCKHASH_EXPIRED_ERROR };
+          }
+        } catch {
+          // If height probe fails, still attempt broadcast — RPC will map expiry.
+        }
+      }
+      const signature = await sendRawTransactionViaApi(signedTx, fetch, "/api/sol/send-raw", {
+        lastValidBlockHeight: typeof lastValid === "number" ? lastValid : undefined,
+      });
       clearSolMobileSession();
       return { ok: true, signature, from, wallet: parsed.wallet };
     } catch (err) {

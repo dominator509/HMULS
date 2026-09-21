@@ -2,15 +2,20 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   DEFAULT_SOLANA_RPC_URLS,
+  fetchBlockHeightFromRpc,
   fetchRecentBlockhashFromApi,
   fetchRecentBlockhashFromRpc,
   friendlySolPrepareError,
+  isBlockhashExpiredMessage,
+  isBlockHeightExpired,
   isInsufficientFundsMessage,
   resolveSolanaRpcUrls,
   sendRawTransactionViaApi,
   sendRawTransactionViaRpc,
   simulateTransactionViaApi,
   simulateTransactionViaRpc,
+  solBroadcastErrorCode,
+  SOL_BLOCKHASH_EXPIRED_ERROR,
   SOL_BROADCAST_ERROR,
   SOL_INSUFFICIENT_FUNDS_ERROR,
   SOL_PREPARE_TRANSFER_ERROR,
@@ -52,8 +57,10 @@ describe("fetchRecentBlockhashFromRpc", () => {
       ["https://fail.example", "https://ok.example"],
       fetchImpl as typeof fetch,
     );
-    assert.deepEqual(out, { blockhash: "HashABC", lastValidBlockHeight: 42 });
-    assert.deepEqual(calls, ["https://fail.example", "https://ok.example"]);
+    assert.equal(out.blockhash, "HashABC");
+    assert.equal(out.lastValidBlockHeight, 42);
+    // Success URL is hit twice: getLatestBlockhash + optional getBlockHeight.
+    assert.deepEqual(calls, ["https://fail.example", "https://ok.example", "https://ok.example"]);
   });
 
   it("throws friendly error with cause when all RPCs fail", async () => {
@@ -182,8 +189,17 @@ describe("simulateTransactionViaRpc", () => {
 
 describe("sendRawTransactionViaRpc", () => {
   it("returns signature from first success", async () => {
-    const fetchImpl = async () =>
-      Response.json({ jsonrpc: "2.0", id: 1, result: "SigABC" });
+    const fetchImpl = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { method?: string };
+      if (body.method === "getSignatureStatuses") {
+        return Response.json({
+          jsonrpc: "2.0",
+          id: 1,
+          result: { value: [{ confirmationStatus: "confirmed", err: null }] },
+        });
+      }
+      return Response.json({ jsonrpc: "2.0", id: 1, result: "SigABC" });
+    };
     const sig = await sendRawTransactionViaRpc(
       ["https://ok.example"],
       new Uint8Array([9, 9]),
@@ -208,6 +224,92 @@ describe("sendRawTransactionViaRpc", () => {
       },
     );
   });
+
+  it("maps BlockhashNotFound to expired toast", async () => {
+    const fetchImpl = async () =>
+      Response.json({
+        jsonrpc: "2.0",
+        id: 1,
+        error: { code: -32002, message: "Transaction simulation failed: BlockhashNotFound" },
+      });
+    await assert.rejects(
+      () =>
+        sendRawTransactionViaRpc(
+          ["https://a.example"],
+          new Uint8Array([1]),
+          fetchImpl as typeof fetch,
+          { lastValidBlockHeight: 1 },
+        ),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.equal(err.message, SOL_BLOCKHASH_EXPIRED_ERROR);
+        return true;
+      },
+    );
+  });
+
+  it("retries once with skipPreflight when still within lastValidBlockHeight", async () => {
+    const bodies: unknown[] = [];
+    let sendCalls = 0;
+    const fetchImpl = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        method?: string;
+        params?: unknown[];
+      };
+      bodies.push(body);
+      if (body.method === "getBlockHeight") {
+        return Response.json({ jsonrpc: "2.0", id: 1, result: 100 });
+      }
+      if (body.method === "getSignatureStatuses") {
+        return Response.json({
+          jsonrpc: "2.0",
+          id: 1,
+          result: { value: [{ confirmationStatus: "confirmed", err: null }] },
+        });
+      }
+      if (body.method === "sendRawTransaction") {
+        sendCalls += 1;
+        const opts = (body.params?.[1] ?? {}) as { skipPreflight?: boolean };
+        if (!opts.skipPreflight) {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: 1,
+            error: { message: "BlockhashNotFound" },
+          });
+        }
+        return Response.json({ jsonrpc: "2.0", id: 1, result: "SigRetry" });
+      }
+      return new Response("unexpected", { status: 500 });
+    };
+    const sig = await sendRawTransactionViaRpc(
+      ["https://ok.example"],
+      new Uint8Array([1]),
+      fetchImpl as typeof fetch,
+      { lastValidBlockHeight: 200 },
+    );
+    assert.equal(sig, "SigRetry");
+    assert.equal(sendCalls, 2);
+  });
+});
+
+describe("isBlockhashExpiredMessage / solBroadcastErrorCode", () => {
+  it("detects expiry wording and maps codes", () => {
+    assert.equal(isBlockhashExpiredMessage("BlockhashNotFound"), true);
+    assert.equal(isBlockhashExpiredMessage("block height exceeded"), true);
+    assert.equal(isBlockhashExpiredMessage("insufficient lamports"), false);
+    assert.equal(solBroadcastErrorCode(SOL_BLOCKHASH_EXPIRED_ERROR), "BLOCKHASH_EXPIRED");
+    assert.equal(solBroadcastErrorCode(SOL_INSUFFICIENT_FUNDS_ERROR), "INSUFFICIENT_FUNDS");
+    assert.equal(solBroadcastErrorCode(SOL_BROADCAST_ERROR), "BROADCAST_FAILED");
+    assert.equal(isBlockHeightExpired(150, 150), true);
+    assert.equal(isBlockHeightExpired(149, 150), false);
+  });
+});
+
+describe("fetchBlockHeightFromRpc", () => {
+  it("returns numeric height", async () => {
+    const fetchImpl = async () => Response.json({ jsonrpc: "2.0", id: 1, result: 99 });
+    assert.equal(await fetchBlockHeightFromRpc(["https://ok.example"], fetchImpl as typeof fetch), 99);
+  });
 });
 
 describe("simulateTransactionViaApi / sendRawTransactionViaApi", () => {
@@ -230,10 +332,26 @@ describe("simulateTransactionViaApi / sendRawTransactionViaApi", () => {
     };
     assert.equal(await sendRawTransactionViaApi("txb58", fetchImpl as typeof fetch), "S1");
   });
+
+  it("send-raw API maps BLOCKHASH_EXPIRED code", async () => {
+    const fetchImpl = async () =>
+      Response.json(
+        { error: SOL_BLOCKHASH_EXPIRED_ERROR, code: "BLOCKHASH_EXPIRED" },
+        { status: 409 },
+      );
+    await assert.rejects(
+      () => sendRawTransactionViaApi("txb58", fetchImpl as typeof fetch),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.equal(err.message, SOL_BLOCKHASH_EXPIRED_ERROR);
+        return true;
+      },
+    );
+  });
 });
 
 describe("friendlySolPrepareError extras", () => {
-  it("maps insufficient + broadcast", () => {
+  it("maps insufficient + broadcast + blockhash expiry", () => {
     assert.equal(
       friendlySolPrepareError(new Error(SOL_INSUFFICIENT_FUNDS_ERROR)),
       SOL_INSUFFICIENT_FUNDS_ERROR,
@@ -242,6 +360,14 @@ describe("friendlySolPrepareError extras", () => {
     assert.equal(
       friendlySolPrepareError(new Error("Transaction simulation failed: insufficient lamports")),
       SOL_INSUFFICIENT_FUNDS_ERROR,
+    );
+    assert.equal(
+      friendlySolPrepareError(new Error("BlockhashNotFound")),
+      SOL_BLOCKHASH_EXPIRED_ERROR,
+    );
+    assert.equal(
+      friendlySolPrepareError(new Error(SOL_BLOCKHASH_EXPIRED_ERROR)),
+      SOL_BLOCKHASH_EXPIRED_ERROR,
     );
   });
 });

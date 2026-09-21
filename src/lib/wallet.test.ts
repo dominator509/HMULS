@@ -578,6 +578,56 @@ describe("sol UL return resume helpers", () => {
     }
   });
 
+  it("finishSolMobileAfterSign (Phantom) refuses broadcast when blockhash expired", async () => {
+    const dapp = nacl.box.keyPair();
+    const wallet = nacl.box.keyPair();
+    const shared = nacl.box.before(wallet.publicKey, dapp.secretKey);
+    const session = {
+      wallet: "phantom" as const,
+      to: addr,
+      amountSol: amount,
+      dappPublicKey: bs58.encode(dapp.publicKey),
+      dappSecretKey: bs58.encode(dapp.secretKey),
+      sharedSecret: bs58.encode(shared),
+      session: "sess",
+      walletPublicKey: addr,
+      stage: "sign" as const,
+      blockhash: "StaleHash",
+      lastValidBlockHeight: 50,
+      at: Date.now(),
+    };
+    globalThis.localStorage.setItem("sheundresses.sol.deeplink.v1", JSON.stringify(session));
+
+    const signedTxB58 = bs58.encode(Buffer.from("fake-signed-tx"));
+    const nonce = nacl.randomBytes(24);
+    const encrypted = nacl.box.after(
+      Buffer.from(JSON.stringify({ transaction: signedTxB58 }), "utf8"),
+      nonce,
+      shared,
+    );
+    const returnUrl =
+      "https://sheundresses.com/checkout/inv?hmuls_sol=1&hmuls_wallet=phantom&hmuls_step=sign" +
+      `&data=${bs58.encode(encrypted)}&nonce=${bs58.encode(nonce)}`;
+
+    const prevFetch = globalThis.fetch;
+    const calls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      assert.equal(String(input), "/api/sol/recent-blockhash");
+      return Response.json({ blockhash: "New", lastValidBlockHeight: 999, blockHeight: 80 });
+    }) as typeof fetch;
+    try {
+      const done = await finishSolMobileAfterSign(returnUrl);
+      assert.equal(done.ok, false);
+      if (done.ok) return;
+      assert.match(done.error, /took too long|Tap Pay with Phantom/i);
+      assert.deepEqual(calls, ["/api/sol/recent-blockhash"]);
+      assert.equal(globalThis.localStorage.getItem("sheundresses.sol.deeplink.v1"), null);
+    } finally {
+      globalThis.fetch = prevFetch;
+    }
+  });
+
   it("encode/decode resume blob round-trip", () => {
     const raw = encodeSolResumeBlob({
       dappPublicKey: "pk",
