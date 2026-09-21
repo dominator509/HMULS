@@ -61,6 +61,8 @@ export type InvoiceView = {
   shotTitles: string[];
   amountCents: number;
   asset: CryptoAsset;
+  /** NOWPayments pay_currency (e.g. usdterc20). */
+  payCurrency?: string | null;
   payAddress: string;
   cryptoAmount: string;
   status: "pending" | "confirming" | "paid" | "expired";

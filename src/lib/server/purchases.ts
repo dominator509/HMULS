@@ -231,6 +231,7 @@ export const createInvoice = createServerFn({ method: "POST" })
       shotTitles: shots.map((s) => s.title),
       amountCents: amount,
       asset: data.asset,
+      payCurrency: payCurrency,
       payAddress: address,
       cryptoAmount,
       status: "pending",
@@ -256,6 +257,7 @@ export const getInvoice = createServerFn({ method: "GET" })
       shot_ids: string;
       amount_cents: number;
       asset: CryptoAsset;
+      pay_currency: string | null;
       pay_address: string;
       crypto_amount: string;
       status: InvoiceView["status"];
@@ -306,6 +308,7 @@ export const getInvoice = createServerFn({ method: "GET" })
       shotTitles: ids.map((id) => titleById.get(id) ?? id),
       amountCents: inv.amount_cents,
       asset: inv.asset,
+      payCurrency: inv.pay_currency || undefined,
       payAddress: inv.pay_address,
       cryptoAmount: inv.crypto_amount,
       status: inv.status,

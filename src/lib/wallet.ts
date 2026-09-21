@@ -140,7 +140,53 @@ export function ethToWei(ethAmount: string): bigint {
   return BigInt(w || "0") * 10n ** 18n + BigInt(frac || "0");
 }
 
-export function paymentUri(asset: CryptoAsset, address: string, amount: string, label = "SHE UNDRESSES") {
+/** Tether USD (USDT) ERC-20 on Ethereum mainnet — NOWPayments `usdterc20`. */
+export const USDT_ERC20_CONTRACT = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
+export const USDT_ERC20_DECIMALS = 6;
+export const USDT_ERC20_CHAIN_ID = 1;
+
+/**
+ * NOWPayments USDT is `usdterc20` (Ethereum). Default ERC-20 unless payCurrency
+ * explicitly names TRC-20 (not wired in this app).
+ */
+export function isUsdtErc20(asset: CryptoAsset, payCurrency?: string | null): boolean {
+  if (asset !== "USDT") return false;
+  const cur = (payCurrency || "usdterc20").toLowerCase().replace(/[_\s]/g, "");
+  if (cur === "usdttrc20" || cur === "trc20" || cur.includes("tron")) return false;
+  return true;
+}
+
+/** Human USDT amount → ERC-20 uint256 base units (6 decimals), floored. */
+export function usdtToBaseUnits(amount: string): bigint {
+  const raw = (amount || "").trim();
+  if (!raw || raw.startsWith("-")) return 0n;
+  const [whole, frac = ""] = raw.split(".");
+  const w = whole.replace(/[^0-9]/g, "") || "0";
+  const f = `${frac.replace(/[^0-9]/g, "")}000000`.slice(0, USDT_ERC20_DECIMALS);
+  return BigInt(w) * 10n ** BigInt(USDT_ERC20_DECIMALS) + BigInt(f || "0");
+}
+
+/** EIP-681 ERC-20 transfer URI for USDT on Ethereum mainnet. */
+export function usdtErc20PaymentUri(payAddress: string, amount: string): string {
+  const addr = (payAddress || "").trim();
+  if (!addr || !/^0x[a-fA-F0-9]{40}$/.test(addr)) return "";
+  const units = usdtToBaseUnits(amount);
+  if (units <= 0n) return "";
+  return `ethereum:${USDT_ERC20_CONTRACT}@${USDT_ERC20_CHAIN_ID}/transfer?address=${addr}&uint256=${units.toString()}`;
+}
+
+export type PaymentUriOpts = {
+  /** NOWPayments pay_currency (e.g. usdterc20). */
+  payCurrency?: string | null;
+};
+
+export function paymentUri(
+  asset: CryptoAsset,
+  address: string,
+  amount: string,
+  label = "SHE UNDRESSES",
+  opts?: PaymentUriOpts,
+) {
   const enc = encodeURIComponent(label);
   const addr = (address || "").trim();
   switch (asset) {
@@ -157,7 +203,8 @@ export function paymentUri(asset: CryptoAsset, address: string, amount: string, 
       return `solana:${addr}?amount=${amt}&label=${enc}`;
     }
     case "USDT":
-      return addr;
+      if (!isUsdtErc20("USDT", opts?.payCurrency)) return addr;
+      return usdtErc20PaymentUri(addr, amount);
   }
 }
 
@@ -400,7 +447,44 @@ export type WalletDeepLinkOpts = {
   checkoutUrl?: string;
   /** Optional UA override for tests / SSR. */
   userAgent?: string;
+  /** NOWPayments pay_currency (usdterc20 for USDT). */
+  payCurrency?: string | null;
 };
+
+export type WalletDeepLinkLaunch =
+  | { kind: "open"; href: string; message: string }
+  | { kind: "copy"; text: string; href?: string; message: string };
+
+const COINBASE_USDT_COPY_MSG =
+  "Paste address in Coinbase Wallet · send exact USDT (ERC-20) on Ethereum";
+
+/**
+ * MetaMask ERC-20 send universal link (not /dapp/ — bare address opens a blank browser).
+ * @see https://docs.metamask.io/metamask-connect/evm/guides/metamask-exclusive/use-deeplinks/
+ */
+export function metamaskUsdtErc20SendHref(payAddress: string, amount: string): string {
+  const uri = usdtErc20PaymentUri(payAddress, amount);
+  if (!uri) return "";
+  // ethereum:0xdAC…@1/transfer?address=…&uint256=… → metamask.app.link/send/0xdAC…@1/transfer?…
+  return `https://metamask.app.link/send/${uri.slice("ethereum:".length)}`;
+}
+
+/**
+ * Trust Wallet USDT ERC-20 send — UAI asset `c60_t<contract>` (Ethereum slip44=60).
+ * Amount is human USDT units. @see https://developer.trustwallet.com/developer/develop-for-trust/deeplinking
+ */
+export function trustUsdtErc20SendHref(payAddress: string, amount: string): string {
+  const addr = (payAddress || "").trim();
+  if (!addr) return "";
+  const asset = `c60_t${USDT_ERC20_CONTRACT}`;
+  const q = new URLSearchParams({
+    asset,
+    address: addr,
+    amount: (amount || "").trim(),
+  });
+  // Also pass coin+token (legacy) so older Trust builds still open the Ethereum token send sheet.
+  return `https://link.trustwallet.com/send?${q.toString()}&coin=60&token=${USDT_ERC20_CONTRACT}`;
+}
 
 export function walletDeepLink(
   wallet: string,
@@ -409,17 +493,28 @@ export function walletDeepLink(
   amount: string,
   opts?: WalletDeepLinkOpts,
 ) {
-  const uri = paymentUri(asset, address, amount);
+  const uri = paymentUri(asset, address, amount, "SHE UNDRESSES", {
+    payCurrency: opts?.payCurrency,
+  });
   const encoded = encodeURIComponent(uri);
+  const usdtErc20 = isUsdtErc20(asset, opts?.payCurrency);
   switch (wallet) {
     case "metamask":
       if (asset === "ETH") {
         return `https://metamask.app.link/send/${address}@1?value=${ethToWei(amount).toString()}`;
       }
+      if (usdtErc20) {
+        return metamaskUsdtErc20SendHref(address, amount);
+      }
       return `https://metamask.app.link/dapp/${encoded}`;
     case "rainbow":
       return `https://rnbwapp.com/wc?uri=${encoded}`;
     case "coinbase":
+      if (usdtErc20) {
+        // go.cb-w.com/dapp?cb_url= expects an https URL — bare address / EIP-681 → "Invalid URL".
+        // Prefill ERC-20 send is unreliable; launchWalletDeepLink copies + opens send home.
+        return "https://go.cb-w.com/send?";
+      }
       return `https://go.cb-w.com/dapp?cb_url=${encoded}`;
     case "trust":
       if (asset === "ETH") {
@@ -428,10 +523,14 @@ export function walletDeepLink(
       if (asset === "BTC") {
         return `https://link.trustwallet.com/send?coin=0&address=${address}&amount=${amount}`;
       }
+      if (usdtErc20) {
+        return trustUsdtErc20SendHref(address, amount);
+      }
       return `https://link.trustwallet.com/send?address=${address}&amount=${amount}`;
     case "phantom":
     case "solflare": {
       // Prefer native / copy — never default to wallet in-app browse (logged-out).
+      // LOCKED: do not change SOL mobile deeplink / SOL pay paths here.
       if (asset !== "SOL") return uri;
       const launch = launchSolWallet(wallet, address, amount, {
         userAgent: opts?.userAgent,
@@ -442,6 +541,51 @@ export function walletDeepLink(
     default:
       return uri;
   }
+}
+
+/**
+ * Open a mobile wallet for an invoice. Coinbase USDT copies address+amount and
+ * opens a safe send entry (never dapp?cb_url= bare address → Invalid URL).
+ */
+export function launchWalletDeepLink(
+  wallet: string,
+  asset: CryptoAsset,
+  address: string,
+  amount: string,
+  opts?: WalletDeepLinkOpts,
+): WalletDeepLinkLaunch {
+  const usdtErc20 = isUsdtErc20(asset, opts?.payCurrency);
+  if (wallet === "coinbase" && usdtErc20) {
+    const addr = (address || "").trim();
+    const amt = (amount || "").trim();
+    const text = amt ? `${addr}\n${amt} USDT` : addr;
+    return {
+      kind: "copy",
+      text,
+      href: "https://go.cb-w.com/send?",
+      message: COINBASE_USDT_COPY_MSG,
+    };
+  }
+  const href = walletDeepLink(wallet, asset, address, amount, opts);
+  if (!href) {
+    return {
+      kind: "copy",
+      text: (address || "").trim(),
+      message: "Copy the invoice address and send the exact amount in your wallet.",
+    };
+  }
+  const name =
+    wallet === "metamask"
+      ? "MetaMask"
+      : wallet === "trust"
+        ? "Trust Wallet"
+        : wallet === "coinbase"
+          ? "Coinbase Wallet"
+          : "wallet";
+  const message = usdtErc20
+    ? `Opened ${name}. Confirm USDT (ERC-20) on Ethereum — wrong network risks lost funds.`
+    : `Opened ${name}. Send to the invoice address, then mark sent.`;
+  return { kind: "open", href, message };
 }
 
 export async function sendInjectedEth(from: string, to: string, amountEth: string): Promise<string> {
@@ -500,7 +644,7 @@ export const WALLET_OPTIONS: WalletOption[] = [
   {
     id: "coinbase",
     name: "Coinbase / Base Wallet",
-    hint: "Opens Coinbase Wallet with the pay link.",
+    hint: "Opens Coinbase Wallet. USDT: paste address, send ERC-20 on Ethereum.",
     kind: "deeplink",
     assets: ["ETH", "USDT"],
   },
