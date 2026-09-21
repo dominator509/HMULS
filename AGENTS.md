@@ -186,6 +186,12 @@ Put values that must reach **Nitro `process.env`** as **encrypted Worker secrets
 
 ---
 
+## Buyer help — How to get crypto
+
+- Public guide: **`/how-to-get-crypto`** (plain English: buy + send SOL / USDT ERC-20 / ETH / BTC).
+- Linked from primary nav (**Crypto**), homepage hero CTA, footer, and a small “New to crypto?” link on checkout + pay sheet.
+- Do **not** change SOL Phantom/Solflare deeplink pay paths when editing this page.
+
 ## Bitcoin (NOWPayments gates)
 
 Two gates — **both** required to offer BTC (`src/lib/btc-min.ts`):

@@ -225,3 +225,14 @@ export function stackNote(
   }
   return "The rest of the set, discounted. Cheaper than stalling out.";
 }
+
+/** Buyer-facing how-to for crypto checkout — zero jargon. */
+export const HOW_TO_CRYPTO = {
+  navLabel: "Crypto",
+  homeCta: "How to get crypto",
+  checkoutLink: "New to crypto?",
+  paywallLink: "New to crypto?",
+  kicker: "Wallet help",
+  title: "How to get crypto",
+  body: "You pay with a wallet app — not a card statement with her name on it. If you have never bought crypto before, this page walks you through it in plain English.",
+};

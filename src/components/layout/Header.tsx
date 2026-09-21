@@ -35,6 +35,9 @@ export function Header() {
           <a href="/#ladders" className="nav-link hidden px-2 sm:inline-flex">
             Sets
           </a>
+          <Link to="/how-to-get-crypto" className="nav-link px-2 text-gold sm:px-3">
+            Crypto
+          </Link>
           <Link to="/vault" className="nav-link px-2 sm:px-3">
             Vault
           </Link>

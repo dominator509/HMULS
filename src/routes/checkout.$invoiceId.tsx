@@ -19,7 +19,7 @@ import {
 } from "@/lib/psychology";
 import { toast } from "sonner";
 import { Check } from "lucide-react";
-import { CHECKOUT_COPY } from "@/lib/copy";
+import { CHECKOUT_COPY, HOW_TO_CRYPTO } from "@/lib/copy";
 import { privateHead } from "@/lib/seo";
 import {
   clearSolCheckoutAck,
@@ -376,6 +376,11 @@ function CheckoutPage() {
             </Link>
           </span>
         </label>
+        <p className="mb-3 text-center text-xs text-subtle">
+          <Link to="/how-to-get-crypto" className="text-gold underline-offset-2 hover:underline">
+            {HOW_TO_CRYPTO.checkoutLink}
+          </Link>
+        </p>
         <PayWallet
           inv={inv}
           disabled={phase === "wait" || !licenseOk}
