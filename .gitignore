@@ -39,7 +39,12 @@ startup.sh
 artifacts/
 screenshots/
 !screenshots/.gitkeep
-public/__grok/
+# App Builder install chrome stays local/gitignored; commit the two PWA
+# assets the product site links from __root (CF Workers does not run Nitro
+# middleware that would otherwise serve them dynamically).
+public/__grok/**
+!public/__grok/icon-180.png
+!public/__grok/manifest.webmanifest
 
 # logs, OS, editors
 *.log
