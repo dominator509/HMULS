@@ -13,6 +13,8 @@ import {
   PUBLICNODE_RPC_URL,
   resolveSolanaRpcUrls,
   rpcUrlsForBlockHeight,
+  rpcUrlsForSend,
+  safeRpcDetail,
   sanitizePairedBlockHeight,
   sendRawTransactionViaApi,
   sendRawTransactionViaRpc,
@@ -351,18 +353,101 @@ describe("sendRawTransactionViaRpc", () => {
     );
   });
 
-  it("retries once with skipPreflight when still within lastValidBlockHeight", async () => {
-    const bodies: unknown[] = [];
+  it("prefers skipPreflight true first with maxRetries", async () => {
     let sendCalls = 0;
     const fetchImpl = async (_input: RequestInfo | URL, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body ?? "{}")) as {
         method?: string;
         params?: unknown[];
       };
-      bodies.push(body);
-      if (body.method === "getBlockHeight") {
-        return Response.json({ jsonrpc: "2.0", id: 1, result: 100 });
+      if (body.method === "getSignatureStatuses") {
+        return Response.json({
+          jsonrpc: "2.0",
+          id: 1,
+          result: { value: [{ confirmationStatus: "confirmed", err: null }] },
+        });
       }
+      if (body.method === "sendRawTransaction") {
+        sendCalls += 1;
+        const opts = (body.params?.[1] ?? {}) as {
+          skipPreflight?: boolean;
+          maxRetries?: number;
+        };
+        assert.equal(opts.skipPreflight, true);
+        assert.equal(opts.maxRetries, 3);
+        return Response.json({ jsonrpc: "2.0", id: 1, result: "SigSkip" });
+      }
+      return new Response("unexpected", { status: 500 });
+    };
+    const sig = await sendRawTransactionViaRpc(
+      ["https://ok.example"],
+      new Uint8Array([1]),
+      fetchImpl as typeof fetch,
+    );
+    assert.equal(sig, "SigSkip");
+    assert.equal(sendCalls, 1);
+  });
+
+  it("treats send signature as success when confirm poll is pending/slow", async () => {
+    let sendCalls = 0;
+    const fetchImpl = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { method?: string };
+      if (body.method === "getSignatureStatuses") {
+        // Pending — no status yet (slow confirm). Must NOT become BROADCAST_FAILED.
+        return Response.json({
+          jsonrpc: "2.0",
+          id: 1,
+          result: { value: [null] },
+        });
+      }
+      if (body.method === "sendRawTransaction") {
+        sendCalls += 1;
+        return Response.json({ jsonrpc: "2.0", id: 1, result: "SigPendingOk" });
+      }
+      return new Response("unexpected", { status: 500 });
+    };
+    const sig = await sendRawTransactionViaRpc(
+      ["https://ok.example"],
+      new Uint8Array([1]),
+      fetchImpl as typeof fetch,
+      { confirm: true },
+    );
+    assert.equal(sig, "SigPendingOk");
+    assert.equal(sendCalls, 1);
+  });
+
+  it("does not convert confirm on-chain err poll into failure after successful send", async () => {
+    // Even if status briefly reports an err object, a returned sendRaw signature wins.
+    // (Confirm is best-effort observability only.)
+    const fetchImpl = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { method?: string };
+      if (body.method === "getSignatureStatuses") {
+        return Response.json({
+          jsonrpc: "2.0",
+          id: 1,
+          result: { value: [{ confirmationStatus: "processed", err: { InstructionError: [0, "Custom"] } }] },
+        });
+      }
+      if (body.method === "sendRawTransaction") {
+        return Response.json({ jsonrpc: "2.0", id: 1, result: "SigSentAnyway" });
+      }
+      return new Response("unexpected", { status: 500 });
+    };
+    const sig = await sendRawTransactionViaRpc(
+      ["https://ok.example"],
+      new Uint8Array([1]),
+      fetchImpl as typeof fetch,
+    );
+    assert.equal(sig, "SigSentAnyway");
+  });
+
+  it("falls back to preflight when skipPreflight fails non-expiry", async () => {
+    let sendCalls = 0;
+    const fetchImpl = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        method?: string;
+        params?: unknown[];
+      };
       if (body.method === "getSignatureStatuses") {
         return Response.json({
           jsonrpc: "2.0",
@@ -373,14 +458,14 @@ describe("sendRawTransactionViaRpc", () => {
       if (body.method === "sendRawTransaction") {
         sendCalls += 1;
         const opts = (body.params?.[1] ?? {}) as { skipPreflight?: boolean };
-        if (!opts.skipPreflight) {
+        if (opts.skipPreflight) {
           return Response.json({
             jsonrpc: "2.0",
             id: 1,
-            error: { message: "BlockhashNotFound" },
+            error: { message: "Node is behind" },
           });
         }
-        return Response.json({ jsonrpc: "2.0", id: 1, result: "SigRetry" });
+        return Response.json({ jsonrpc: "2.0", id: 1, result: "SigPreflight" });
       }
       return new Response("unexpected", { status: 500 });
     };
@@ -388,10 +473,24 @@ describe("sendRawTransactionViaRpc", () => {
       ["https://ok.example"],
       new Uint8Array([1]),
       fetchImpl as typeof fetch,
-      { lastValidBlockHeight: 200 },
     );
-    assert.equal(sig, "SigRetry");
+    assert.equal(sig, "SigPreflight");
     assert.equal(sendCalls, 2);
+  });
+});
+
+describe("safeRpcDetail / rpcUrlsForSend", () => {
+  it("truncates and collapses whitespace", () => {
+    assert.equal(safeRpcDetail("  hello\nworld  "), "hello world");
+    assert.equal(safeRpcDetail("x".repeat(200)).length, 160);
+    assert.ok(safeRpcDetail("x".repeat(200)).endsWith("…"));
+  });
+
+  it("puts publicnode last for send", () => {
+    assert.deepEqual(
+      rpcUrlsForSend([PUBLICNODE_RPC_URL, "https://api.mainnet-beta.solana.com"]),
+      ["https://api.mainnet-beta.solana.com", PUBLICNODE_RPC_URL],
+    );
   });
 });
 
@@ -460,6 +559,28 @@ describe("simulateTransactionViaApi / sendRawTransactionViaApi", () => {
       (err: unknown) => {
         assert.ok(err instanceof Error);
         assert.equal(err.message, SOL_BLOCKHASH_EXPIRED_ERROR);
+        return true;
+      },
+    );
+  });
+
+  it("send-raw API surfaces truncated detail on BROADCAST_FAILED", async () => {
+    const fetchImpl = async () =>
+      Response.json(
+        {
+          error: SOL_BROADCAST_ERROR,
+          code: "BROADCAST_FAILED",
+          detail: "Transaction failed to sanitize accounts offsets correctly",
+        },
+        { status: 502 },
+      );
+    await assert.rejects(
+      () => sendRawTransactionViaApi("txb58", fetchImpl as typeof fetch),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.equal(err.message, SOL_BROADCAST_ERROR);
+        assert.match(String((err as Error & { cause?: unknown }).cause), /sanitize/);
+        assert.match(String((err as Error & { detail?: string }).detail), /sanitize/);
         return true;
       },
     );
