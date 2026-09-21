@@ -36,6 +36,7 @@ import {
   type Surfaces,
 } from "@/lib/psychology";
 import { CRYPTO_ASSETS } from "@/lib/crypto";
+import { btcMinBuyerTip, isBtcBelowMin } from "@/lib/btc-min";
 import { alsoUnlocked, offerFrame, PAY_SHEET, stackNote } from "@/lib/copy";
 import { toast } from "sonner";
 import { Lock, Play } from "lucide-react";
@@ -103,7 +104,7 @@ function LadderPage() {
   const [asset, setAsset] = useState<CryptoAsset>("ETH");
   const [gift, setGift] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [payStatus, setPayStatus] = useState<{ nowpayments: boolean; missing: string[] } | null>(null);
+  const [payStatus, setPayStatus] = useState<{ nowpayments: boolean; missing: string[]; btcMinUsdCents?: number | null } | null>(null);
   const [clock, setClock] = useState<number | null>(null);
   const [dials, setDials] = useState<Dials>(DEFAULT_DIALS);
   const [surfaces, setSurfaces] = useState<Surfaces>(() => fallbackSurfaces(DEFAULT_DIALS));
@@ -242,7 +243,9 @@ function LadderPage() {
     if (!payOpen || !user) return;
     getPaymentStatus()
       .then(setPayStatus)
-      .catch(() => setPayStatus({ nowpayments: false, missing: ["NOWPAYMENTS_API_KEY"] }));
+      .catch(() =>
+        setPayStatus({ nowpayments: false, missing: ["NOWPAYMENTS_API_KEY"], btcMinUsdCents: null }),
+      );
   }, [payOpen, user]);
 
   if (raw === undefined) {
@@ -326,6 +329,18 @@ function LadderPage() {
       }
       return;
     }
+    const amountForGate =
+      kind === "shot"
+        ? nextPrice
+        : kind === "bundle"
+          ? (progress?.bundleCents ?? 0)
+          : upsellPrice;
+    const btcMin = payStatus.btcMinUsdCents;
+    let payAsset = asset;
+    if (payAsset === "BTC" && btcMin != null && isBtcBelowMin(amountForGate, btcMin)) {
+      toast.error(btcMinBuyerTip(btcMin) + " — pick another asset or a larger unlock.");
+      return;
+    }
     setBusy(true);
     try {
       const inv = await Promise.race([
@@ -333,7 +348,7 @@ function LadderPage() {
           data: {
             ladderId: ladder.id,
             kind,
-            asset,
+            asset: payAsset,
             shotId: kind === "shot" ? next?.id : undefined,
             upsellCount: kind === "upsell" ? upsellN : undefined,
             isGift: gift,
@@ -364,6 +379,14 @@ function LadderPage() {
 
   const payAmount =
     kind === "shot" ? nextPrice : kind === "bundle" ? progress.bundleCents : upsellPrice;
+  const btcHiddenForAmount =
+    payStatus?.btcMinUsdCents != null &&
+    payStatus.btcMinUsdCents > 0 &&
+    isBtcBelowMin(payAmount, payStatus.btcMinUsdCents);
+  // Keep picker selection on a visible asset when BTC is omitted for this amount.
+  if (asset === "BTC" && btcHiddenForAmount) {
+    setAsset("ETH");
+  }
 
   const pageSeo = authorLadderSeo({
     title: ladder.title,
@@ -860,7 +883,7 @@ function LadderPage() {
               />
             </p>
             <div className="mt-5 grid grid-cols-2 gap-2">
-              {CRYPTO_ASSETS.map((a) => (
+              {CRYPTO_ASSETS.filter((a) => (a.id !== "BTC" ? true : !btcHiddenForAmount)).map((a) => (
                 <button
                   key={a.id}
                   type="button"
@@ -876,6 +899,9 @@ function LadderPage() {
                 </button>
               ))}
             </div>
+            {btcHiddenForAmount && payStatus?.btcMinUsdCents != null ? (
+              <p className="mt-2 text-xs text-subtle">{btcMinBuyerTip(payStatus.btcMinUsdCents)}</p>
+            ) : null}
             <label className="mt-4 flex min-h-11 items-center gap-2 text-sm text-muted">
               <input
                 type="checkbox"
@@ -891,7 +917,11 @@ function LadderPage() {
               </p>
             ) : null}
             <Button className="mt-5" size="xl" disabled={busy || payStatus == null || !payStatus.nowpayments} onClick={() => void submitPay()}>
-              {payStatus == null ? "Checking payments…" : busy ? "Opening invoice…" : PAY_SHEET.pay(asset)}
+              {payStatus == null
+                ? "Checking payments…"
+                : busy
+                  ? "Opening invoice…"
+                  : PAY_SHEET.pay(asset === "BTC" && btcHiddenForAmount ? "ETH" : asset)}
             </Button>
             <p className="mt-3 text-center text-xs text-subtle">
               Wallet checkout next — send from MetaMask, Rainbow, Trust, or Phantom.

@@ -5,7 +5,18 @@ import { ensureCatalog, ensureProfile } from "./catalog";
 import { loadDials } from "./transporter";
 import { continueHours, invoiceMinutes, priceBumpPct } from "@/lib/psychology";
 import { CRYPTO_ASSETS, giftCode, invoiceId } from "@/lib/crypto";
-import { createNowpaymentsPayment, fetchNowpaymentsPayment, paymentsLive, paymentsMissing } from "./payments";
+import {
+  btcBelowMinCreateError,
+  gatedBtcMinUsdCents,
+  isBtcBelowMin,
+} from "@/lib/btc-min";
+import {
+  createNowpaymentsPayment,
+  fetchNowpaymentsBtcMinFiatUsd,
+  fetchNowpaymentsPayment,
+  paymentsLive,
+  paymentsMissing,
+} from "./payments";
 import { ipnFulfillsInvoice, type UnderpayDetail } from "@/lib/nowpayments";
 import { entityComplete } from "@/lib/legal-types";
 import { ensureLegal, loadEntity } from "./legal";
@@ -91,9 +102,16 @@ export const getPaymentStatus = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async () => {
     const missing = paymentsMissing();
+    let btcMinUsdCents: number | null = null;
+    if (paymentsLive()) {
+      const min = await fetchNowpaymentsBtcMinFiatUsd();
+      if (min) btcMinUsdCents = gatedBtcMinUsdCents(min.fiatUsd);
+    }
     return {
       nowpayments: paymentsLive(),
       missing,
+      /** Gated BTC floor in USD cents (live fiat × 5% buffer). Null if unknown. */
+      btcMinUsdCents,
     };
   });
 
@@ -184,6 +202,15 @@ export const createInvoice = createServerFn({ method: "POST" })
     let priceAmount: string | null = null;
     let providerExpires: string | null = null;
     if (paymentsLive()) {
+      if (data.asset === "BTC") {
+        const min = await fetchNowpaymentsBtcMinFiatUsd();
+        if (min) {
+          const gated = gatedBtcMinUsdCents(min.fiatUsd);
+          if (isBtcBelowMin(amount, gated)) {
+            throw new Error(btcBelowMinCreateError(gated));
+          }
+        }
+      }
       const pay = await createNowpaymentsPayment({
         invoiceId: id,
         asset: data.asset,
