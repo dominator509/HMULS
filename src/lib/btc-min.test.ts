@@ -3,11 +3,17 @@ import { describe, it } from "node:test";
 import {
   BTC_BELOW_MIN_FALLBACK,
   BTC_MIN_BUFFER,
+  BTC_MIN_SHOTS,
+  BTC_SHOT_MIN_BUYER_TIP,
   btcBelowMinCreateError,
+  btcBelowShotMinCreateError,
+  btcBuyerTipForHide,
+  btcHideReason,
   btcMinBuyerTip,
   btcMinTipDollars,
   gatedBtcMinUsdCents,
   isBtcBelowMin,
+  isBtcBelowShotMin,
   parseBtcMinFiatUsd,
 } from "./btc-min.ts";
 
@@ -61,5 +67,49 @@ describe("btc min gating", () => {
     assert.equal(parsed!.minAmount, 0.0002625);
     assert.equal(parseBtcMinFiatUsd({ min_amount: 0.001 }), null);
     assert.equal(parseBtcMinFiatUsd({ fiat_equivalent: "bad" }), null);
+  });
+});
+
+describe("btc shot-count gating", () => {
+  it("requires at least 3 shots", () => {
+    assert.equal(BTC_MIN_SHOTS, 3);
+    assert.equal(isBtcBelowShotMin(0), true);
+    assert.equal(isBtcBelowShotMin(1), true);
+    assert.equal(isBtcBelowShotMin(2), true);
+    assert.equal(isBtcBelowShotMin(3), false);
+    assert.equal(isBtcBelowShotMin(10), false);
+    assert.equal(isBtcBelowShotMin(Number.NaN), true);
+  });
+
+  it("buyer tip and create error share plain 3-or-more photos wording", () => {
+    assert.equal(
+      BTC_SHOT_MIN_BUYER_TIP,
+      "Bitcoin is available when unlocking 3 or more photos",
+    );
+    assert.match(btcBelowShotMinCreateError(), /3 or more photos/);
+    assert.match(btcBelowShotMinCreateError(), /Solana, USDT, or Ethereum/);
+    assert.ok(btcBelowShotMinCreateError().startsWith(BTC_SHOT_MIN_BUYER_TIP));
+  });
+
+  it("hide reason prefers shot-count over fiat floor", () => {
+    // 1-shot under min → shots
+    assert.equal(btcHideReason(1, 499, 2205), "shots");
+    // 2-shot above min → still shots
+    assert.equal(btcHideReason(2, 5000, 2205), "shots");
+    // 3-shot under min → amount
+    assert.equal(btcHideReason(3, 499, 2205), "amount");
+    // 3-shot at/above min → show BTC
+    assert.equal(btcHideReason(3, 2205, 2205), null);
+    assert.equal(btcHideReason(5, 5000, 2205), null);
+    // 3-shot with unknown min → show BTC
+    assert.equal(btcHideReason(3, 100, null), null);
+    assert.equal(btcHideReason(3, 100, 0), null);
+  });
+
+  it("picker tip follows hide reason", () => {
+    assert.equal(btcBuyerTipForHide("shots", 2205), BTC_SHOT_MIN_BUYER_TIP);
+    assert.equal(btcBuyerTipForHide("amount", 2205), "Bitcoin available from about $23");
+    assert.equal(btcBuyerTipForHide(null, 2205), null);
+    assert.equal(btcBuyerTipForHide("amount", null), null);
   });
 });

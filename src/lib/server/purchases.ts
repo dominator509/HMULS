@@ -7,8 +7,10 @@ import { continueHours, invoiceMinutes, priceBumpPct } from "@/lib/psychology";
 import { CRYPTO_ASSETS, giftCode, invoiceId } from "@/lib/crypto";
 import {
   btcBelowMinCreateError,
+  btcBelowShotMinCreateError,
   gatedBtcMinUsdCents,
   isBtcBelowMin,
+  isBtcBelowShotMin,
 } from "@/lib/btc-min";
 import {
   createNowpaymentsPayment,
@@ -203,6 +205,9 @@ export const createInvoice = createServerFn({ method: "POST" })
     let providerExpires: string | null = null;
     if (paymentsLive()) {
       if (data.asset === "BTC") {
+        if (isBtcBelowShotMin(shots.length)) {
+          throw new Error(btcBelowShotMinCreateError());
+        }
         const min = await fetchNowpaymentsBtcMinFiatUsd();
         if (min) {
           const gated = gatedBtcMinUsdCents(min.fiatUsd);
