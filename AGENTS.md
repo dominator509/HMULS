@@ -192,7 +192,7 @@ Put values that must reach **Nitro `process.env`** as **encrypted Worker secrets
 - Mobile deeplinks (`src/lib/wallet.ts`, `PayWallet`):
   - **MetaMask:** `metamask.app.link/send/<contract>@1/transfer?address=&uint256=` (not `/dapp/` — bare address → blank in-app browser).
   - **Trust:** `link.trustwallet.com/send` with `asset=c60_t<contract>` (and `coin=60&token=`) + human amount.
-  - **Coinbase / Base:** do **not** pass a bare address to `dapp?cb_url=` (Invalid URL). Copy address+amount, open Coinbase send home, toast to paste and send **USDT (ERC-20) on Ethereum**.
+  - **Coinbase / Base:** no documented send prefill (`go.cb-w.com/send?` opens blank To + Paste). Do **not** pass a bare address to `dapp?cb_url=` (Invalid URL). Copy **address only**, open send home, toast/UI: **Tap Paste in To, then choose USDT (Ethereum)**.
 - Buyer copy: remind **USDT on Ethereum (ERC-20)** — wrong network risks lost funds.
 - **Do not** change SOL locked paths (`sol-mobile-deeplink` / Phantom / Solflare pay).
 
