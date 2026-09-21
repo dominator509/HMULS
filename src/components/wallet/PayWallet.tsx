@@ -94,6 +94,11 @@ export function PayWallet({
           if (!done.ok) {
             setPhase("idle");
             toast.error(done.error);
+            // Bugfix: surface truncated RPC detail so we can see real BROADCAST_FAILED cause.
+            if (done.detail) {
+              console.warn("[sol/send-raw]", done.detail);
+              toast.message(done.detail);
+            }
             return;
           }
           clearSolCheckoutAck();

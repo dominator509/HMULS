@@ -20,10 +20,12 @@ import {
   continueSolMobileAfterConnect,
   decodeSolResumeBlob,
   encodeSolResumeBlob,
+  decodeSignedTxBytes,
   finishSolMobileAfterSign,
   getSolMobileSession,
   isBrandedSolWalletHref,
   isSolUlReturnPending,
+  normalizePhantomSignedTxForBroadcast,
   parseSolUlReturn,
   peekSolCheckoutAck,
   persistSolCheckoutAck,
@@ -641,5 +643,61 @@ describe("sol UL return resume helpers", () => {
     const decoded = decodeSolResumeBlob(raw);
     assert.equal(decoded?.wallet, "solflare");
     assert.equal(decoded?.invoiceId, "inv1");
+  });
+});
+
+
+describe("normalizePhantomSignedTxForBroadcast", () => {
+  it("re-serializes via Transaction.from (Phantom demo pattern)", async () => {
+    const { Keypair, PublicKey, SystemProgram, Transaction } = await import("@solana/web3.js");
+    const from = Keypair.generate();
+    const to = Keypair.generate();
+    const tx = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: from.publicKey,
+        toPubkey: to.publicKey,
+        lamports: 1000,
+      }),
+    );
+    tx.feePayer = from.publicKey;
+    tx.recentBlockhash = Keypair.generate().publicKey.toBase58(); // valid-length base58 stand-in
+    tx.partialSign(from);
+    const original = tx.serialize();
+    const b58 = bs58.encode(original);
+    const out = await normalizePhantomSignedTxForBroadcast(b58);
+    const again = Transaction.from(bs58.decode(out));
+    assert.equal(again.signatures.length > 0, true);
+    assert.ok(out.length > 0);
+  });
+
+  it("accepts base64 signed tx when base58 fails", async () => {
+    const { Keypair, SystemProgram, Transaction } = await import("@solana/web3.js");
+    const from = Keypair.generate();
+    const to = Keypair.generate();
+    const tx = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: from.publicKey,
+        toPubkey: to.publicKey,
+        lamports: 500,
+      }),
+    );
+    tx.feePayer = from.publicKey;
+    tx.recentBlockhash = Keypair.generate().publicKey.toBase58();
+    tx.partialSign(from);
+    const wire = tx.serialize();
+    const b64 = Buffer.from(wire).toString("base64");
+    // Ensure it is not valid-looking as our primary path alone: decodeSignedTxBytes tries b58 first.
+    const bytes = decodeSignedTxBytes(b64);
+    assert.deepEqual(Buffer.from(bytes), Buffer.from(wire));
+    const out = await normalizePhantomSignedTxForBroadcast(b64);
+    assert.ok(out.length > 0);
+    // Output is always base58 for send-raw
+    assert.doesNotThrow(() => bs58.decode(out));
+  });
+
+  it("falls back to original bytes when Transaction.from fails", async () => {
+    const junk = bs58.encode(Buffer.from("not-a-real-tx"));
+    const out = await normalizePhantomSignedTxForBroadcast(junk);
+    assert.equal(out, junk);
   });
 });

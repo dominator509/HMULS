@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import bs58 from "bs58";
 import {
   resolveSolanaRpcUrls,
+  safeRpcDetail,
   sendRawTransactionViaRpc,
   solBroadcastErrorCode,
   SOL_BLOCKHASH_EXPIRED_ERROR,
@@ -15,9 +16,10 @@ import {
  * Used after Phantom `signTransaction` UL return (signAndSendTransaction deeplink
  * is deprecated — see https://docs.phantom.com/phantom-deeplinks/provider-methods/signandsendtransaction).
  *
- * On failure returns `{ error, code }` where `code` is BLOCKHASH_EXPIRED | INSUFFICIENT_FUNDS | BROADCAST_FAILED
- * for client toast mapping (buyer never sees jargon).
+ * On failure returns `{ error, code, detail? }` where `code` is BLOCKHASH_EXPIRED | INSUFFICIENT_FUNDS | BROADCAST_FAILED
+ * for client toast mapping. `detail` is a short truncated RPC message (safe for logs / optional secondary toast).
  */
+
 export const Route = createFileRoute("/api/sol/send-raw")({
   server: {
     handlers: {
@@ -56,25 +58,30 @@ export const Route = createFileRoute("/api/sol/send-raw")({
           );
         } catch (err) {
           const message = err instanceof Error ? err.message : SOL_BROADCAST_ERROR;
-          const detail =
+          const rawDetail =
             err instanceof Error
               ? String((err as Error & { cause?: unknown }).cause ?? err.message)
               : "unknown";
-          console.warn("[sol/send-raw]", detail);
+          const detail = safeRpcDetail(rawDetail);
+          console.warn("[sol/send-raw]", detail || rawDetail);
           const code = solBroadcastErrorCode(message);
+          const payload = detail ? { detail } : {};
           if (message === SOL_INSUFFICIENT_FUNDS_ERROR) {
             return Response.json(
-              { error: SOL_INSUFFICIENT_FUNDS_ERROR, code },
+              { error: SOL_INSUFFICIENT_FUNDS_ERROR, code, ...payload },
               { status: 400 },
             );
           }
           if (message === SOL_BLOCKHASH_EXPIRED_ERROR) {
             return Response.json(
-              { error: SOL_BLOCKHASH_EXPIRED_ERROR, code },
+              { error: SOL_BLOCKHASH_EXPIRED_ERROR, code, ...payload },
               { status: 409 },
             );
           }
-          return Response.json({ error: SOL_BROADCAST_ERROR, code }, { status: 502 });
+          return Response.json(
+            { error: SOL_BROADCAST_ERROR, code, ...payload },
+            { status: 502 },
+          );
         }
       },
     },

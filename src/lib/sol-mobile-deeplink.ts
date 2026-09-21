@@ -731,6 +731,69 @@ async function buildSignHrefForPending(stored: StoredSession, currentUrl: string
   return buildSolSignAndSendHref(common);
 }
 
+function tryDecodeBase64Tx(trimmed: string): Uint8Array | null {
+  try {
+    let bytes: Uint8Array;
+    if (typeof Buffer !== "undefined") {
+      bytes = new Uint8Array(Buffer.from(trimmed, "base64"));
+    } else {
+      const bin = atob(trimmed);
+      bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    }
+    return bytes.length ? bytes : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Decode Phantom signed tx candidates (base58 preferred; base64 accepted).
+ * Returns one or more byte arrays to try with Transaction.from.
+ */
+export function decodeSignedTxCandidates(signedTx: string): Uint8Array[] {
+  const trimmed = signedTx.trim();
+  if (!trimmed) throw new Error("empty signed transaction");
+  const out: Uint8Array[] = [];
+  try {
+    const b58 = bs58.decode(trimmed);
+    if (b58.length) out.push(b58);
+  } catch {
+    /* not base58 */
+  }
+  const b64 = tryDecodeBase64Tx(trimmed);
+  if (b64) {
+    // Avoid duplicate when encodings coincide.
+    if (!out.some((b) => b.length === b64.length && b.every((v, i) => v === b64[i]))) {
+      out.push(b64);
+    }
+  }
+  if (!out.length) throw new Error("invalid signed transaction encoding");
+  return out;
+}
+
+/** @deprecated use decodeSignedTxCandidates — kept for tests / call sites wanting first decode. */
+export function decodeSignedTxBytes(signedTx: string): Uint8Array {
+  return decodeSignedTxCandidates(signedTx)[0]!;
+}
+
+/** Phantom finish: Transaction.from + serialize, then base58 for POST /api/sol/send-raw. */
+export async function normalizePhantomSignedTxForBroadcast(signedTx: string): Promise<string> {
+  const candidates = decodeSignedTxCandidates(signedTx);
+  const { Transaction } = await import("@solana/web3.js");
+  for (const raw of candidates) {
+    try {
+      const tx = Transaction.from(raw);
+      const wire = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
+      return bs58.encode(wire);
+    } catch {
+      /* try next encoding */
+    }
+  }
+  // Not parseable as legacy Transaction — still attempt broadcast with first candidate bytes.
+  return bs58.encode(candidates[0]!);
+}
+
 /**
  * After sign redirect:
  * - Solflare signAndSendTransaction → decrypt `signature`
@@ -739,7 +802,7 @@ async function buildSignHrefForPending(stored: StoredSession, currentUrl: string
  */
 export async function finishSolMobileAfterSign(returnUrl: string): Promise<
   | { ok: true; signature: string; from: string; wallet: SolWalletId }
-  | { ok: false; error: string }
+  | { ok: false; error: string; detail?: string }
 > {
   const parsed = parseSolUlReturn(returnUrl);
   if (!parsed.active || parsed.step !== "sign" || !parsed.wallet) {
@@ -788,14 +851,31 @@ export async function finishSolMobileAfterSign(returnUrl: string): Promise<
           // Missing/untrusted height — still attempt broadcast; sendRaw maps real BlockhashNotFound.
         }
       }
-      const signature = await sendRawTransactionViaApi(signedTx, fetch, "/api/sol/send-raw", {
+      // Phantom demo: Transaction.from(bs58.decode(tx)).serialize() before sendRaw.
+      const txForBroadcast = await normalizePhantomSignedTxForBroadcast(signedTx);
+      const signature = await sendRawTransactionViaApi(txForBroadcast, fetch, "/api/sol/send-raw", {
         lastValidBlockHeight: typeof lastValid === "number" ? lastValid : undefined,
       });
       clearSolMobileSession();
       return { ok: true, signature, from, wallet: parsed.wallet };
     } catch (err) {
       clearSolMobileSession();
-      return { ok: false, error: friendlySolPrepareError(err) };
+      const detail =
+        err instanceof Error
+          ? String((err as Error & { detail?: string; cause?: unknown }).detail ??
+              (err as Error & { cause?: unknown }).cause ??
+              "")
+          : "";
+      const safe =
+        typeof detail === "string" && detail && detail !== friendlySolPrepareError(err)
+          ? detail.slice(0, 160)
+          : undefined;
+      if (safe) console.warn("[sol/phantom-broadcast]", safe);
+      return {
+        ok: false,
+        error: friendlySolPrepareError(err),
+        ...(safe ? { detail: safe } : {}),
+      };
     }
   }
 

@@ -108,6 +108,30 @@ export function solBroadcastErrorCode(message: string): SolBroadcastErrorCode {
   return "BROADCAST_FAILED";
 }
 
+/** Truncate RPC / cause text for JSON `detail` (buyer toast stays friendly). */
+export function safeRpcDetail(raw: unknown, max = 160): string {
+  const s = String(raw ?? "")
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!s) return "";
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+}
+
+/**
+ * Prefer SOLANA_RPC_URL / mainnet-beta for sendRaw; keep publicnode last.
+ * (resolveSolanaRpcUrls already orders this way — helper documents intent for callers.)
+ */
+export function rpcUrlsForSend(rpcUrls: string[]): string[] {
+  const preferred: string[] = [];
+  const publicnode: string[] = [];
+  for (const u of rpcUrls) {
+    if (isPublicnodeRpcUrl(u)) publicnode.push(u);
+    else preferred.push(u);
+  }
+  return [...preferred, ...publicnode];
+}
+
 type RpcJson = {
   result?: {
     value?: {
@@ -386,10 +410,19 @@ type SendRpcJson = {
 };
 
 export type SendRawTransactionOptions = {
-  /** When set, blockhash-expiry errors map to re-sign toast; skipPreflight retry only if still valid. */
+  /** When set, blockhash-expiry errors map to re-sign toast. */
   lastValidBlockHeight?: number;
-  /** Prefer confirm via getSignatureStatuses after a successful send (best-effort). */
+  /**
+   * After a successful sendRaw, optionally poll getSignatureStatuses (best-effort).
+   * A returned signature is ALWAYS success — confirm timeout / pending must NOT become BROADCAST_FAILED.
+   * Default true (poll for observability only).
+   */
   confirm?: boolean;
+  /**
+   * Phantom mobile send-raw: prefer skipPreflight true first (default).
+   * Set false to try preflight first (legacy).
+   */
+  preferSkipPreflight?: boolean;
 };
 
 async function rpcSendRawOnce(
@@ -485,20 +518,11 @@ export async function confirmSignatureViaRpc(
   return { confirmed: false };
 }
 
-function throwMappedBroadcastError(msg: string, cause: string): never {
-  if (isInsufficientFundsMessage(msg)) {
-    throw Object.assign(new Error(SOL_INSUFFICIENT_FUNDS_ERROR), { cause });
-  }
-  if (isBlockhashExpiredMessage(msg)) {
-    throw Object.assign(new Error(SOL_BLOCKHASH_EXPIRED_ERROR), { cause });
-  }
-  throw Object.assign(new Error(SOL_BROADCAST_ERROR), { cause });
-}
-
 /**
  * sendRawTransaction — returns base58 signature.
- * Tries skipPreflight:false first; on blockhash/preflight expiry, retries once with
- * skipPreflight:true + maxRetries only if still within lastValidBlockHeight.
+ * Default: skipPreflight:true + maxRetries first (Phantom mobile resilience), then
+ * optional preflight attempt. Tries every RPC URL (SOLANA_RPC_URL / mainnet before publicnode).
+ * If any send returns a signature, that is success — confirm poll never converts to BROADCAST_FAILED.
  */
 export async function sendRawTransactionViaRpc(
   rpcUrls: string[],
@@ -506,87 +530,66 @@ export async function sendRawTransactionViaRpc(
   fetchImpl: typeof fetch = fetch,
   options: SendRawTransactionOptions = {},
 ): Promise<string> {
-  if (!rpcUrls.length) {
+  const urls = rpcUrlsForSend(rpcUrls);
+  if (!urls.length) {
     throw Object.assign(new Error(SOL_BROADCAST_ERROR), { cause: "no rpc urls" });
   }
   const encoded = bytesToBase64(signedTxBytes);
   const errors: string[] = [];
   let sawBlockhashExpiry = false;
+  const preferSkip = options.preferSkipPreflight !== false;
 
-  for (const url of rpcUrls) {
-    try {
-      const first = await rpcSendRawOnce(
-        url,
-        encoded,
+  const attemptOrders: Array<{ skipPreflight: boolean; maxRetries?: number }> = preferSkip
+    ? [
+        { skipPreflight: true, maxRetries: 3 },
         { skipPreflight: false },
-        fetchImpl,
-      );
-      if (first.ok) {
-        if (options.confirm !== false) {
-          const conf = await confirmSignatureViaRpc([url, ...rpcUrls.filter((u) => u !== url)], first.signature, fetchImpl);
-          if (conf.err) {
-            throwMappedBroadcastError(conf.err, conf.err);
-          }
-        }
-        return first.signature;
-      }
+      ]
+    : [
+        { skipPreflight: false },
+        { skipPreflight: true, maxRetries: 3 },
+      ];
 
-      const msg = first.message;
-      if (isInsufficientFundsMessage(msg)) {
-        throw Object.assign(new Error(SOL_INSUFFICIENT_FUNDS_ERROR), { cause: msg });
-      }
-
-      if (isBlockhashExpiredMessage(msg)) {
-        sawBlockhashExpiry = true;
-        // Only skip-preflight retry if we know lastValidBlockHeight and still have runway.
-        let stillValid = false;
-        if (typeof options.lastValidBlockHeight === "number") {
-          try {
-            const height = await fetchBlockHeightFromRpc(
-              [url, ...rpcUrls.filter((u) => u !== url)],
-              fetchImpl,
-            );
-            const trusted = sanitizePairedBlockHeight(height, options.lastValidBlockHeight);
-            // Missing/untrusted height → do not skip-preflight; real BlockhashNotFound maps below.
-            stillValid =
-              typeof trusted === "number" &&
-              !isBlockHeightExpired(trusted, options.lastValidBlockHeight);
-          } catch {
-            stillValid = false;
-          }
-        }
-        if (!stillValid) {
-          throw Object.assign(new Error(SOL_BLOCKHASH_EXPIRED_ERROR), { cause: msg });
-        }
-        const retry = await rpcSendRawOnce(
-          url,
-          encoded,
-          { skipPreflight: true, maxRetries: 3 },
-          fetchImpl,
-        );
-        if (retry.ok) {
+  for (const url of urls) {
+    for (const attempt of attemptOrders) {
+      try {
+        const sent = await rpcSendRawOnce(url, encoded, attempt, fetchImpl);
+        if (sent.ok) {
+          // Best-effort confirm only — never fail a successful send on slow/pending status.
           if (options.confirm !== false) {
-            await confirmSignatureViaRpc([url], retry.signature, fetchImpl);
+            try {
+              await confirmSignatureViaRpc(
+                [url, ...urls.filter((u) => u !== url)],
+                sent.signature,
+                fetchImpl,
+              );
+            } catch {
+              /* ignore */
+            }
           }
-          return retry.signature;
+          return sent.signature;
         }
-        if (isBlockhashExpiredMessage(retry.message) || isInsufficientFundsMessage(retry.message)) {
-          throwMappedBroadcastError(retry.message, retry.message);
-        }
-        errors.push(`${url}: ${msg} | retry: ${retry.message}`);
-        continue;
-      }
 
-      errors.push(`${url}: ${msg}`);
-    } catch (err) {
-      if (
-        err instanceof Error &&
-        (err.message === SOL_INSUFFICIENT_FUNDS_ERROR ||
-          err.message === SOL_BLOCKHASH_EXPIRED_ERROR)
-      ) {
-        throw err;
+        const msg = sent.message;
+        if (isInsufficientFundsMessage(msg)) {
+          throw Object.assign(new Error(SOL_INSUFFICIENT_FUNDS_ERROR), { cause: msg });
+        }
+        if (isBlockhashExpiredMessage(msg)) {
+          sawBlockhashExpiry = true;
+          // Do not burn remaining attempts on this URL once hash is dead.
+          errors.push(`${url}: ${msg}`);
+          break;
+        }
+        errors.push(`${url} skipPreflight=${attempt.skipPreflight}: ${msg}`);
+      } catch (err) {
+        if (
+          err instanceof Error &&
+          (err.message === SOL_INSUFFICIENT_FUNDS_ERROR ||
+            err.message === SOL_BLOCKHASH_EXPIRED_ERROR)
+        ) {
+          throw err;
+        }
+        errors.push(`${url}: ${err instanceof Error ? err.message : "fetch failed"}`);
       }
-      errors.push(`${url}: ${err instanceof Error ? err.message : "fetch failed"}`);
     }
   }
 
@@ -666,16 +669,26 @@ export async function sendRawTransactionViaApi(
       signature?: string;
       error?: string;
       code?: SolBroadcastErrorCode;
+      detail?: string;
     };
+    const detail = safeRpcDetail(json.detail);
     if (!res.ok) {
+      if (detail) console.warn("[sol/send-raw]", detail);
       if (json.error === SOL_INSUFFICIENT_FUNDS_ERROR || json.code === "INSUFFICIENT_FUNDS") {
-        throw new Error(SOL_INSUFFICIENT_FUNDS_ERROR);
+        throw Object.assign(new Error(SOL_INSUFFICIENT_FUNDS_ERROR), {
+          cause: detail || "insufficient funds",
+          detail: detail || undefined,
+        });
       }
       if (json.error === SOL_BLOCKHASH_EXPIRED_ERROR || json.code === "BLOCKHASH_EXPIRED") {
-        throw new Error(SOL_BLOCKHASH_EXPIRED_ERROR);
+        throw Object.assign(new Error(SOL_BLOCKHASH_EXPIRED_ERROR), {
+          cause: detail || "blockhash expired",
+          detail: detail || undefined,
+        });
       }
       throw Object.assign(new Error(json.error || SOL_BROADCAST_ERROR), {
-        cause: `api HTTP ${res.status}`,
+        cause: detail || `api HTTP ${res.status}`,
+        detail: detail || undefined,
       });
     }
     if (typeof json.signature !== "string" || !json.signature) {
