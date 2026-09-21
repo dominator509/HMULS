@@ -4,9 +4,15 @@ import {
   androidSolanaPayIntent,
   formatSolAmount,
   launchSolWallet,
+  launchWalletDeepLink,
+  metamaskUsdtErc20SendHref,
   paymentUri,
   PHANTOM_ANDROID_PACKAGE,
   SOLFLARE_ANDROID_PACKAGE,
+  trustUsdtErc20SendHref,
+  USDT_ERC20_CONTRACT,
+  usdtErc20PaymentUri,
+  usdtToBaseUnits,
   walletDeepLink,
 } from "./wallet.ts";
 import {
@@ -699,5 +705,82 @@ describe("normalizePhantomSignedTxForBroadcast", () => {
     const junk = bs58.encode(Buffer.from("not-a-real-tx"));
     const out = await normalizePhantomSignedTxForBroadcast(junk);
     assert.equal(out, junk);
+  });
+});
+
+
+describe("USDT ERC-20 paymentUri + deeplinks", () => {
+  const pay = "0xEaf6123456789012345678901234567890abcdEF";
+  const amount = "12.34"; // → 12340000 base units (6 decimals)
+
+  it("usdtToBaseUnits floors to 6 decimals", () => {
+    assert.equal(usdtToBaseUnits("12.34").toString(), "12340000");
+    assert.equal(usdtToBaseUnits("1").toString(), "1000000");
+    assert.equal(usdtToBaseUnits("0.000001").toString(), "1");
+    assert.equal(usdtToBaseUnits("0.0000009").toString(), "0");
+  });
+
+  it("paymentUri USDT is EIP-681 ERC-20 transfer (not bare address)", () => {
+    const uri = paymentUri("USDT", pay, amount);
+    assert.equal(
+      uri,
+      `ethereum:${USDT_ERC20_CONTRACT}@1/transfer?address=${pay}&uint256=12340000`,
+    );
+    assert.doesNotMatch(uri, /^0x/);
+  });
+
+  it("usdtErc20PaymentUri rejects empty/invalid address or zero amount", () => {
+    assert.equal(usdtErc20PaymentUri("", amount), "");
+    assert.equal(usdtErc20PaymentUri("not-an-address", amount), "");
+    assert.equal(usdtErc20PaymentUri(pay, "0"), "");
+  });
+
+  it("MetaMask USDT uses /send/…/transfer (not /dapp/)", () => {
+    const href = walletDeepLink("metamask", "USDT", pay, amount, {
+      payCurrency: "usdterc20",
+    });
+    assert.equal(href.startsWith("https://metamask.app.link/send/"), true);
+    assert.match(href, new RegExp(`${USDT_ERC20_CONTRACT}@1/transfer`));
+    assert.match(href, new RegExp(`address=${pay}`));
+    assert.match(href, /uint256=12340000/);
+    assert.doesNotMatch(href, /\/dapp\//);
+    assert.equal(href, metamaskUsdtErc20SendHref(pay, amount));
+  });
+
+  it("Trust USDT opens send with Ethereum coin + USDT token", () => {
+    const href = walletDeepLink("trust", "USDT", pay, amount, {
+      payCurrency: "usdterc20",
+    });
+    assert.equal(href.startsWith("https://link.trustwallet.com/send?"), true);
+    assert.match(href, /coin=60/);
+    assert.match(href, new RegExp(`token=${USDT_ERC20_CONTRACT}`));
+    assert.match(href, new RegExp(`asset=c60_t${USDT_ERC20_CONTRACT}`));
+    assert.match(href, new RegExp(`address=${encodeURIComponent(pay)}|address=${pay}`));
+    assert.match(href, /amount=12\.34/);
+    assert.equal(href, trustUsdtErc20SendHref(pay, amount));
+  });
+
+  it("Coinbase USDT never uses dapp?cb_url= bare address (Invalid URL)", () => {
+    const href = walletDeepLink("coinbase", "USDT", pay, amount, {
+      payCurrency: "usdterc20",
+    });
+    assert.doesNotMatch(href, /dapp\?cb_url=/);
+    assert.doesNotMatch(href, new RegExp(encodeURIComponent(pay)));
+    const launch = launchWalletDeepLink("coinbase", "USDT", pay, amount, {
+      payCurrency: "usdterc20",
+    });
+    assert.equal(launch.kind, "copy");
+    if (launch.kind !== "copy") return;
+    assert.match(launch.text, new RegExp(pay));
+    assert.match(launch.text, /12\.34 USDT/);
+    assert.equal(launch.href?.startsWith("https://go.cb-w.com/"), true);
+    assert.match(launch.message, /ERC-20|Ethereum/i);
+  });
+
+  it("defaults USDT to ERC-20 when payCurrency omitted", () => {
+    const uri = paymentUri("USDT", pay, "1");
+    assert.match(uri, new RegExp(USDT_ERC20_CONTRACT));
+    const mm = walletDeepLink("metamask", "USDT", pay, "1");
+    assert.match(mm, /metamask\.app\.link\/send/);
   });
 });

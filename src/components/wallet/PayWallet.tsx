@@ -15,7 +15,7 @@ import {
   sendInjectedEth,
   sendSolWithWallet,
   shortAddr,
-  walletDeepLink,
+  launchWalletDeepLink,
   type SolWalletId,
 } from "@/lib/wallet";
 import {
@@ -53,7 +53,9 @@ export function PayWallet({
   const [phase, setPhase] = useState<Phase>("idle");
   const ulHandled = useRef(false);
 
-  const uri = paymentUri(inv.asset, inv.payAddress, inv.cryptoAmount);
+  const uri = paymentUri(inv.asset, inv.payAddress, inv.cryptoAmount, "SHE UNDRESSES", {
+    payCurrency: inv.payCurrency,
+  });
   const solAmount = inv.asset === "SOL" ? formatSolAmount(inv.cryptoAmount) : inv.cryptoAmount;
   const busy = phase === "signing" || phase === "broadcast";
 
@@ -193,10 +195,25 @@ export function PayWallet({
         await payWithSol(id);
         return;
       }
-      const link = walletDeepLink(id, inv.asset, inv.payAddress, inv.cryptoAmount);
-      window.open(link, "_blank", "noopener,noreferrer");
+      const launch = launchWalletDeepLink(id, inv.asset, inv.payAddress, inv.cryptoAmount, {
+        payCurrency: inv.payCurrency,
+      });
+      if (launch.kind === "copy") {
+        try {
+          await navigator.clipboard.writeText(launch.text);
+        } catch {
+          /* ignore clipboard failures — toast still guides the buyer */
+        }
+        if (launch.href) {
+          window.open(launch.href, "_blank", "noopener,noreferrer");
+        }
+        setOpen(false);
+        toast.message(launch.message);
+        return;
+      }
+      window.open(launch.href, "_blank", "noopener,noreferrer");
       setOpen(false);
-      toast.message(`Opened ${opt.name}. Send to the invoice address, then mark sent.`);
+      toast.message(launch.message);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not connect.");
     }
@@ -240,7 +257,9 @@ export function PayWallet({
             <p className="text-sm text-muted">
               {inv.asset === "SOL"
                 ? "Pay the exact amount. Unlock continues after the network confirms."
-                : "Send this exact amount to the invoice address. Access unlocks after payment confirms."}
+                : inv.asset === "USDT"
+                  ? "Send exact USDT on Ethereum (ERC-20). Wrong network risks lost funds."
+                  : "Send this exact amount to the invoice address. Access unlocks after payment confirms."}
             </p>
           </div>
           <Wallet className="size-5 text-gold" />
@@ -391,8 +410,9 @@ export function PayWallet({
               Open a wallet with this invoice
             </h3>
             <p className="mt-2 text-sm text-muted">
-              Prefer a native send when offered. Wallet buttons never reopen this site inside
-              Phantom/Solflare (that would ask you to sign in again).
+              {inv.asset === "USDT"
+                ? "USDT is ERC-20 on Ethereum. Prefer a native send when offered — wrong network risks lost funds."
+                : "Prefer a native send when offered. Wallet buttons never reopen this site inside Phantom/Solflare (that would ask you to sign in again)."}
             </p>
             <ul className="mt-5 space-y-2">
               {options.map((w) => (
