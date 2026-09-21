@@ -778,13 +778,14 @@ export async function finishSolMobileAfterSign(returnUrl: string): Promise<
       const lastValid = stored.lastValidBlockHeight;
       if (typeof lastValid === "number") {
         try {
+          // Only when API returns a trusted blockHeight (< lastValid). Bogus/missing → skip.
           const height = await fetchBlockHeightFromApi();
           if (isBlockHeightExpired(height, lastValid)) {
             clearSolMobileSession();
             return { ok: false, error: SOL_BLOCKHASH_EXPIRED_ERROR };
           }
         } catch {
-          // If height probe fails, still attempt broadcast — RPC will map expiry.
+          // Missing/untrusted height — still attempt broadcast; sendRaw maps real BlockhashNotFound.
         }
       }
       const signature = await sendRawTransactionViaApi(signedTx, fetch, "/api/sol/send-raw", {

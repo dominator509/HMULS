@@ -9,7 +9,11 @@ import {
   isBlockhashExpiredMessage,
   isBlockHeightExpired,
   isInsufficientFundsMessage,
+  isPublicnodeRpcUrl,
+  PUBLICNODE_RPC_URL,
   resolveSolanaRpcUrls,
+  rpcUrlsForBlockHeight,
+  sanitizePairedBlockHeight,
   sendRawTransactionViaApi,
   sendRawTransactionViaRpc,
   simulateTransactionViaApi,
@@ -36,14 +40,41 @@ describe("resolveSolanaRpcUrls", () => {
   });
 });
 
+describe("sanitizePairedBlockHeight / publicnode height", () => {
+  it("omits slot-scale height >= lastValidBlockHeight", () => {
+    // Production bug: publicnode getBlockHeight ~448M, lastValid ~426M.
+    assert.equal(sanitizePairedBlockHeight(448920860, 426961656), undefined);
+    assert.equal(sanitizePairedBlockHeight(426961500, 426961656), 426961500);
+    assert.equal(sanitizePairedBlockHeight(undefined, 426961656), undefined);
+    assert.equal(isBlockHeightExpired(448920860, 426961656), true); // raw junk would false-expire
+    const trusted = sanitizePairedBlockHeight(448920860, 426961656);
+    assert.equal(trusted, undefined); // callers must not feed junk into isBlockHeightExpired
+  });
+
+  it("filters publicnode from height RPC list", () => {
+    assert.equal(isPublicnodeRpcUrl(PUBLICNODE_RPC_URL), true);
+    assert.deepEqual(
+      rpcUrlsForBlockHeight([
+        "https://api.mainnet-beta.solana.com",
+        PUBLICNODE_RPC_URL,
+      ]),
+      ["https://api.mainnet-beta.solana.com"],
+    );
+  });
+});
+
 describe("fetchRecentBlockhashFromRpc", () => {
   it("returns blockhash from first successful RPC", async () => {
     const calls: string[] = [];
-    const fetchImpl = async (input: RequestInfo | URL) => {
+    const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       calls.push(url);
+      const body = JSON.parse(String(init?.body ?? "{}")) as { method?: string };
       if (url.includes("fail")) {
         return new Response("nope", { status: 403 });
+      }
+      if (body.method === "getBlockHeight") {
+        return Response.json({ jsonrpc: "2.0", id: 2, result: 40 });
       }
       return Response.json({
         jsonrpc: "2.0",
@@ -59,8 +90,68 @@ describe("fetchRecentBlockhashFromRpc", () => {
     );
     assert.equal(out.blockhash, "HashABC");
     assert.equal(out.lastValidBlockHeight, 42);
-    // Success URL is hit twice: getLatestBlockhash + optional getBlockHeight.
-    assert.deepEqual(calls, ["https://fail.example", "https://ok.example", "https://ok.example"]);
+    assert.equal(out.blockHeight, 40);
+    // fail blockhash, ok blockhash, then height walk: fail (403), ok height.
+    assert.deepEqual(calls, [
+      "https://fail.example",
+      "https://ok.example",
+      "https://fail.example",
+      "https://ok.example",
+    ]);
+  });
+
+  it("omits blockHeight when RPC returns slot-like height > lastValid", async () => {
+    const fetchImpl = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { method?: string };
+      if (body.method === "getBlockHeight") {
+        // publicnode-style slot number paired with real lastValid
+        return Response.json({ jsonrpc: "2.0", id: 2, result: 448920860 });
+      }
+      return Response.json({
+        jsonrpc: "2.0",
+        id: 1,
+        result: {
+          value: { blockhash: "HashSlot", lastValidBlockHeight: 426961656 },
+        },
+      });
+    };
+    const out = await fetchRecentBlockhashFromRpc(
+      ["https://api.mainnet-beta.solana.com"],
+      fetchImpl as typeof fetch,
+    );
+    assert.equal(out.blockhash, "HashSlot");
+    assert.equal(out.lastValidBlockHeight, 426961656);
+    assert.equal(out.blockHeight, undefined);
+  });
+
+  it("skips publicnode for getBlockHeight even when it supplied the blockhash", async () => {
+    const heightHosts: string[] = [];
+    const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const body = JSON.parse(String(init?.body ?? "{}")) as { method?: string };
+      if (body.method === "getBlockHeight") {
+        heightHosts.push(url);
+        return Response.json({ jsonrpc: "2.0", id: 2, result: 426961500 });
+      }
+      if (url.includes("publicnode")) {
+        return Response.json({
+          jsonrpc: "2.0",
+          id: 1,
+          result: {
+            value: { blockhash: "FromPublicnode", lastValidBlockHeight: 426961656 },
+          },
+        });
+      }
+      return new Response("nope", { status: 403 });
+    };
+    const out = await fetchRecentBlockhashFromRpc(
+      ["https://api.mainnet-beta.solana.com", PUBLICNODE_RPC_URL],
+      fetchImpl as typeof fetch,
+    );
+    assert.equal(out.blockhash, "FromPublicnode");
+    // Height only probed on mainnet (publicnode filtered out of height list).
+    assert.deepEqual(heightHosts, ["https://api.mainnet-beta.solana.com"]);
+    assert.equal(out.blockHeight, 426961500);
   });
 
   it("throws friendly error with cause when all RPCs fail", async () => {
@@ -102,6 +193,18 @@ describe("fetchRecentBlockhashFromApi", () => {
     };
     const out = await fetchRecentBlockhashFromApi(fetchImpl as typeof fetch);
     assert.deepEqual(out, { blockhash: "B1", lastValidBlockHeight: 9 });
+  });
+
+  it("drops bogus API blockHeight >= lastValid so pre-broadcast expiry is not false-triggered", async () => {
+    const fetchImpl = async () =>
+      Response.json({
+        blockhash: "B2",
+        lastValidBlockHeight: 426961656,
+        blockHeight: 448920860,
+      });
+    const out = await fetchRecentBlockhashFromApi(fetchImpl as typeof fetch);
+    assert.deepEqual(out, { blockhash: "B2", lastValidBlockHeight: 426961656 });
+    assert.equal("blockHeight" in out, false);
   });
 
   it("maps non-OK API to friendly error", async () => {
@@ -309,6 +412,19 @@ describe("fetchBlockHeightFromRpc", () => {
   it("returns numeric height", async () => {
     const fetchImpl = async () => Response.json({ jsonrpc: "2.0", id: 1, result: 99 });
     assert.equal(await fetchBlockHeightFromRpc(["https://ok.example"], fetchImpl as typeof fetch), 99);
+  });
+
+  it("refuses publicnode-only URL lists", async () => {
+    await assert.rejects(
+      () => fetchBlockHeightFromRpc([PUBLICNODE_RPC_URL], (async () => {
+        throw new Error("should not call fetch");
+      }) as typeof fetch),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.match(String((err as Error & { cause?: unknown }).cause), /no trusted rpc/);
+        return true;
+      },
+    );
   });
 });
 

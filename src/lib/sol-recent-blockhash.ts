@@ -39,6 +39,9 @@ export const DEFAULT_SOLANA_RPC_URLS = [
   "https://solana-rpc.publicnode.com",
 ] as const;
 
+/** publicnode is fine for getLatestBlockhash / sendRaw; do NOT use for getBlockHeight. */
+export const PUBLICNODE_RPC_URL = "https://solana-rpc.publicnode.com";
+
 export function resolveSolanaRpcUrls(envUrl?: string | null): string[] {
   const urls: string[] = [];
   const trimmed = envUrl?.trim();
@@ -47,6 +50,34 @@ export function resolveSolanaRpcUrls(envUrl?: string | null): string[] {
     if (!urls.includes(u)) urls.push(u);
   }
   return urls;
+}
+
+/** True when URL is publicnode (misimplements getBlockHeight as slot-scale). */
+export function isPublicnodeRpcUrl(url: string): boolean {
+  return /solana-rpc\.publicnode\.com/i.test(url);
+}
+
+/**
+ * RPCs safe for getBlockHeight: SOLANA_RPC_URL / mainnet-beta only.
+ * publicnode getBlockHeight returns slot numbers (~448M) while lastValidBlockHeight
+ * stays real (~426M) — pairing them always looks "expired".
+ */
+export function rpcUrlsForBlockHeight(rpcUrls: string[]): string[] {
+  return rpcUrls.filter((u) => !isPublicnodeRpcUrl(u));
+}
+
+/**
+ * Pair blockHeight with lastValidBlockHeight only when sane.
+ * Fresh pairs must have blockHeight < lastValidBlockHeight (typically lastValid ≈ height + ~150).
+ * Slot-scale junk (>= lastValid) is discarded — treat as missing.
+ */
+export function sanitizePairedBlockHeight(
+  blockHeight: number | undefined,
+  lastValidBlockHeight: number,
+): number | undefined {
+  if (typeof blockHeight !== "number" || !Number.isFinite(blockHeight)) return undefined;
+  if (blockHeight >= lastValidBlockHeight) return undefined;
+  return blockHeight;
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -131,27 +162,16 @@ export async function fetchRecentBlockhashFromRpc(
         errors.push(`${url}: missing blockhash`);
         continue;
       }
+      // Prefer SOLANA_RPC_URL / mainnet for height — never trust publicnode getBlockHeight.
       let blockHeight: number | undefined;
-      try {
-        const hRes = await fetchImpl(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: 2,
-            method: "getBlockHeight",
-            params: [{ commitment: "confirmed" }],
-          }),
-        });
-        if (hRes.ok) {
-          const hJson = (await hRes.json()) as { result?: number; error?: unknown };
-          if (typeof hJson.result === "number") blockHeight = hJson.result;
+      const heightUrls = rpcUrlsForBlockHeight(rpcUrls);
+      if (heightUrls.length) {
+        try {
+          const rawHeight = await fetchBlockHeightFromRpc(heightUrls, fetchImpl);
+          blockHeight = sanitizePairedBlockHeight(rawHeight, value.lastValidBlockHeight);
+        } catch {
+          /* optional — omit rather than return junk */
         }
-      } catch {
-        /* optional */
       }
       return {
         blockhash: value.blockhash,
@@ -174,11 +194,15 @@ export async function fetchBlockHeightFromRpc(
   rpcUrls: string[],
   fetchImpl: typeof fetch = fetch,
 ): Promise<number> {
-  if (!rpcUrls.length) {
-    throw Object.assign(new Error(SOL_PREPARE_TRANSFER_ERROR), { cause: "no rpc urls" });
+  // Skip publicnode — its getBlockHeight is slot-scale and unusable for expiry.
+  const urls = rpcUrlsForBlockHeight(rpcUrls);
+  if (!urls.length) {
+    throw Object.assign(new Error(SOL_PREPARE_TRANSFER_ERROR), {
+      cause: "no trusted rpc urls for getBlockHeight",
+    });
   }
   const errors: string[] = [];
-  for (const url of rpcUrls) {
+  for (const url of urls) {
     try {
       const res = await fetchImpl(url, {
         method: "POST",
@@ -253,10 +277,11 @@ export async function fetchRecentBlockhashFromApi(
         cause: "api missing blockhash",
       });
     }
+    const blockHeight = sanitizePairedBlockHeight(json.blockHeight, json.lastValidBlockHeight);
     return {
       blockhash: json.blockhash,
       lastValidBlockHeight: json.lastValidBlockHeight,
-      ...(typeof json.blockHeight === "number" ? { blockHeight: json.blockHeight } : {}),
+      ...(typeof blockHeight === "number" ? { blockHeight } : {}),
     };
   } catch (err) {
     if (err instanceof Error && err.message === SOL_PREPARE_TRANSFER_ERROR) throw err;
@@ -517,8 +542,15 @@ export async function sendRawTransactionViaRpc(
         let stillValid = false;
         if (typeof options.lastValidBlockHeight === "number") {
           try {
-            const height = await fetchBlockHeightFromRpc([url, ...rpcUrls.filter((u) => u !== url)], fetchImpl);
-            stillValid = !isBlockHeightExpired(height, options.lastValidBlockHeight);
+            const height = await fetchBlockHeightFromRpc(
+              [url, ...rpcUrls.filter((u) => u !== url)],
+              fetchImpl,
+            );
+            const trusted = sanitizePairedBlockHeight(height, options.lastValidBlockHeight);
+            // Missing/untrusted height → do not skip-preflight; real BlockhashNotFound maps below.
+            stillValid =
+              typeof trusted === "number" &&
+              !isBlockHeightExpired(trusted, options.lastValidBlockHeight);
           } catch {
             stillValid = false;
           }
