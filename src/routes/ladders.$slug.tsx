@@ -336,7 +336,7 @@ function LadderPage() {
           ? (progress?.bundleCents ?? 0)
           : upsellPrice;
     const btcMin = payStatus.btcMinUsdCents;
-    let payAsset = asset;
+    const payAsset = asset;
     if (payAsset === "BTC" && btcMin != null && isBtcBelowMin(amountForGate, btcMin)) {
       toast.error(btcMinBuyerTip(btcMin) + " — pick another asset or a larger unlock.");
       return;
