@@ -1,7 +1,7 @@
 /**
- * iOS Safari → Phantom / Solflare branded universal links (encrypted connect +
- * signAndSendTransaction). Never use bare `solana:` on iOS — Base (or whatever
- * registered first) hijacks the shared scheme with no app chooser.
+ * iOS Safari → Phantom / Solflare branded universal links (encrypted connect + sign).
+ * Never use bare `solana:` on iOS — Base (or whatever registered first) hijacks the
+ * shared scheme with no app chooser.
  *
  * Official constraints (do not regress):
  * - Phantom redirect_link HTTPS “Opens in the mobile browser” (often a **new tab**),
@@ -9,15 +9,19 @@
  *   https://docs.phantom.com/phantom-deeplinks/specifying-redirects
  * - App MUST store the wallet session and pass it on every later method:
  *   https://docs.phantom.com/phantom-deeplinks/handling-sessions
- * - Dynamic’s Phantom redirect extension notes mobile web return opens a new tab
- *   and original page context/promises are lost — restore app state on return.
- * - Solflare: same https://solflare.com/ul/v1/connect + signAndSendTransaction.
+ * - Phantom `signAndSendTransaction` deeplink is **DEPRECATED** — use
+ *   `signTransaction`, then broadcast with sendRawTransaction (server
+ *   `POST /api/sol/send-raw`):
+ *   https://docs.phantom.com/phantom-deeplinks/provider-methods/signandsendtransaction
+ * - Solflare still documents `signAndSendTransaction` — keep that path.
+ * - Connect always passes `cluster=mainnet-beta`. Refresh blockhash immediately
+ *   before opening sign UL; optionally simulate via `POST /api/sol/simulate`.
  *
  * Persistence: localStorage (same-origin, cross-tab) + short TTL, with
  * `hmuls_blob` base64url resume payload on redirect_link as defense-in-depth.
  *
  * Docs:
- * - https://phantom.app/ul/v1/connect | …/signAndSendTransaction
+ * - https://phantom.app/ul/v1/connect | …/signTransaction
  * - https://solflare.com/ul/v1/connect | …/signAndSendTransaction
  */
 import bs58 from "bs58";
@@ -26,6 +30,10 @@ import { formatSolAmount, isSolanaAddress, solToLamports } from "./sol-amount.ts
 import {
   fetchRecentBlockhashFromApi,
   friendlySolPrepareError,
+  sendRawTransactionViaApi,
+  simulateTransactionViaApi,
+  SOL_INSUFFICIENT_FUNDS_ERROR,
+  SOL_PREPARE_TRANSFER_ERROR,
 } from "./sol-recent-blockhash.ts";
 
 export type SolWalletId = "phantom" | "solflare";
@@ -456,6 +464,7 @@ export function buildSolConnectHref(opts: {
   return `${UL_BASE[opts.wallet]}/connect?${params.toString()}`;
 }
 
+/** Solflare (and any wallet that still supports it): sign + submit in-wallet. */
 export function buildSolSignAndSendHref(opts: {
   wallet: SolWalletId;
   dappEncryptionPublicKey: string;
@@ -470,6 +479,26 @@ export function buildSolSignAndSendHref(opts: {
     payload: opts.encryptedPayload,
   });
   return `${UL_BASE[opts.wallet]}/signAndSendTransaction?${params.toString()}`;
+}
+
+/**
+ * Phantom iOS UL: sign only (returns signed tx). App broadcasts via
+ * POST /api/sol/send-raw. Do not use deprecated signAndSendTransaction on Phantom.
+ */
+export function buildSolSignTransactionHref(opts: {
+  wallet: SolWalletId;
+  dappEncryptionPublicKey: string;
+  nonce: string;
+  redirectLink: string;
+  encryptedPayload: string;
+}): string {
+  const params = new URLSearchParams({
+    dapp_encryption_public_key: opts.dappEncryptionPublicKey,
+    nonce: opts.nonce,
+    redirect_link: opts.redirectLink,
+    payload: opts.encryptedPayload,
+  });
+  return `${UL_BASE[opts.wallet]}/signTransaction?${params.toString()}`;
 }
 
 const MISSING_SESSION_ERROR =
@@ -544,7 +573,7 @@ function sharedSecretFromConnect(
 
 /**
  * After connect redirect: decrypt session, build SystemProgram.transfer, return
- * branded signAndSendTransaction UL (or error).
+ * branded sign UL (Phantom: signTransaction; Solflare: signAndSendTransaction).
  */
 export async function continueSolMobileAfterConnect(returnUrl: string): Promise<
   | { ok: true; href: string; message: string; wallet: SolWalletId }
@@ -606,7 +635,7 @@ export async function continueSolMobileAfterConnect(returnUrl: string): Promise<
       ok: true,
       href,
       wallet: parsed.wallet,
-      message: `Confirm ${stored.amountSol} SOL in ${name}.`,
+      message: `Confirm in ${name}…`,
     };
   } catch (err) {
     clearSolMobileSession();
@@ -637,14 +666,27 @@ async function buildSignHrefForPending(stored: StoredSession, currentUrl: string
     }),
   );
   tx.feePayer = from;
-  // Same-origin Worker API — never browser→public Solana RPC (403 from many origins).
+  // Fresh blockhash immediately before opening sign UL (stale hash → wallet sim fail).
   const latest = await fetchRecentBlockhashFromApi();
   tx.recentBlockhash = latest.blockhash;
 
   const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
+  const txB58 = bytesToB58(serialized);
+
+  // Optional server simulate so we toast clearly instead of wallet "Simulation failed".
+  const sim = await simulateTransactionViaApi(txB58);
+  if (!sim.ok && !sim.infraFailure) {
+    if (sim.insufficientFunds) {
+      throw new Error(SOL_INSUFFICIENT_FUNDS_ERROR);
+    }
+    throw Object.assign(new Error(SOL_PREPARE_TRANSFER_ERROR), {
+      cause: sim.detail || "simulate failed",
+    });
+  }
+
   const payload = {
     session: stored.session,
-    transaction: bytesToB58(serialized),
+    transaction: txB58,
   };
   const shared = b58ToBytes(stored.sharedSecret);
   const { nonce, payload: encryptedPayload } = encryptPayload(payload, shared);
@@ -654,21 +696,30 @@ async function buildSignHrefForPending(stored: StoredSession, currentUrl: string
     "sign",
     blobFromSession(stored),
   );
-  return buildSolSignAndSendHref({
+  const common = {
     wallet: stored.wallet,
     dappEncryptionPublicKey: stored.dappPublicKey,
     nonce,
     redirectLink,
     encryptedPayload,
-  });
+  };
+  // Phantom: signTransaction (deprecated signAndSend). Solflare: keep signAndSend.
+  if (stored.wallet === "phantom") {
+    return buildSolSignTransactionHref(common);
+  }
+  return buildSolSignAndSendHref(common);
 }
 
 /**
- * After signAndSendTransaction redirect: decrypt signature.
+ * After sign redirect:
+ * - Solflare signAndSendTransaction → decrypt `signature`
+ * - Phantom signTransaction → decrypt signed `transaction`, broadcast via
+ *   POST /api/sol/send-raw, return signature
  */
-export function finishSolMobileAfterSign(returnUrl: string):
+export async function finishSolMobileAfterSign(returnUrl: string): Promise<
   | { ok: true; signature: string; from: string; wallet: SolWalletId }
-  | { ok: false; error: string } {
+  | { ok: false; error: string }
+> {
   const parsed = parseSolUlReturn(returnUrl);
   if (!parsed.active || parsed.step !== "sign" || !parsed.wallet) {
     return { ok: false, error: "Unexpected wallet return." };
@@ -694,14 +745,31 @@ export function finishSolMobileAfterSign(returnUrl: string):
     clearSolMobileSession();
     return { ok: false, error: "Could not read wallet sign response." };
   }
-  const signature = typeof signData.signature === "string" ? signData.signature : "";
-  if (!signature) {
-    clearSolMobileSession();
-    return { ok: false, error: "Wallet did not return a signature." };
-  }
+
   const from = stored.walletPublicKey || "";
+  const signedTx =
+    typeof signData.transaction === "string" ? signData.transaction : "";
+  const directSig = typeof signData.signature === "string" ? signData.signature : "";
+
+  // Phantom (signTransaction) returns signed tx bytes; Solflare (signAndSend) returns signature.
+  if (signedTx) {
+    try {
+      const signature = await sendRawTransactionViaApi(signedTx);
+      clearSolMobileSession();
+      return { ok: true, signature, from, wallet: parsed.wallet };
+    } catch (err) {
+      clearSolMobileSession();
+      return { ok: false, error: friendlySolPrepareError(err) };
+    }
+  }
+
+  if (directSig) {
+    clearSolMobileSession();
+    return { ok: true, signature: directSig, from, wallet: parsed.wallet };
+  }
+
   clearSolMobileSession();
-  return { ok: true, signature, from, wallet: parsed.wallet };
+  return { ok: false, error: "Wallet did not return a signature or signed transaction." };
 }
 
 /** True when href is a wallet-owned HTTPS UL (or custom scheme), never bare solana:. */
