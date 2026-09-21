@@ -31,6 +31,7 @@ import { Route as ModelsSlugRouteImport } from './routes/models.$slug'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiMediaShotIdRouteImport } from './routes/api/media.$shotId'
 import { Route as ApiPaymentsIpnRouteImport } from './routes/api/payments.ipn'
+import { Route as ApiSolRecentBlockhashRouteImport } from './routes/api/sol.recent-blockhash'
 import { Route as ApiV1SplatRouteImport } from './routes/api/v1.$'
 import { Route as LegalModelsSlugRouteImport } from './routes/legal.models.$slug'
 
@@ -144,6 +145,11 @@ const ApiPaymentsIpnRoute = ApiPaymentsIpnRouteImport.update({
   path: '/api/payments/ipn',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiSolRecentBlockhashRoute = ApiSolRecentBlockhashRouteImport.update({
+  id: '/api/sol/recent-blockhash',
+  path: '/api/sol/recent-blockhash',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1SplatRoute = ApiV1SplatRouteImport.update({
   id: '/$',
   path: '/$',
@@ -178,6 +184,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/media/$shotId': typeof ApiMediaShotIdRoute
   '/api/payments/ipn': typeof ApiPaymentsIpnRoute
+  '/api/sol/recent-blockhash': typeof ApiSolRecentBlockhashRoute
   '/api/v1/$': typeof ApiV1SplatRoute
   '/legal/models/$slug': typeof LegalModelsSlugRoute
 }
@@ -204,6 +211,7 @@ export interface FileRoutesByTo {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/media/$shotId': typeof ApiMediaShotIdRoute
   '/api/payments/ipn': typeof ApiPaymentsIpnRoute
+  '/api/sol/recent-blockhash': typeof ApiSolRecentBlockhashRoute
   '/api/v1/$': typeof ApiV1SplatRoute
   '/legal/models/$slug': typeof LegalModelsSlugRoute
 }
@@ -231,6 +239,7 @@ export interface FileRoutesById {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/media/$shotId': typeof ApiMediaShotIdRoute
   '/api/payments/ipn': typeof ApiPaymentsIpnRoute
+  '/api/sol/recent-blockhash': typeof ApiSolRecentBlockhashRoute
   '/api/v1/$': typeof ApiV1SplatRoute
   '/legal/models/$slug': typeof LegalModelsSlugRoute
 }
@@ -259,6 +268,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/media/$shotId'
     | '/api/payments/ipn'
+    | '/api/sol/recent-blockhash'
     | '/api/v1/$'
     | '/legal/models/$slug'
   fileRoutesByTo: FileRoutesByTo
@@ -285,6 +295,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/media/$shotId'
     | '/api/payments/ipn'
+    | '/api/sol/recent-blockhash'
     | '/api/v1/$'
     | '/legal/models/$slug'
   id:
@@ -311,6 +322,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/media/$shotId'
     | '/api/payments/ipn'
+    | '/api/sol/recent-blockhash'
     | '/api/v1/$'
     | '/legal/models/$slug'
   fileRoutesById: FileRoutesById
@@ -338,6 +350,7 @@ export interface RootRouteChildren {
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiMediaShotIdRoute: typeof ApiMediaShotIdRoute
   ApiPaymentsIpnRoute: typeof ApiPaymentsIpnRoute
+  ApiSolRecentBlockhashRoute: typeof ApiSolRecentBlockhashRoute
   LegalModelsSlugRoute: typeof LegalModelsSlugRoute
 }
 
@@ -497,6 +510,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPaymentsIpnRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/sol/recent-blockhash': {
+      id: '/api/sol/recent-blockhash'
+      path: '/api/sol/recent-blockhash'
+      fullPath: '/api/sol/recent-blockhash'
+      preLoaderRoute: typeof ApiSolRecentBlockhashRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/$': {
       id: '/api/v1/$'
       path: '/$'
@@ -547,6 +567,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiMediaShotIdRoute: ApiMediaShotIdRoute,
   ApiPaymentsIpnRoute: ApiPaymentsIpnRoute,
+  ApiSolRecentBlockhashRoute: ApiSolRecentBlockhashRoute,
   LegalModelsSlugRoute: LegalModelsSlugRoute,
 }
 export const routeTree = rootRouteImport

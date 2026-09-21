@@ -1,6 +1,10 @@
 import type { CryptoAsset } from "./types";
 import { formatSolAmount, isSolanaAddress, solToLamports } from "./sol-amount.ts";
 import { startSolMobileConnect } from "./sol-mobile-deeplink.ts";
+import {
+  fetchRecentBlockhashFromApi,
+  friendlySolPrepareError,
+} from "./sol-recent-blockhash.ts";
 
 export { formatSolAmount, isSolanaAddress, solToLamports } from "./sol-amount.ts";
 
@@ -337,16 +341,6 @@ export async function connectSolWallet(id: SolWalletId): Promise<string> {
   return pk;
 }
 
-function solRpcUrl() {
-  try {
-    const env = (import.meta as unknown as { env?: Record<string, string> }).env;
-    const fromEnv = env?.VITE_SOLANA_RPC_URL?.trim();
-    if (fromEnv) return fromEnv;
-  } catch {
-    /* non-vite */
-  }
-  return "https://api.mainnet-beta.solana.com";
-}
 
 /**
  * Desktop / in-wallet WebView: connect (if needed) and signAndSend a native SOL
@@ -377,8 +371,7 @@ export async function sendSolWithWallet(opts: {
     throw new Error("Amount too large to send from this browser.");
   }
 
-  const { Connection, PublicKey, SystemProgram, Transaction } = await import("@solana/web3.js");
-  const connection = new Connection(solRpcUrl(), "confirmed");
+  const { PublicKey, SystemProgram, Transaction } = await import("@solana/web3.js");
   const tx = new Transaction().add(
     SystemProgram.transfer({
       fromPubkey: new PublicKey(from),
@@ -387,7 +380,13 @@ export async function sendSolWithWallet(opts: {
     }),
   );
   tx.feePayer = new PublicKey(from);
-  const latest = await connection.getLatestBlockhash("confirmed");
+  // Same-origin Worker API — never browser→public Solana RPC (403 from many origins).
+  let latest;
+  try {
+    latest = await fetchRecentBlockhashFromApi();
+  } catch (err) {
+    throw new Error(friendlySolPrepareError(err));
+  }
   tx.recentBlockhash = latest.blockhash;
 
   const result = await provider.signAndSendTransaction(tx);

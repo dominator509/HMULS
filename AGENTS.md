@@ -106,6 +106,7 @@ Put values that must reach **Nitro `process.env`** as **encrypted Worker secrets
 | `STAMP_SECRET` | Bearer auth to stamp sidecar |
 | `XAI_API_KEY` | Grok / Imagine (Studio) |
 | `AGENTMAIL_API_KEY` | Outbound mail (password reset, recovery replies) |
+| `SOLANA_RPC_URL` | Optional Solana JSON-RPC for `/api/sol/recent-blockhash` (Helius/QuickNode recommended). Treat as **secret** when the URL embeds an API key. |
 
 **Plain vars (text OK):**
 
@@ -200,7 +201,8 @@ Put values that must reach **Nitro `process.env`** as **encrypted Worker secrets
      - **Resume after connect:** on checkout load, detect `hmuls_sol` / wallet return params, restore session from localStorage or `hmuls_blob`, decrypt connect, immediately open branded `signAndSendTransaction` for exact invoice SOL. Persist terms/ack in **`localStorage`** (`sheundresses.sol.checkout.ack.v1`, same TTL). Do not gate UL resume on the ack `disabled` prop. On sign return: success toast, strip query params (including `hmuls_blob`), keep waiting/IPN UX. Clear error toasts if decrypt/session fails (no silent stall). Same path for Solflare.
   4. **Copy address / copy pay link** are **backup only** (collapsed under “Backup”).
 - **Pay URI validity:** Solana Pay rejects amounts with **>9 decimals** or scientific notation. Normalize with `formatSolAmount` (also when storing NOWPayments `pay_amount`) so links and transfers are not “invalid.” Empty address → do not emit a URI.
-- Optional RPC: `VITE_SOLANA_RPC_URL` (defaults to public mainnet) for blockhash when signing in-browser or building the iOS UL transfer.
+- **Blockhash:** browser never calls public Solana RPC (often **403** to browser origins). iOS UL sign builder and desktop `sendSolWithWallet` fetch `{ blockhash, lastValidBlockHeight }` from same-origin **`GET /api/sol/recent-blockhash`**. Worker uses optional `SOLANA_RPC_URL` (Helius/QuickNode recommended; treat as secret when keyed), then `https://api.mainnet-beta.solana.com`, then `https://solana-rpc.publicnode.com`. Buyer toast on failure: “Couldn't prepare the transfer. Try again in a moment.” (tech detail in Worker logs only).
+- Do **not** put RPC API keys in `VITE_*` client env.
 - Never put backend/unlock jargon (HMAC, Worker, underpay math) on the buyer paywall — plain exact amount + confirmation only.
 - Honest Phantom / Solflare labels. Never brand bare `solana:` as those apps (Base hijacks the shared scheme on Android **and** iOS).
 

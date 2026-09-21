@@ -26,6 +26,7 @@ import {
   parseSolUlReturn,
   persistSolCheckoutAck,
 } from "@/lib/sol-mobile-deeplink";
+import { friendlySolPrepareError } from "@/lib/sol-recent-blockhash";
 import { Copy, ExternalLink, Loader2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 
@@ -77,7 +78,7 @@ export function PayWallet({
           const next = await continueSolMobileAfterConnect(window.location.href);
           if (!next.ok) {
             setPhase("idle");
-            toast.error(next.error);
+            toast.error(friendlySolPrepareError(new Error(next.error)));
             window.history.replaceState({}, "", cleanSolUlUrl(window.location.href));
             return;
           }
@@ -104,7 +105,7 @@ export function PayWallet({
       } catch (err) {
         setPhase("idle");
         window.history.replaceState({}, "", cleanSolUlUrl(window.location.href));
-        toast.error(err instanceof Error ? err.message : `Could not finish ${name} payment.`);
+        toast.error(friendlySolPrepareError(err) || `Could not finish ${name} payment.`);
       }
     })();
   }, [inv.asset, onSubmitted]);
@@ -166,7 +167,7 @@ export function PayWallet({
       setOpen(false);
     } catch (err) {
       setPhase("idle");
-      toast.error(err instanceof Error ? err.message : `Could not pay with ${name}.`);
+      toast.error(friendlySolPrepareError(err) || `Could not pay with ${name}.`);
     }
   }
 
