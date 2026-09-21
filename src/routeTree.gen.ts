@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
+import { Route as FailedTransactionRouteImport } from './routes/failed-transaction'
 import { Route as HowToGetCryptoRouteImport } from './routes/how-to-get-crypto'
 import { Route as LlmsDottxtRouteImport } from './routes/llms[.]txt'
 import { Route as LoginRouteImport } from './routes/login'
@@ -51,6 +52,11 @@ const AdminRoute = AdminRouteImport.update({
 const ConnectorsRoute = ConnectorsRouteImport.update({
   id: '/connectors',
   path: '/connectors',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FailedTransactionRoute = FailedTransactionRouteImport.update({
+  id: '/failed-transaction',
+  path: '/failed-transaction',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HowToGetCryptoRoute = HowToGetCryptoRouteImport.update({
@@ -183,6 +189,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/connectors': typeof ConnectorsRoute
+  '/failed-transaction': typeof FailedTransactionRoute
   '/how-to-get-crypto': typeof HowToGetCryptoRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
@@ -213,6 +220,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/connectors': typeof ConnectorsRoute
+  '/failed-transaction': typeof FailedTransactionRoute
   '/how-to-get-crypto': typeof HowToGetCryptoRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
@@ -244,6 +252,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/connectors': typeof ConnectorsRoute
+  '/failed-transaction': typeof FailedTransactionRoute
   '/how-to-get-crypto': typeof HowToGetCryptoRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
@@ -276,6 +285,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/connectors'
+    | '/failed-transaction'
     | '/how-to-get-crypto'
     | '/llms.txt'
     | '/login'
@@ -306,6 +316,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/connectors'
+    | '/failed-transaction'
     | '/how-to-get-crypto'
     | '/llms.txt'
     | '/login'
@@ -336,6 +347,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/connectors'
+    | '/failed-transaction'
     | '/how-to-get-crypto'
     | '/llms.txt'
     | '/login'
@@ -367,6 +379,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
   ConnectorsRoute: typeof ConnectorsRoute
+  FailedTransactionRoute: typeof FailedTransactionRoute
   HowToGetCryptoRoute: typeof HowToGetCryptoRoute
   LlmsDottxtRoute: typeof LlmsDottxtRoute
   LoginRoute: typeof LoginRoute
@@ -414,6 +427,13 @@ declare module '@tanstack/react-router' {
       path: '/connectors'
       fullPath: '/connectors'
       preLoaderRoute: typeof ConnectorsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/failed-transaction': {
+      id: '/failed-transaction'
+      path: '/failed-transaction'
+      fullPath: '/failed-transaction'
+      preLoaderRoute: typeof FailedTransactionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/how-to-get-crypto': {
@@ -608,6 +628,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
   ConnectorsRoute: ConnectorsRoute,
+  FailedTransactionRoute: FailedTransactionRoute,
   HowToGetCryptoRoute: HowToGetCryptoRoute,
   LlmsDottxtRoute: LlmsDottxtRoute,
   LoginRoute: LoginRoute,

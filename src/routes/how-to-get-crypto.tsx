@@ -170,11 +170,15 @@ function HowToGetCryptoPage() {
       </div>
 
       <p className="mt-8 text-xs leading-relaxed text-subtle">
-        Questions about an unlock you already paid for? Email{" "}
+        Paid on-chain but the unlock stayed locked? Use the{" "}
+        <Link to="/failed-transaction" className="text-gold">
+          Failed transaction?
+        </Link>{" "}
+        form (or email{" "}
         <a href="mailto:contact@sheundresses.com" className="text-gold">
           contact@sheundresses.com
-        </a>{" "}
-        with your invoice or transaction id. We never ask for your wallet seed phrase.
+        </a>
+        ). Do not send another payment until we reply. We never ask for your wallet seed phrase.
       </p>
     </div>
   );

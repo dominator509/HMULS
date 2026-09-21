@@ -236,3 +236,24 @@ export const HOW_TO_CRYPTO = {
   title: "How to get crypto",
   body: "You pay with a wallet app — not a card statement with her name on it. If you have never bought crypto before, this page walks you through it in plain English.",
 };
+
+/** Buyer-facing failed-tx / payment recovery form. */
+export const FAILED_TX = {
+  checkoutLink: "Failed transaction?",
+  paywallLink: "Failed transaction?",
+  kicker: "Payment help",
+  title: "Failed transaction?",
+  body: "Paid on-chain but the unlock stayed locked? Tell us once — we match the payment to your invoice. Do not send another payment until we reply.",
+  intro:
+    "Exchange withdrawals sometimes land a little under the exact checkout amount, so the unlock can stall even when the blockchain transfer succeeded. Fill this in and we will look at that payment only.",
+  bullets: [
+    "If the chain payment matches one invoice (amount within our small underpay tolerance), we can unlock that invoice.",
+    "Refunds are never automatic — those need operator review.",
+    "Never send a second payment for the same unlock while we investigate.",
+  ],
+  submit: "Send report",
+  confirmTitle: "We got it — don't send another payment until we reply.",
+  confirmBody:
+    "Our team will match your on-chain payment to one invoice when the proof is clear. If a refund is appropriate, an operator reviews it — agents never auto-refund. Hard-refresh the vault after we confirm an unlock.",
+};
+

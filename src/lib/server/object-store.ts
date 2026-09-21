@@ -723,6 +723,25 @@ export async function putPrivateOriginal(name: string, bytes: Buffer) {
   return `grant:${key}`;
 }
 
+/** Ops-only evidence for failed-tx tickets (not public, not vault grants). */
+export function failedTxObjectKey(name: string) {
+  return `failed-tx/${safeObjectKey(name)}`;
+}
+
+/** Store a screenshot for payment recovery. Returns R2/runtime key or null if storage unavailable. */
+export async function putFailedTxEvidence(name: string, bytes: Buffer): Promise<string | null> {
+  const key = failedTxObjectKey(name);
+  if (await r2Ready()) {
+    await r2Put(key, bytes);
+    return key;
+  }
+  if (!isProductionRuntime()) {
+    await writeRuntimeFile(key, bytes);
+    return key;
+  }
+  return null;
+}
+
 export async function putPublicTeaser(relUrl: string, bytes: Buffer) {
   const url = relUrl.startsWith("/") ? relUrl : `/${relUrl}`;
   if (!url.startsWith("/media/")) throw new Error("Public teasers must live under /media.");
