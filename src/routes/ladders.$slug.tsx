@@ -538,19 +538,23 @@ function LadderPage() {
             return (
               <li key={shot.id}>
                 <div
-                  className={`group relative w-full overflow-hidden rounded-lg border bg-raised text-left transition-[border-color,box-shadow] duration-150 ${
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open shot ${shot.title}`}
+                  className={`group relative w-full cursor-pointer overflow-hidden rounded-lg border bg-raised text-left transition-[border-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 ${
                     isNext
                       ? "border-gold/50 shadow-[var(--shadow-border-hover)]"
                       : "border-border hover:border-gold/30"
                   }`}
+                  onClick={() => setActive(shot)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setActive(shot);
+                    }
+                  }}
                 >
-                  <button
-                    type="button"
-                    className="absolute inset-0 z-0"
-                    aria-label={`Open shot ${shot.title}`}
-                    onClick={() => setActive(shot)}
-                  />
-                  <div className="relative z-[1] aspect-[2/3] overflow-hidden pointer-events-none">
+                  <div className="relative aspect-[2/3] overflow-hidden">
                     {shot.mediaType === "video" && shot.unlocked ? (
                       <video
                         key={`grant-vid-${shot.id}-${mediaEpoch}`}
@@ -584,18 +588,22 @@ function LadderPage() {
                       />
                     )}
                     {locked ? (
-                      <div className="absolute inset-0 grid place-items-center bg-bg/20">
+                      <div className="pointer-events-none absolute inset-0 grid place-items-center bg-bg/20">
                         <Lock className="size-5 text-gold" />
                       </div>
                     ) : (
                       <>
                         {shot.mediaType === "video" ? (
-                          <div className="absolute right-2 top-2 rounded-full bg-bg/70 p-1">
+                          <div className="pointer-events-none absolute right-2 top-2 rounded-full bg-bg/70 p-1">
                             <Play className="size-3 text-gold" />
                           </div>
                         ) : null}
                         {shot.mediaUrl ? (
-                          <div className="pointer-events-auto absolute bottom-2 left-2 z-[2]">
+                          <div
+                            className="absolute bottom-2 left-2 z-[2]"
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => e.stopPropagation()}
+                          >
                             <DownloadMediaButtons
                               compact
                               mediaUrl={shot.mediaUrl}
@@ -608,7 +616,7 @@ function LadderPage() {
                       </>
                     )}
                     {isNext ? (
-                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-bg to-transparent p-2">
+                      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-bg to-transparent p-2">
                         <p className="text-xs tracking-[0.16em] text-gold uppercase">
                           Next
                         </p>
@@ -708,9 +716,9 @@ function LadderPage() {
             <p className="mx-auto mt-3 max-w-md text-sm text-muted">
               {frame.body}
             </p>
-            <Link to="/" className="mt-6 inline-block">
-              <Button variant="gold">Open another set</Button>
-            </Link>
+            <Button asChild variant="gold" className="mt-6">
+              <Link to="/">Open another set</Link>
+            </Button>
           </div>
         )}
       </div>
@@ -821,12 +829,29 @@ function LadderPage() {
                     Request access · <Money cents={nextPrice} was={bump > 0 ? active.priceCents : undefined} />
                   </Button>
                 ) : (
-                  <p className="mt-5 text-sm text-gold">
-                    She opens in order. Unlock Shot {next?.stepIndex ?? "—"} first.
-                    {dials.sunkCost >= 6
-                      ? " Skipping is how men never see the last frame."
-                      : ""}
-                  </p>
+                  <div className="mt-5 space-y-3">
+                    <p className="text-sm text-gold">
+                      She opens in order. Unlock Shot {next?.stepIndex ?? "—"} first.
+                      {dials.sunkCost >= 6
+                        ? " Skipping is how men never see the last frame."
+                        : ""}
+                    </p>
+                    {next ? (
+                      <Button
+                        size="xl"
+                        onClick={() => {
+                          setActive(null);
+                          startPay("shot");
+                        }}
+                      >
+                        Unlock Shot {next.stepIndex} first ·{" "}
+                        <Money
+                          cents={nextPrice}
+                          was={bump > 0 ? next.priceCents : undefined}
+                        />
+                      </Button>
+                    ) : null}
+                  </div>
                 )
               ) : next && active.id !== next.id ? (
                 <Button

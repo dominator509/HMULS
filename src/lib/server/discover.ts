@@ -12,13 +12,28 @@ import {
   originOf,
 } from "@/lib/seo";
 
-export const getDiscover = createServerFn({ method: "GET" }).handler(async () => {
+type DiscoverPayload = {
+  entity: Awaited<ReturnType<typeof loadEntity>>;
+  models: Awaited<ReturnType<typeof loadModels>>;
+  ladders: Awaited<ReturnType<typeof loadPublishedCatalog>>;
+  origin: string;
+};
+
+/** Isolate memo for homepage / SEO hot path (warm TTFB). */
+const DISCOVER_TTL_MS = 30_000;
+let discoverCache: { at: number; value: DiscoverPayload } | null = null;
+let discoverInflight: Promise<DiscoverPayload> | null = null;
+
+async function buildDiscover(): Promise<DiscoverPayload> {
   const sql = await getSql();
-  await ensureCatalog(sql);
-  await ensureLegal(sql);
-  const entity = await loadEntity(sql);
-  const models = await loadModels(sql);
-  const ladders = await loadPublishedCatalog(sql);
+  // Parallel soft ensures — each skips heavy seed/ALTER when already published.
+  await Promise.all([ensureCatalog(sql), ensureLegal(sql)]);
+  // loadPublishedCatalog also calls ensureCatalog; that is a no-op once ready.
+  const [entity, models, ladders] = await Promise.all([
+    loadEntity(sql),
+    loadModels(sql),
+    loadPublishedCatalog(sql),
+  ]);
   let origin = originOf(entity.websiteUrl);
   if (!origin) {
     try {
@@ -29,6 +44,24 @@ export const getDiscover = createServerFn({ method: "GET" }).handler(async () =>
     }
   }
   return { entity, models, ladders, origin };
+}
+
+export const getDiscover = createServerFn({ method: "GET" }).handler(async () => {
+  const now = Date.now();
+  if (discoverCache && now - discoverCache.at < DISCOVER_TTL_MS) {
+    return discoverCache.value;
+  }
+  if (!discoverInflight) {
+    discoverInflight = buildDiscover()
+      .then((value) => {
+        discoverCache = { at: Date.now(), value };
+        return value;
+      })
+      .finally(() => {
+        discoverInflight = null;
+      });
+  }
+  return discoverInflight;
 });
 
 export function sitemapXml(input: {
