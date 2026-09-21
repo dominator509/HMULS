@@ -186,6 +186,12 @@ Put values that must reach **Nitro `process.env`** as **encrypted Worker secrets
 
 ---
 
+## Buyer help — How to get crypto
+
+- Public guide: **`/how-to-get-crypto`** (plain English: buy + send SOL / USDT ERC-20 / ETH / BTC).
+- Linked from primary nav (**Crypto**), homepage hero CTA, footer, and a small “New to crypto?” link on checkout + pay sheet.
+- Do **not** change SOL Phantom/Solflare deeplink pay paths when editing this page.
+
 ## Bitcoin (NOWPayments min gate)
 
 - Offer **BTC** only when the USD invoice (`amount_cents`) is ≥ the live NOWPayments BTC→BTC minimum fiat (`GET /v1/min-amount?currency_from=btc&currency_to=btc&fiat_equivalent=usd`), plus a **5% buffer** (`BTC_MIN_BUFFER` in `src/lib/btc-min.ts`). Do not hardcode the USD floor — mins move (~$21 recently).

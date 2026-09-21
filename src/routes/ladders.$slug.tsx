@@ -37,7 +37,7 @@ import {
 } from "@/lib/psychology";
 import { CRYPTO_ASSETS } from "@/lib/crypto";
 import { btcMinBuyerTip, isBtcBelowMin } from "@/lib/btc-min";
-import { alsoUnlocked, offerFrame, PAY_SHEET, stackNote } from "@/lib/copy";
+import { alsoUnlocked, offerFrame, PAY_SHEET, stackNote, HOW_TO_CRYPTO } from "@/lib/copy";
 import { toast } from "sonner";
 import { Lock, Play } from "lucide-react";
 import { getDiscover } from "@/lib/server/discover";
@@ -924,7 +924,10 @@ function LadderPage() {
                   : PAY_SHEET.pay(asset === "BTC" && btcHiddenForAmount ? "ETH" : asset)}
             </Button>
             <p className="mt-3 text-center text-xs text-subtle">
-              Wallet checkout next — send from MetaMask, Rainbow, Trust, or Phantom.
+              Wallet checkout next — send from MetaMask, Rainbow, Trust, or Phantom.{" "}
+              <Link to="/how-to-get-crypto" className="text-gold underline-offset-2 hover:underline">
+                {HOW_TO_CRYPTO.paywallLink}
+              </Link>
             </p>
           </div>
         </Overlay>

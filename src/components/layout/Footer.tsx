@@ -64,6 +64,9 @@ export function Footer() {
             <Link to="/models" className="inline-flex min-h-11 items-center text-muted hover:text-fg">
               Muses
             </Link>
+            <Link to="/how-to-get-crypto" className="inline-flex min-h-11 items-center text-muted hover:text-fg">
+              How to get crypto
+            </Link>
             <Link to="/connectors" className="inline-flex min-h-11 items-center text-muted hover:text-fg">
               Agent connectors
             </Link>

@@ -11,7 +11,7 @@ import {
   type Dials,
   type Surfaces,
 } from "@/lib/psychology";
-import { LETTER, statusLine } from "@/lib/copy";
+import { HOW_TO_CRYPTO, LETTER, statusLine } from "@/lib/copy";
 import { Button } from "@/components/ui/button";
 import { Kicker, ProgressBar } from "@/components/ui/chrome";
 import { Lock, Play } from "lucide-react";
@@ -144,6 +144,11 @@ function Home() {
             <Link to="/vault" className="sm:w-auto">
               <Button variant="outline" size="xl" className="sm:w-auto">
                 {LETTER.vaultCta}
+              </Button>
+            </Link>
+            <Link to="/how-to-get-crypto" className="sm:w-auto">
+              <Button variant="outline" size="xl" className="border-gold/50 text-gold sm:w-auto">
+                {HOW_TO_CRYPTO.homeCta}
               </Button>
             </Link>
           </div>

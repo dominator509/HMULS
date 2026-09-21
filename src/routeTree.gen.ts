@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
+import { Route as HowToGetCryptoRouteImport } from './routes/how-to-get-crypto'
 import { Route as LlmsDottxtRouteImport } from './routes/llms[.]txt'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
@@ -50,6 +51,11 @@ const AdminRoute = AdminRouteImport.update({
 const ConnectorsRoute = ConnectorsRouteImport.update({
   id: '/connectors',
   path: '/connectors',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HowToGetCryptoRoute = HowToGetCryptoRouteImport.update({
+  id: '/how-to-get-crypto',
+  path: '/how-to-get-crypto',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LlmsDottxtRoute = LlmsDottxtRouteImport.update({
@@ -177,6 +183,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/connectors': typeof ConnectorsRoute
+  '/how-to-get-crypto': typeof HowToGetCryptoRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -206,6 +213,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/connectors': typeof ConnectorsRoute
+  '/how-to-get-crypto': typeof HowToGetCryptoRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -236,6 +244,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/connectors': typeof ConnectorsRoute
+  '/how-to-get-crypto': typeof HowToGetCryptoRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -267,6 +276,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/connectors'
+    | '/how-to-get-crypto'
     | '/llms.txt'
     | '/login'
     | '/reset-password'
@@ -296,6 +306,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/connectors'
+    | '/how-to-get-crypto'
     | '/llms.txt'
     | '/login'
     | '/reset-password'
@@ -325,6 +336,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/connectors'
+    | '/how-to-get-crypto'
     | '/llms.txt'
     | '/login'
     | '/reset-password'
@@ -355,6 +367,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
   ConnectorsRoute: typeof ConnectorsRoute
+  HowToGetCryptoRoute: typeof HowToGetCryptoRoute
   LlmsDottxtRoute: typeof LlmsDottxtRoute
   LoginRoute: typeof LoginRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
@@ -401,6 +414,13 @@ declare module '@tanstack/react-router' {
       path: '/connectors'
       fullPath: '/connectors'
       preLoaderRoute: typeof ConnectorsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/how-to-get-crypto': {
+      id: '/how-to-get-crypto'
+      path: '/how-to-get-crypto'
+      fullPath: '/how-to-get-crypto'
+      preLoaderRoute: typeof HowToGetCryptoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/llms.txt': {
@@ -588,6 +608,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
   ConnectorsRoute: ConnectorsRoute,
+  HowToGetCryptoRoute: HowToGetCryptoRoute,
   LlmsDottxtRoute: LlmsDottxtRoute,
   LoginRoute: LoginRoute,
   ResetPasswordRoute: ResetPasswordRoute,
