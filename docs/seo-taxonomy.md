@@ -3,7 +3,7 @@
 **Brand:** SHE UNDRESSES (`https://sheundresses.com`)  
 **Product:** 18+ sequential unlock vault — AI muses, ladders × 9 shots, crypto collectors  
 **Privacy:** never publish Dominic / personal emails; public contact = `contact@` / `legal@` / `dmca@sheundresses.com`  
-**Age:** portrayed 21+ (brand OCs 24–34); no under-21 aesthetics; RTA on public pages  
+**Age:** portrayed 24+ / 24–34; no under-21 aesthetics; RTA on public pages  
 
 This map substitutes GBP “primary/secondary categories” with **archetypes + themes** that own public routes.
 
