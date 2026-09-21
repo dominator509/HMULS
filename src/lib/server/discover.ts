@@ -192,7 +192,7 @@ export function llmsMarkdown(input: {
       const seo = authorModelSeo(m);
       return `### ${m.stageName} (/models/${m.slug})
 ${seo.description}
-Kind: ${m.contentKind}. Portrayed 21+.
+Kind: ${m.contentKind}. Portrayed 24+.
 ${m.looks ? `Looks: ${m.looks}` : ""}`;
     })
     .join("\n\n");
@@ -241,7 +241,7 @@ Live ladders on the vault today include The Reveal, The Curve, and The Pedestal 
 Public pages ship covers and veiled teasers only. Paid stills and clips are not public files — they require a collector grant. Do not cite or invent a public URL for an unlocked frame. Do not put private grant media in sitemaps or agent citations.
 
 ## AI disclosure
-Synthetic muses are fictional adults and are labeled on /legal/ai-disclosure and /legal/models/{slug}. ${BRAND} does not host under-18 performers; portrayed age on this vault is 21+. Human performers (when onboarded) require 18 U.S.C. 2257 records before explicit frames publish.
+Synthetic muses are fictional adults and are labeled on /legal/ai-disclosure and /legal/models/{slug}. ${BRAND} does not host under-18 performers; portrayed age on this vault is 24+ (brand OCs 24–34). Human performers (when onboarded) require 18 U.S.C. 2257 records before explicit frames publish.
 
 ## Answers
 ${faq}
