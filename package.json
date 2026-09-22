@@ -16,7 +16,7 @@
     "preview:stop": "node scripts/preview.mjs stop",
     "typecheck": "tsc --noEmit",
     "check:auth": "node scripts/check-auth-invariant.mjs",
-    "test": "node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/auth/gate-identity.test.ts src/lib/download-media.test.ts src/lib/imagine-nudge.test.ts src/lib/narrative-formula.test.ts src/lib/btc-min.test.ts src/lib/ltc-min.test.ts src/lib/failed-transaction.test.ts src/lib/nowpayments.test.ts src/lib/safe-path.test.ts src/lib/owner.test.ts src/lib/wallet.test.ts src/lib/sol-recent-blockhash.test.ts src/lib/server/object-store.test.ts src/lib/server/media-access.test.ts scripts/with-app-env.test.mjs scripts/check-auth-invariant.test.mjs scripts/migration-plan.test.mjs scripts/grok-pwa-plugin.test.mjs scripts/brand-check.test.mjs scripts/browser-smoke-verdict.test.mjs scripts/preview.test.mjs scripts/sign-out-plan.test.mjs scripts/write-atomic.test.mjs",
+    "test": "node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/auth/gate-identity.test.ts src/lib/download-media.test.ts src/lib/imagine-nudge.test.ts src/lib/narrative-formula.test.ts src/lib/btc-min.test.ts src/lib/ltc-min.test.ts src/lib/failed-transaction.test.ts src/lib/nowpayments.test.ts src/lib/safe-path.test.ts src/lib/owner.test.ts src/lib/wallet.test.ts src/lib/sol-recent-blockhash.test.ts src/lib/reprice.test.ts src/lib/server/object-store.test.ts src/lib/server/media-access.test.ts scripts/with-app-env.test.mjs scripts/check-auth-invariant.test.mjs scripts/migration-plan.test.mjs scripts/grok-pwa-plugin.test.mjs scripts/brand-check.test.mjs scripts/browser-smoke-verdict.test.mjs scripts/preview.test.mjs scripts/sign-out-plan.test.mjs scripts/write-atomic.test.mjs",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
@@ -95,7 +95,7 @@
     "nitro": "3.0.260610-beta",
     "playwright": "^1.62.0",
     "prettier": "^3.4.0",
-    "typescript": "^5.7.0",
+    "typescript": "^5.9.3",
     "typescript-eslint": "^8.56.1",
     "vite": "^8.2.0"
   }
