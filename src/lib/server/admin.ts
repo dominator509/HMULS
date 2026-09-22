@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getSql, type Sql } from "@/lib/db";
+import { normalizePriceCents } from "@/lib/pricing";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { ensureCatalog, ensureProfile } from "./catalog";
 import { bibleFor, slugify } from "./muse-lookup";
@@ -171,6 +172,19 @@ export const updateShotPrice = createServerFn({ method: "POST" })
     const cents = Math.max(0, Math.round(data.priceCents));
     await sql`update shots set price_cents = ${cents} where id = ${data.shotId}`;
     return { ok: true };
+  });
+
+export const repriceAllShots = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { priceCents: number }) => d)
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    await requireAdmin(sql, context.userId);
+    const cents = normalizePriceCents(data.priceCents);
+    const rows = await sql<{ count: string }>`
+      update shots set price_cents = ${cents} returning 1
+    `;
+    return { ok: true, cents, updated: rows.length };
   });
 
 export const updateLadderMeta = createServerFn({ method: "POST" })

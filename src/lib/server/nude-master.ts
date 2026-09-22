@@ -209,7 +209,7 @@ export const commitNudeMasterPlan = createServerFn({ method: "POST" })
         const prompt = paidShotPrompt(identityLock, beat);
         const tease = `${beat.title}. The next shot is still hers to give.`;
         const grant = `${beat.title} is unlocked.`;
-        const price = 25; // keep test pricing; restore STUDIO_PRICES when live
+        const price = 50; // keep test pricing; restore STUDIO_PRICES when live
         await sql`
           insert into shots (
             id, ladder_id, step_index, title, tease, grant_copy, media_type,

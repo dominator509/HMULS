@@ -5,6 +5,7 @@ import {
   getAnalytics,
   listAdminLadders,
   replaceShotMedia,
+  repriceAllShots,
   updateLadderMeta,
   updateShotPrice,
 } from "@/lib/server/admin";
@@ -283,8 +284,41 @@ function LaddersEditor({
   ladders: AdminLadder[];
   onChange: (l: AdminLadder[]) => void;
 }) {
+  const [repriceBusy, setRepriceBusy] = useState(false);
+
+  async function repriceAll() {
+    if (
+      !window.confirm(
+        "Set EVERY shot in the catalog to $0.50? This overwrites live pricing on all ladders.",
+      )
+    )
+      return;
+    setRepriceBusy(true);
+    try {
+      const res = await repriceAllShots({ data: { priceCents: 50 } });
+      const fresh = await listAdminLadders();
+      onChange(fresh);
+      toast.success(`Repriced ${res.updated} shots to $0.50.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Reprice failed.");
+    } finally {
+      setRepriceBusy(false);
+    }
+  }
+
   return (
     <div className="mt-8 space-y-8">
+      <div className="panel flex flex-wrap items-center justify-between gap-3 p-4">
+        <div>
+          <p className="text-sm font-medium">Test pricing</p>
+          <p className="text-xs text-muted">
+            One tap sets every shot in the catalog to $0.50 for payment testing.
+          </p>
+        </div>
+        <Button onClick={repriceAll} disabled={repriceBusy}>
+          {repriceBusy ? "Repricing…" : "Set all shots to $0.50"}
+        </Button>
+      </div>
       {ladders.map((lad) => (
         <LadderBlock
           key={lad.id}
@@ -308,7 +342,7 @@ function LadderBlock({
   const [disc, setDisc] = useState(Math.round(ladder.bundleDiscount * 100));
   const [newTitle, setNewTitle] = useState("");
   const [newUrl, setNewUrl] = useState("");
-  const [newPrice, setNewPrice] = useState("0.25");
+  const [newPrice, setNewPrice] = useState("0.50");
   const [newBeat, setNewBeat] = useState("");
   const [autoBusy, setAutoBusy] = useState(false);
   const [replaceUrl, setReplaceUrl] = useState<Record<string, string>>({});
