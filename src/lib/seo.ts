@@ -602,6 +602,8 @@ export function headTags(opts: {
   image?: string;
   keywords?: string;
   noindex?: boolean;
+  /** Absolute or site-root path to preload as LCP image (homepage hero). */
+  preloadImage?: string;
 }) {
   const url = absUrl(opts.origin, opts.path);
   const img = absUrl(opts.origin, opts.image || "/og.jpg");
@@ -629,12 +631,20 @@ export function headTags(opts: {
     { name: "twitter:image", content: img },
   ];
   if (opts.keywords) meta.push({ name: "keywords", content: opts.keywords });
+  const links: Record<string, string>[] = [
+    { rel: "canonical", href: url },
+    { rel: "alternate", type: "text/plain", href: absUrl(opts.origin, "/llms.txt"), title: "llms.txt" },
+  ];
+  if (opts.preloadImage) {
+    links.unshift({
+      rel: "preload",
+      as: "image",
+      href: absUrl(opts.origin, opts.preloadImage),
+    });
+  }
   return {
     meta,
-    links: [
-      { rel: "canonical", href: url },
-      { rel: "alternate", type: "text/plain", href: absUrl(opts.origin, "/llms.txt"), title: "llms.txt" },
-    ],
+    links,
   };
 }
 

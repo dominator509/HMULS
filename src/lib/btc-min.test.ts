@@ -51,7 +51,7 @@ describe("btc min gating", () => {
   it("buyer tip and create error share the about-$XX phrasing", () => {
     assert.equal(btcMinBuyerTip(2205), "Bitcoin available from about $23");
     assert.match(btcBelowMinCreateError(2205), /about \$23/);
-    assert.match(btcBelowMinCreateError(2205), /Solana, USDT, or Ethereum/);
+    assert.match(btcBelowMinCreateError(2205), /Solana, USDT, Ethereum, or Litecoin/);
     assert.ok(BTC_BELOW_MIN_FALLBACK.includes("Bitcoin"));
   });
 
@@ -87,7 +87,7 @@ describe("btc shot-count gating", () => {
       "Bitcoin is available when unlocking 3 or more photos",
     );
     assert.match(btcBelowShotMinCreateError(), /3 or more photos/);
-    assert.match(btcBelowShotMinCreateError(), /Solana, USDT, or Ethereum/);
+    assert.match(btcBelowShotMinCreateError(), /Solana, USDT, Ethereum, or Litecoin/);
     assert.ok(btcBelowShotMinCreateError().startsWith(BTC_SHOT_MIN_BUYER_TIP));
   });
 

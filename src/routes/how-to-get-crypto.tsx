@@ -15,10 +15,10 @@ export const Route = createFileRoute("/how-to-get-crypto")({
     headTags({
       title: "How to get crypto | SHE UNDRESSES",
       description:
-        "Plain-English guide to buy and send SOL, USDT (Ethereum), ETH, or BTC so you can unlock shots on SHE UNDRESSES.",
+        "Plain-English guide to buy and send SOL, USDT (Ethereum), ETH, BTC, or LTC so you can unlock shots on SHE UNDRESSES.",
       path: "/how-to-get-crypto",
       origin: loaderData?.origin || "",
-      keywords: "how to get crypto, Solana, Phantom, USDT, Ethereum, Bitcoin, SHE UNDRESSES",
+      keywords: "how to get crypto, Solana, Phantom, USDT, Ethereum, Bitcoin, Litecoin, SHE UNDRESSES",
     }),
   component: HowToGetCryptoPage,
 });
@@ -77,8 +77,15 @@ const COINS = [
     id: "BTC",
     name: "Bitcoin (BTC)",
     blurb:
-      "Bitcoin is offered on larger multi-photo unlocks (3 or more shots in one payment), and only when the total meets Bitcoin’s minimum. If you do not see BTC in the picker, choose SOL, USDT, or ETH, or unlock a bigger set.",
+      "Bitcoin is offered on larger multi-photo unlocks (3 or more shots in one payment), and only when the total meets Bitcoin’s minimum. If you do not see BTC in the picker, choose SOL, USDT, ETH, or Litecoin, or unlock a bigger set.",
     tip: "Cash App and Coinbase can buy Bitcoin in many regions; then send on-chain to the invoice address.",
+  },
+  {
+    id: "LTC",
+    name: "Litecoin (LTC)",
+    blurb:
+      "Litecoin works like Bitcoin here, but without the 3-photo rule — use it on a single shot or any size unlock when the total meets Litecoin’s minimum. If LTC is missing from the picker, the amount is below that minimum; try another asset or a larger set.",
+    tip: "Many exchanges that sell Bitcoin also sell Litecoin; send on-chain to the invoice address.",
   },
 ] as const;
 
@@ -93,7 +100,7 @@ function HowToGetCryptoPage() {
           path: "/how-to-get-crypto",
           title: "How to get crypto | SHE UNDRESSES",
           description:
-            "Buy and send SOL, USDT on Ethereum, ETH, or BTC to unlock shots — written for first-timers.",
+            "Buy and send SOL, USDT on Ethereum, ETH, BTC, or LTC to unlock shots — written for first-timers.",
           crumbs: [
             { name: "Home", path: "/" },
             { name: "How to get crypto", path: "/how-to-get-crypto" },

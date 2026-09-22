@@ -414,7 +414,9 @@ export function PayWallet({
                 ? "USDT is ERC-20 on Ethereum. MetaMask and Trust Wallet prefill the send. Coinbase / Base Wallet is not offered for USDT."
                 : inv.asset === "BTC"
                   ? "Trust Wallet opens a Bitcoin send with this invoice filled in. Send the exact amount shown above."
-                  : "Prefer a native send when offered. Wallet buttons never reopen this site inside Phantom/Solflare (that would ask you to sign in again)."}
+                  : inv.asset === "LTC"
+                    ? "Trust Wallet opens a Litecoin send with this invoice filled in. Send the exact amount shown above."
+                    : "Prefer a native send when offered. Wallet buttons never reopen this site inside Phantom/Solflare (that would ask you to sign in again)."}
             </p>
             <ul className="mt-5 space-y-2">
               {options.map((w) => (

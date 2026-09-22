@@ -13,8 +13,14 @@ import {
   isBtcBelowShotMin,
 } from "@/lib/btc-min";
 import {
+  gatedLtcMinUsdCents,
+  isLtcBelowMin,
+  ltcBelowMinCreateError,
+} from "@/lib/ltc-min";
+import {
   createNowpaymentsPayment,
   fetchNowpaymentsBtcMinFiatUsd,
+  fetchNowpaymentsLtcMinFiatUsd,
   fetchNowpaymentsPayment,
   paymentsLive,
   paymentsMissing,
@@ -105,15 +111,22 @@ export const getPaymentStatus = createServerFn({ method: "GET" })
   .handler(async () => {
     const missing = paymentsMissing();
     let btcMinUsdCents: number | null = null;
+    let ltcMinUsdCents: number | null = null;
     if (paymentsLive()) {
-      const min = await fetchNowpaymentsBtcMinFiatUsd();
-      if (min) btcMinUsdCents = gatedBtcMinUsdCents(min.fiatUsd);
+      const [btcMin, ltcMin] = await Promise.all([
+        fetchNowpaymentsBtcMinFiatUsd(),
+        fetchNowpaymentsLtcMinFiatUsd(),
+      ]);
+      if (btcMin) btcMinUsdCents = gatedBtcMinUsdCents(btcMin.fiatUsd);
+      if (ltcMin) ltcMinUsdCents = gatedLtcMinUsdCents(ltcMin.fiatUsd);
     }
     return {
       nowpayments: paymentsLive(),
       missing,
       /** Gated BTC floor in USD cents (live fiat × 5% buffer). Null if unknown. */
       btcMinUsdCents,
+      /** Gated LTC floor in USD cents (live fiat × 5% buffer). Null if unknown. No shot gate. */
+      ltcMinUsdCents,
     };
   });
 
@@ -213,6 +226,16 @@ export const createInvoice = createServerFn({ method: "POST" })
           const gated = gatedBtcMinUsdCents(min.fiatUsd);
           if (isBtcBelowMin(amount, gated)) {
             throw new Error(btcBelowMinCreateError(gated));
+          }
+        }
+      }
+      if (data.asset === "LTC") {
+        // LTC: live fiat min only — no shot-count gate (single shot / any count / bundles).
+        const min = await fetchNowpaymentsLtcMinFiatUsd();
+        if (min) {
+          const gated = gatedLtcMinUsdCents(min.fiatUsd);
+          if (isLtcBelowMin(amount, gated)) {
+            throw new Error(ltcBelowMinCreateError(gated));
           }
         }
       }

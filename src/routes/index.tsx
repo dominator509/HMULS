@@ -39,6 +39,7 @@ export const Route = createFileRoute("/")({
       origin,
       image: "/media/hero.jpg",
       keywords: seo.keywords,
+      preloadImage: "/media/hero.jpg",
     });
   },
   component: Home,

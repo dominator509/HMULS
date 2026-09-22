@@ -9,11 +9,13 @@ export const CRYPTO_ASSETS: {
   { id: "USDT", name: "Tether", network: "ERC-20" },
   { id: "SOL", name: "Solana", network: "Phantom" },
   { id: "BTC", name: "Bitcoin", network: "On-chain" },
+  { id: "LTC", name: "Litecoin", network: "On-chain" },
 ];
 
 /** Demo rates — production would pull NOWPayments /estimate. */
 export const DEMO_RATES: Record<CryptoAsset, number> = {
   BTC: 64_250,
+  LTC: 84,
   ETH: 3_180,
   USDT: 1,
   SOL: 148,
@@ -66,6 +68,8 @@ export function demoAddress(invoiceId: string, asset: CryptoAsset) {
   switch (asset) {
     case "BTC":
       return `bc1q${b58(seed, 38).toLowerCase()}`;
+    case "LTC":
+      return `ltc1q${b58(seed, 38).toLowerCase()}`;
     case "ETH":
       return `0x${hexRepeat(seed, 40)}`;
     case "USDT":

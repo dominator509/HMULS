@@ -69,6 +69,16 @@ describe("failed-transaction helpers", () => {
     assert.match(body, /screenshot_r2_key=failed-tx\/x\.png/);
   });
 
+  it("accepts LTC in the asset enum", () => {
+    const ok = normalizeFailedTxReport({
+      accountEmail: "buyer@example.com",
+      asset: "LTC",
+      txidOrLink: "ltctxidlongenough99",
+    });
+    assert.equal(ok.ok, true);
+    if (ok.ok) assert.equal(ok.data.asset, "LTC");
+  });
+
   it("shortTxId truncates long hashes", () => {
     assert.equal(shortTxId("abcdefgh"), "abcdefgh");
     assert.equal(shortTxId("abcdefghijklmnop"), "abcdefgh…mnop");

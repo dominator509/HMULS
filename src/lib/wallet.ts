@@ -196,6 +196,9 @@ export function paymentUri(
     case "BTC":
       if (!addr) return "";
       return `bitcoin:${addr}?amount=${amount}&label=${enc}`;
+    case "LTC":
+      if (!addr) return "";
+      return `litecoin:${addr}?amount=${amount}&label=${enc}`;
     case "SOL": {
       // Solana Pay rejects >9 decimals / scientific notation / empty recipient (invalid link).
       const amt = formatSolAmount(amount);
@@ -537,6 +540,10 @@ export function walletDeepLink(
       if (asset === "BTC") {
         return `https://link.trustwallet.com/send?coin=0&address=${address}&amount=${amount}`;
       }
+      if (asset === "LTC") {
+        // SLIP-44 coin type 2 = Litecoin (same Trust send pattern as BTC).
+        return `https://link.trustwallet.com/send?coin=2&address=${address}&amount=${amount}`;
+      }
       if (usdtErc20) {
         return trustUsdtErc20SendHref(address, amount);
       }
@@ -655,7 +662,7 @@ export const WALLET_OPTIONS: WalletOption[] = [
     name: "Trust Wallet",
     hint: "Send from Trust with amount and address set.",
     kind: "deeplink",
-    assets: ["ETH", "BTC", "USDT"],
+    assets: ["ETH", "BTC", "LTC", "USDT"],
   },
   {
     id: "coinbase",

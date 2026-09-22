@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { BTC_BELOW_MIN_FALLBACK, parseBtcMinFiatUsd } from "@/lib/btc-min";
+import { LTC_BELOW_MIN_FALLBACK, parseLtcMinFiatUsd } from "@/lib/ltc-min";
 import { ipnCanonicalJson, normalizePaymentId, type IpnPayment } from "@/lib/nowpayments";
 import { formatSolAmount } from "@/lib/sol-amount";
 import { nowPayCurrency } from "@/lib/crypto";
@@ -106,6 +107,74 @@ export async function fetchNowpaymentsBtcMinFiatUsd(): Promise<{
 }
 
 
+/** Isolate-local cache for LTC→LTC min (5–15 min; use 10). */
+const LTC_MIN_CACHE_TTL_MS = 10 * 60 * 1000;
+
+type LtcMinCacheEntry = {
+  fiatUsd: number;
+  minAmount: number;
+  expiresAt: number;
+};
+
+let ltcMinCache: LtcMinCacheEntry | null = null;
+
+/** Test-only: clear the LTC min cache between cases. */
+export function resetLtcMinCacheForTests() {
+  ltcMinCache = null;
+}
+
+/**
+ * Live NOWPayments LTC→LTC minimum with USD fiat_equivalent.
+ * Cached ~10 min. Returns null if API key missing or the call fails with no cache.
+ * No shot-count gate — callers apply fiat floor only.
+ */
+export async function fetchNowpaymentsLtcMinFiatUsd(): Promise<{
+  fiatUsd: number;
+  minAmount: number;
+} | null> {
+  const now = Date.now();
+  if (ltcMinCache && now < ltcMinCache.expiresAt) {
+    return { fiatUsd: ltcMinCache.fiatUsd, minAmount: ltcMinCache.minAmount };
+  }
+  const key = nowpaymentsApiKey();
+  if (!key) return ltcMinCache ? { fiatUsd: ltcMinCache.fiatUsd, minAmount: ltcMinCache.minAmount } : null;
+
+  const url =
+    "https://api.nowpayments.io/v1/min-amount?currency_from=ltc&currency_to=ltc&fiat_equivalent=usd";
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12_000);
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { "x-api-key": key },
+      signal: controller.signal,
+    });
+    const body = (await res.json()) as Parameters<typeof parseLtcMinFiatUsd>[0];
+    if (!res.ok) {
+      if (ltcMinCache) return { fiatUsd: ltcMinCache.fiatUsd, minAmount: ltcMinCache.minAmount };
+      return null;
+    }
+    const parsed = parseLtcMinFiatUsd(body);
+    if (!parsed) {
+      if (ltcMinCache) return { fiatUsd: ltcMinCache.fiatUsd, minAmount: ltcMinCache.minAmount };
+      return null;
+    }
+    ltcMinCache = {
+      fiatUsd: parsed.fiatUsd,
+      minAmount: parsed.minAmount,
+      expiresAt: now + LTC_MIN_CACHE_TTL_MS,
+    };
+    return parsed;
+  } catch {
+    if (ltcMinCache) return { fiatUsd: ltcMinCache.fiatUsd, minAmount: ltcMinCache.minAmount };
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+
+
 export function verifyNowpaymentsSignature(rawBody: string, signature: string, secret: string) {
   if (!signature || !secret) return false;
   let payload: unknown;
@@ -184,7 +253,9 @@ export async function createNowpaymentsPayment(opts: {
       throw new Error(
         opts.asset === "BTC"
           ? BTC_BELOW_MIN_FALLBACK
-          : "This amount is below the minimum for that coin — try a larger unlock or another asset.",
+          : opts.asset === "LTC"
+            ? LTC_BELOW_MIN_FALLBACK
+            : "This amount is below the minimum for that coin — try a larger unlock or another asset.",
       );
     }
     throw new Error(raw);

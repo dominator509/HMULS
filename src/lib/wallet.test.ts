@@ -779,3 +779,23 @@ describe("USDT ERC-20 paymentUri + deeplinks", () => {
     assert.match(mm, /metamask\.app\.link\/send/);
   });
 });
+
+describe("paymentUri BTC/LTC", () => {
+  it("builds bitcoin: and litecoin: URIs", () => {
+    const btc = paymentUri("BTC", "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh", "0.001");
+    assert.match(btc, /^bitcoin:bc1q/);
+    assert.match(btc, /amount=0\.001/);
+    const ltc = paymentUri("LTC", "ltc1qtestaddress000000000000000000000000", "0.12");
+    assert.match(ltc, /^litecoin:ltc1q/);
+    assert.match(ltc, /amount=0\.12/);
+  });
+});
+
+describe("Trust Wallet BTC/LTC deeplinks", () => {
+  it("uses coin=0 for BTC and coin=2 for LTC", () => {
+    const btc = walletDeepLink("trust", "BTC", "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh", "0.001");
+    assert.match(btc, /coin=0/);
+    const ltc = walletDeepLink("trust", "LTC", "ltc1qtestaddress000000000000000000000000", "0.12");
+    assert.match(ltc, /coin=2/);
+  });
+});
