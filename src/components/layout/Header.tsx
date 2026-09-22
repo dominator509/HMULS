@@ -28,7 +28,10 @@ export function Header() {
             SHE UNDRESSES
           </span>
         </Link>
-        <nav className="flex min-w-0 items-center gap-0.5 text-sm">
+        <nav
+          aria-label="Primary"
+          className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto overscroll-x-contain text-sm [scrollbar-width:none] *:shrink-0 [&::-webkit-scrollbar]:hidden max-sm:[mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)]"
+        >
           <Link to="/models" className="nav-link px-2 sm:px-3">
             Muses
           </Link>
