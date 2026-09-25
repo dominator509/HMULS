@@ -503,6 +503,29 @@ export function trustUsdtErc20SendHref(payAddress: string, amount: string): stri
   return `https://link.trustwallet.com/send?${q.toString()}&coin=60&token=${USDT_ERC20_CONTRACT}`;
 }
 
+/**
+ * Trust Wallet native-coin send via Universal Asset ID (UAI).
+ * Official send route is `asset=c{slip44}` — legacy `coin=` alone often opens Trust
+ * without prefilling address/amount (seen on Litecoin).
+ * @see https://developer.trustwallet.com/developer/develop-for-trust/deeplinking
+ * UAI: BTC c0, LTC c2, ETH c60 (SLIP-44).
+ */
+export function trustNativeSendHref(
+  slip44: 0 | 2 | 60,
+  payAddress: string,
+  amount: string,
+): string {
+  const addr = (payAddress || "").trim();
+  if (!addr) return "";
+  const q = new URLSearchParams({
+    asset: `c${slip44}`,
+    address: addr,
+    amount: (amount || "").trim(),
+  });
+  // Keep legacy coin= as a secondary hint for older Trust builds.
+  return `https://link.trustwallet.com/send?${q.toString()}&coin=${slip44}`;
+}
+
 export function walletDeepLink(
   wallet: string,
   asset: CryptoAsset,
@@ -535,14 +558,13 @@ export function walletDeepLink(
       return `https://go.cb-w.com/dapp?cb_url=${encoded}`;
     case "trust":
       if (asset === "ETH") {
-        return `https://link.trustwallet.com/send?coin=60&address=${address}&amount=${amount}`;
+        return trustNativeSendHref(60, address, amount);
       }
       if (asset === "BTC") {
-        return `https://link.trustwallet.com/send?coin=0&address=${address}&amount=${amount}`;
+        return trustNativeSendHref(0, address, amount);
       }
       if (asset === "LTC") {
-        // SLIP-44 coin type 2 = Litecoin (same Trust send pattern as BTC).
-        return `https://link.trustwallet.com/send?coin=2&address=${address}&amount=${amount}`;
+        return trustNativeSendHref(2, address, amount);
       }
       if (usdtErc20) {
         return trustUsdtErc20SendHref(address, amount);
@@ -607,7 +629,9 @@ export function launchWalletDeepLink(
           : "wallet";
   const message = usdtErc20
     ? `Opened ${name}. Confirm USDT (ERC-20) on Ethereum — wrong network risks lost funds.`
-    : `Opened ${name}. Send to the invoice address, then mark sent.`;
+    : asset === "LTC" || asset === "BTC"
+      ? `Opened ${name}. Confirm the address and exact amount, then mark sent on this page.`
+      : `Opened ${name}. Send to the invoice address, then mark sent.`;
   return { kind: "open", href, message };
 }
 

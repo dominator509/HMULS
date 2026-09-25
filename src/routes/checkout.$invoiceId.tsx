@@ -46,6 +46,30 @@ function mergeInvoice(prev: InvoiceView | null | undefined, next: InvoiceView): 
   };
 }
 
+
+const INVOICE_CACHE_PREFIX = "sheundresses.checkout.invoice.v1.";
+
+function cacheInvoice(row: InvoiceView) {
+  try {
+    sessionStorage.setItem(INVOICE_CACHE_PREFIX + row.id, JSON.stringify(row));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+function readCachedInvoice(id: string): InvoiceView | null {
+  try {
+    const raw = sessionStorage.getItem(INVOICE_CACHE_PREFIX + id);
+    if (!raw) return null;
+    const row = JSON.parse(raw) as InvoiceView;
+    if (!row?.id || row.id !== id || !row.payAddress) return null;
+    return row;
+  } catch {
+    return null;
+  }
+}
+
+
 function CheckoutPage() {
   const { invoiceId } = Route.useParams();
   const nav = useNavigate();
@@ -106,6 +130,7 @@ function CheckoutPage() {
   const applyRow = useCallback((row: InvoiceView) => {
     loadedRef.current = true;
     failStreakRef.current = 0;
+    cacheInvoice(row);
     setInv((prev) => mergeInvoice(prev, row));
     setSoftError(null);
     if (row.status === "paid") {
@@ -130,9 +155,18 @@ function CheckoutPage() {
     }
   }, []);
 
+  const hydrateFromCache = useCallback(() => {
+    const cached = readCachedInvoice(invoiceId);
+    if (!cached) return false;
+    loadedRef.current = true;
+    setInv((prev) => mergeInvoice(prev, cached));
+    return true;
+  }, [invoiceId]);
+
   const loadInvoice = useCallback(
-    async (opts?: { quiet?: boolean }) => {
+    async (opts?: { quiet?: boolean; force?: boolean }) => {
       if (!userId) return;
+      if (opts?.force) failStreakRef.current = 0;
       try {
         const row = await getInvoice({ data: { id: invoiceId } });
         if (row) {
@@ -151,6 +185,10 @@ function CheckoutPage() {
         }
         // True empty result: only hard-not-found if we never successfully loaded.
         if (!loadedRef.current) {
+          if (hydrateFromCache()) {
+            noteRefreshFailure(opts?.quiet);
+            return;
+          }
           setInv(null);
           setSoftError(null);
           failStreakRef.current = 0;
@@ -158,10 +196,12 @@ function CheckoutPage() {
           noteRefreshFailure(opts?.quiet);
         }
       } catch {
+        // Leave/return: recover last-known pay address so Retry is not a dead end.
+        if (!loadedRef.current) hydrateFromCache();
         noteRefreshFailure(opts?.quiet);
       }
     },
-    [userId, invoiceId, applyRow, noteRefreshFailure],
+    [userId, invoiceId, applyRow, noteRefreshFailure, hydrateFromCache],
   );
 
   useEffect(() => {
@@ -203,7 +243,7 @@ function CheckoutPage() {
         {softError ? (
           <>
             <p className="mt-4 text-sm text-blood">{softError}</p>
-            <Button className="mt-4" variant="outline" onClick={() => void loadInvoice()}>
+            <Button className="mt-4" variant="outline" onClick={() => void loadInvoice({ force: true })}>
               {CHECKOUT_COPY.retry}
             </Button>
           </>
@@ -223,9 +263,13 @@ function CheckoutPage() {
     );
   }
 
+  // Rate-lock expires_at must NOT kill a confirming invoice — LTC confirms often
+  // take longer than the ~20m NOWPayments window. Only pending times out here.
   const expired =
     inv.status === "expired" ||
-    (inv.expiresAt ? Date.now() > new Date(inv.expiresAt).getTime() : false);
+    (inv.status === "pending" &&
+      inv.expiresAt != null &&
+      Date.now() > new Date(inv.expiresAt).getTime());
   void clock;
   const clockLabel = clock == null ? null : remainingLabel(inv.expiresAt);
 
@@ -343,7 +387,7 @@ function CheckoutPage() {
       {softError ? (
         <div className="mt-4 rounded-xl border border-blood/40 bg-blood/10 px-4 py-3 text-sm text-fg">
           <p>{softError}</p>
-          <Button className="mt-2" size="sm" variant="outline" onClick={() => void loadInvoice()}>
+          <Button className="mt-2" size="sm" variant="outline" onClick={() => void loadInvoice({ force: true })}>
             {CHECKOUT_COPY.retry}
           </Button>
         </div>
