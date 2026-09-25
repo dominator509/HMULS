@@ -2,7 +2,8 @@
 
 Operator + Grok Bot / AgentMail runbook for **on-chain paid, unlock missing** cases on sheundresses.com.
 
-**Inbox:** `contact@sheundresses.com` → AgentMail `dswmarketingllc@agentmail.to`  
+**Inbound:** `contact@sheundresses.com` (CF Email Routing) → AgentMail `dswmarketingllc@agentmail.to`  
+**Outbound send-from:** Worker `AGENTMAIL_INBOX` must be **`sheundresses@agentmail.to`** (same AgentMail org as `AGENTMAIL_API_KEY`). Do not set `dswmarketingllc@agentmail.to` as the send-from inbox for the HMULS key — that address lives in a different org and returns 404.  
 **Do not** put operator personal Gmail on public templates — always `contact@`.
 
 ---
