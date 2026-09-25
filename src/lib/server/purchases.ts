@@ -66,6 +66,115 @@ function parseIds(raw: string): string[] {
   }
 }
 
+
+function shotIdsEqual(a: string[], b: string[]) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+type InvoiceRow = {
+  id: string;
+  user_id: string;
+  ladder_id: string;
+  kind: InvoiceKind;
+  shot_ids: string;
+  amount_cents: number;
+  asset: CryptoAsset;
+  pay_currency: string | null;
+  pay_address: string;
+  crypto_amount: string;
+  status: InvoiceView["status"];
+  is_gift: boolean;
+  gift_code: string | null;
+  created_at: string | Date;
+  expires_at: string | Date | null;
+  provider_payment_id: string | null;
+};
+
+async function invoiceViewFromRow(sql: Sql, inv: InvoiceRow): Promise<InvoiceView> {
+  const lad = await sql<{ title: string }>`
+    select title from ladders where id = ${inv.ladder_id}
+  `;
+  const ids = parseIds(inv.shot_ids);
+  const shots = await sql<{ id: string; title: string }>`
+    select id, title from shots where ladder_id = ${inv.ladder_id}
+  `;
+  const titleById = new Map(shots.map((s) => [s.id, s.title]));
+  return {
+    id: inv.id,
+    ladderId: inv.ladder_id,
+    ladderTitle: lad[0]?.title ?? "Ladder",
+    kind: inv.kind,
+    shotIds: ids,
+    shotTitles: ids.map((id) => titleById.get(id) ?? id),
+    amountCents: inv.amount_cents,
+    asset: inv.asset,
+    payCurrency: inv.pay_currency || undefined,
+    payAddress: inv.pay_address,
+    cryptoAmount: inv.crypto_amount,
+    status: inv.status,
+    isGift: inv.is_gift,
+    giftCode: inv.gift_code,
+    createdAt: new Date(inv.created_at).toISOString(),
+    expiresAt: inv.expires_at ? new Date(inv.expires_at).toISOString() : null,
+    paymentReady: Boolean(inv.pay_address && inv.provider_payment_id),
+  };
+}
+
+/**
+ * Reuse an unpaid/waiting invoice for the same user + ladder + kind + asset +
+ * shot list (+ gift flag) so leave/return never mints a replacement pay address.
+ * Confirming always wins (funds may be in flight). Pending only if still unexpired.
+ */
+async function findReusableOpenInvoice(
+  sql: Sql,
+  opts: {
+    userId: string;
+    ladderId: string;
+    kind: InvoiceKind;
+    asset: CryptoAsset;
+    shotIds: string[];
+    isGift: boolean;
+  },
+): Promise<InvoiceView | null> {
+  const rows = await sql<InvoiceRow>`
+    select id, user_id, ladder_id, kind, shot_ids, amount_cents, asset,
+           pay_currency, pay_address, crypto_amount, status, is_gift, gift_code,
+           created_at, expires_at, provider_payment_id
+    from invoices
+    where user_id = ${opts.userId}
+      and ladder_id = ${opts.ladderId}
+      and kind = ${opts.kind}
+      and asset = ${opts.asset}
+      and is_gift = ${opts.isGift}
+      and status in ('pending', 'confirming')
+      and pay_address is not null
+      and pay_address <> ''
+      and provider_payment_id is not null
+    order by case when status = 'confirming' then 0 else 1 end, created_at desc
+    limit 25
+  `;
+  const now = Date.now();
+  for (const row of rows) {
+    if (!shotIdsEqual(parseIds(row.shot_ids), opts.shotIds)) continue;
+    if (row.status === "confirming") {
+      return invoiceViewFromRow(sql, row);
+    }
+    if (row.status === "pending") {
+      if (row.expires_at && now > new Date(row.expires_at).getTime()) {
+        await sql`update invoices set status = 'expired' where id = ${row.id} and status = 'pending'`;
+        continue;
+      }
+      return invoiceViewFromRow(sql, row);
+    }
+  }
+  return null;
+}
+
+
 async function resolvePayableShots(
   sql: Sql,
   userId: string,
@@ -208,6 +317,20 @@ export const createInvoice = createServerFn({ method: "POST" })
     if (bump > 0 && data.kind === "shot") {
       amount = Math.round(amount * (1 + bump / 100));
     }
+    const gift = Boolean(data.isGift);
+    const shotIdList = shots.map((s) => s.id);
+    const reusable = await findReusableOpenInvoice(sql, {
+      userId: context.userId,
+      ladderId: data.ladderId,
+      kind: data.kind,
+      asset: data.asset,
+      shotIds: shotIdList,
+      isGift: gift,
+    });
+    if (reusable) {
+      return reusable;
+    }
+
     const id = invoiceId();
     let address = "";
     let cryptoAmount = "0";
@@ -252,7 +375,6 @@ export const createInvoice = createServerFn({ method: "POST" })
       priceAmount = String(pay.priceAmount);
       providerExpires = pay.expiresAt;
     }
-    const gift = Boolean(data.isGift);
     const code = gift ? giftCode(id) : null;
     const marketingExpires = new Date(Date.now() + invoiceMinutes(dials) * 60_000);
     const expiresAt = providerExpires ? new Date(providerExpires) : marketingExpires;
@@ -304,76 +426,40 @@ export const getInvoice = createServerFn({ method: "GET" })
   .validator((d: { id: string }) => d)
   .handler(async ({ context, data }) => {
     const sql = await getSql();
-    const rows = await sql<{
-      id: string;
-      user_id: string;
-      ladder_id: string;
-      kind: InvoiceKind;
-      shot_ids: string;
-      amount_cents: number;
-      asset: CryptoAsset;
-      pay_currency: string | null;
-      pay_address: string;
-      crypto_amount: string;
-      status: InvoiceView["status"];
-      is_gift: boolean;
-      gift_code: string | null;
-      created_at: string | Date;
-      expires_at: string | Date | null;
-      provider_payment_id: string | null;
-    }>`
-      select * from invoices where id = ${data.id} and user_id = ${context.userId}
+    const rows = await sql<InvoiceRow>`
+      select id, user_id, ladder_id, kind, shot_ids, amount_cents, asset,
+             pay_currency, pay_address, crypto_amount, status, is_gift, gift_code,
+             created_at, expires_at, provider_payment_id
+      from invoices where id = ${data.id} and user_id = ${context.userId}
     `;
     const inv = rows[0];
     if (!inv) return null;
+    // Only auto-expire pending. Confirming stays open — LTC/BTC confirms often
+    // outlive the NOWPayments rate-lock window (~20m); funds may still settle.
     if (
       inv.status === "pending" &&
       inv.expires_at &&
       Date.now() > new Date(inv.expires_at).getTime()
     ) {
-      await sql`update invoices set status = 'expired' where id = ${inv.id}`;
+      await sql`update invoices set status = 'expired' where id = ${inv.id} and status = 'pending'`;
       inv.status = "expired";
     }
-    // While confirming, poll NOWPayments and settle tolerant underpays so the
-    // checkout wait loop unlocks without requiring a finished-only IPN.
+    // While confirming, briefly poll NOWPayments. Cap wait so leave/return refresh
+    // never dead-ends if the provider is slow — next poll retries.
     if (inv.status === "confirming" && inv.provider_payment_id && paymentsLive()) {
       try {
-        const rec = await tryReconcileWithProvider(sql, inv.id, context.userId);
-        if (rec.settled) {
+        const rec = await Promise.race([
+          tryReconcileWithProvider(sql, inv.id, context.userId),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 4_000)),
+        ]);
+        if (rec && rec.settled) {
           inv.status = "paid";
         }
       } catch {
         // Soft: checkout keeps showing the invoice; next poll retries.
       }
     }
-    const lad = await sql<{ title: string }>`
-      select title from ladders where id = ${inv.ladder_id}
-    `;
-    const ids = parseIds(inv.shot_ids);
-    const shots = await sql<{ id: string; title: string }>`
-      select id, title from shots where ladder_id = ${inv.ladder_id}
-    `;
-    const titleById = new Map(shots.map((s) => [s.id, s.title]));
-    const view: InvoiceView = {
-      id: inv.id,
-      ladderId: inv.ladder_id,
-      ladderTitle: lad[0]?.title ?? "Ladder",
-      kind: inv.kind,
-      shotIds: ids,
-      shotTitles: ids.map((id) => titleById.get(id) ?? id),
-      amountCents: inv.amount_cents,
-      asset: inv.asset,
-      payCurrency: inv.pay_currency || undefined,
-      payAddress: inv.pay_address,
-      cryptoAmount: inv.crypto_amount,
-      status: inv.status,
-      isGift: inv.is_gift,
-      giftCode: inv.gift_code,
-      createdAt: new Date(inv.created_at).toISOString(),
-      expiresAt: inv.expires_at ? new Date(inv.expires_at).toISOString() : null,
-      paymentReady: Boolean(inv.pay_address && inv.provider_payment_id),
-    };
-    return view;
+    return invoiceViewFromRow(sql, inv);
   });
 
 async function grantShots(

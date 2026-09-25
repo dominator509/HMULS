@@ -123,7 +123,11 @@ export function PayWallet({
       return;
     }
     await navigator.clipboard.writeText(uri);
-    toast.success("Pay link copied (backup). Prefer Pay with Phantom / Solflare above.");
+    toast.success(
+      inv.asset === "SOL"
+        ? "Pay link copied (backup). Prefer Pay with Phantom / Solflare above."
+        : "Pay link copied. Paste it into a wallet that supports Bitcoin/Litecoin pay links, or use Trust Wallet above.",
+    );
   }
 
   async function copyAddress() {
@@ -276,6 +280,15 @@ export function PayWallet({
             >
               <Copy className="size-3" /> Copy address
             </button>
+            {inv.asset === "BTC" || inv.asset === "LTC" ? (
+              <button
+                type="button"
+                className="ml-3 mt-2 inline-flex items-center gap-1 text-xs text-gold"
+                onClick={() => void copyPayLink()}
+              >
+                <Copy className="size-3" /> Copy pay link
+              </button>
+            ) : null}
           </div>
         ) : (
           <p className="mt-4 rounded-lg border border-blood/40 bg-blood/10 px-3 py-2 text-sm text-fg">
@@ -413,9 +426,9 @@ export function PayWallet({
               {inv.asset === "USDT"
                 ? "USDT is ERC-20 on Ethereum. MetaMask and Trust Wallet prefill the send. Coinbase / Base Wallet is not offered for USDT."
                 : inv.asset === "BTC"
-                  ? "Trust Wallet opens a Bitcoin send with this invoice filled in. Send the exact amount shown above."
+                  ? "Trust Wallet opens a Bitcoin send with address and amount filled in. Other wallets: use Copy pay link or Copy address."
                   : inv.asset === "LTC"
-                    ? "Trust Wallet opens a Litecoin send with this invoice filled in. Send the exact amount shown above."
+                    ? "Trust Wallet opens a Litecoin send with address and amount filled in. Other wallets: use Copy pay link or Copy address."
                     : "Prefer a native send when offered. Wallet buttons never reopen this site inside Phantom/Solflare (that would ask you to sign in again)."}
             </p>
             <ul className="mt-5 space-y-2">

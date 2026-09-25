@@ -792,10 +792,23 @@ describe("paymentUri BTC/LTC", () => {
 });
 
 describe("Trust Wallet BTC/LTC deeplinks", () => {
-  it("uses coin=0 for BTC and coin=2 for LTC", () => {
+  it("uses UAI asset=c0 for BTC and asset=c2 for LTC (prefills address+amount)", () => {
     const btc = walletDeepLink("trust", "BTC", "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh", "0.001");
+    assert.match(btc, /link\.trustwallet\.com\/send/);
+    assert.match(btc, /asset=c0/);
+    assert.match(btc, /address=bc1q/);
+    assert.match(btc, /amount=0\.001/);
     assert.match(btc, /coin=0/);
-    const ltc = walletDeepLink("trust", "LTC", "ltc1qtestaddress000000000000000000000000", "0.12");
+    const ltc = walletDeepLink(
+      "trust",
+      "LTC",
+      "MWemXfnBWFT25S8frdiMYiYs5TmxJZVpUV",
+      "0.00819924",
+    );
+    assert.match(ltc, /link\.trustwallet\.com\/send/);
+    assert.match(ltc, /asset=c2/);
+    assert.match(ltc, /address=MWemXfnBWFT25S8frdiMYiYs5TmxJZVpUV/);
+    assert.match(ltc, /amount=0\.00819924/);
     assert.match(ltc, /coin=2/);
   });
 });

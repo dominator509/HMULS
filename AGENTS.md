@@ -221,7 +221,13 @@ Litecoin mirrors Bitcoin’s NOWPayments flow (`pay_currency: ltc`) with **one i
 
 Ladder picker hides LTC only when under the live fiat floor (plain tip: “Litecoin available from about $XX”). `createInvoice` rejects below-min LTC with the same buyer wording. BTC stays `BTC_MIN_SHOTS = 3` + live BTC fiat min — do not loosen BTC when wiring LTC.
 
-Wallet UX: Trust Wallet LTC send (`coin=2`, same pattern as BTC `coin=0`); `litecoin:` payment URI; no Coinbase/Base for LTC. Failed-transaction asset list and how-to-get-crypto include a brief Litecoin note. Do **not** touch SOL Phantom/Solflare connect-and-pay paths for LTC work.
+Wallet UX: Trust Wallet native send uses UAI **`asset=c2`** (LTC) / **`asset=c0`** (BTC) with address+amount (legacy `coin=` kept as secondary). BIP21 `litecoin:` / `bitcoin:` URIs via Copy pay link for other wallets. No Coinbase/Base for LTC. Failed-transaction asset list and how-to-get-crypto include a brief Litecoin note. Do **not** touch SOL Phantom/Solflare connect-and-pay paths for LTC work.
+
+### Invoice leave/return recovery
+
+- **`createInvoice` reuses** an open `pending` (unexpired) or **`confirming`** invoice for the same user + ladder + kind + asset + shot list + gift flag — never mint a replacement NOWPayments address while funds may be in flight.
+- Checkout must **not** treat `expires_at` (NOWPayments ~20m rate lock) as hard-dead for **`confirming`** invoices — LTC/BTC confirms often outlive that window. Only `pending` + past `expires_at`, or status `expired`, show the dead-invoice screen.
+- `getInvoice` may briefly poll NOWPayments while confirming (capped ~4s) so leave/return refresh never hangs; Retry restores from session cache when the network blips.
 
 
 ## Static asset + media cache (performance)
