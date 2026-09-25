@@ -45,7 +45,7 @@ Never commit .env or secret values. Never put operator personal name/Gmail on pu
 | **Paid media** | Cloudflare R2 bucket `hmuls-vault` (binding `HMULS_VAULT`; REST token fallback); optional private Vercel Blob; collector reads only via `/api/media` |
 | **AI** | xAI Grok / Imagine (Studio) when `XAI_API_KEY` is set |
 | **Payments** | NOWPayments (SOL / USDT ERC-20 / ETH / BTC / **LTC**); IPN HMAC + amount/currency match; ~**98%** underpay tolerance |
-| **Outbound mail** | AgentMail (`AGENTMAIL_API_KEY` + inbox) |
+| **Outbound mail** | AgentMail (`AGENTMAIL_API_KEY` + `AGENTMAIL_INBOX=sheundresses@agentmail.to`) |
 | **Inbound mail** | Cloudflare Email Routing → role addresses (legal@ / dmca@ / contact@) |
 | **Stamps** | Sidecar `https://stamps.sheundresses.com` (Contabo/VPS ffmpeg); Worker holds tokens in Neon + stamped PNG in R2 (`stamps/…`) or Blob |
 
@@ -119,7 +119,7 @@ Put values that must reach **Nitro `process.env`** as **encrypted Worker secrets
 | `VITE_PUBLIC_HOSTNAME` | `sheundresses.com` (also set as **Build** var so it bakes correctly) |
 | `NOWPAYMENTS_IPN_URL` | `https://sheundresses.com/api/payments/ipn` (optional if derived from site URL) |
 | `STAMP_URL` | `https://stamps.sheundresses.com` (no trailing slash) |
-| `AGENTMAIL_INBOX` | AgentMail inbox id (often full address); plain OK |
+| `AGENTMAIL_INBOX` | **Required** send-from inbox — must be visible to `AGENTMAIL_API_KEY` (prod: `sheundresses@agentmail.to`). Do **not** use `dswmarketingllc@agentmail.to` with the HMULS key (different AgentMail org). Plain or secret OK. |
 | `R2_ACCOUNT_ID` | `8e4acc97dafd9496df937662d07aa0d5` |
 | `R2_BUCKET` | `hmuls-vault` |
 
@@ -135,7 +135,7 @@ Put values that must reach **Nitro `process.env`** as **encrypted Worker secrets
 ### 6. Email
 
 1. **Inbound:** Cloudflare Email Routing for `legal@`, `dmca@`, `contact@` @sheundresses.com (inbound only — CF Email Routing does not send as the domain).
-2. **Outbound:** AgentMail with `AGENTMAIL_API_KEY` (+ `AGENTMAIL_INBOX`).
+2. **Outbound:** AgentMail with `AGENTMAIL_API_KEY` (+ `AGENTMAIL_INBOX=sheundresses@agentmail.to`). Sends **from** that inbox **to** `contact@sheundresses.com` (CF Email Routing → `dswmarketingllc@agentmail.to`). The HMULS API key cannot send as `dswmarketingllc@` (other org). Inline attachments must stay under AgentMail’s **6 MB total request** limit — `/failed-transaction` stores large screenshots in R2 (`failed-tx/…`) and omits oversized inline attaches.
 3. Public templates and legal pack use **role mailboxes only**.
 
 ### 7. R2 vault + seed sync (Blob optional)
@@ -197,7 +197,7 @@ Put values that must reach **Nitro `process.env`** as **encrypted Worker secrets
 ## Buyer help — Failed transaction?
 
 - Public form: **`/failed-transaction`** (checkout / paywall / footer **Failed transaction?**).
-- Submits a structured AgentMail ticket to **`contact@sheundresses.com`** with subject **`[FAILED-TX] {asset} {txid_short} {account_email}`**, labeled body + JSON, screenshot attachment (and optional ops-only R2 key `failed-tx/…`).
+- Submits a structured AgentMail ticket to **`contact@sheundresses.com`** (from `AGENTMAIL_INBOX`) with subject **`[FAILED-TX] {asset} {txid_short} {account_email}`**, labeled body + JSON, optional screenshot attachment, and ops-only R2 key `failed-tx/…` when storage is available. Requires Worker `AGENTMAIL_API_KEY` **and** `AGENTMAIL_INBOX` (missing inbox previously soft-failed with buyer toast “could not deliver”).
 - Confirmation UI: do **not** ask the buyer to pay again until we reply.
 - **Unlocks:** agent may settle **one** matched invoice when on-chain proof is sufficient (~2% underpay OK).
 - **Refunds:** never automatic — flag for operator / human approval only.

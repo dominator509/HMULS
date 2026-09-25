@@ -1,6 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
-import { sendAuthEmail, authMailConfigured } from "@/lib/auth/send-mail.server";
+import {
+  sendAuthEmail,
+  authMailConfigured,
+  AGENTMAIL_INLINE_ATTACHMENT_MAX_BYTES,
+} from "@/lib/auth/send-mail.server";
 import { getSessionUser } from "@/lib/auth/verify.server";
 import {
   FAILED_TX_CONTACT,
@@ -110,7 +114,15 @@ export const submitFailedTransaction = createServerFn({ method: "POST" })
       const stamp = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
       const storeName = `${stamp}-${safeName}`.slice(0, 160);
       screenshotR2Key = await putFailedTxEvidence(storeName, bytes);
-      attachment = { filename: safeName, contentType, content: b64 };
+      // AgentMail caps the entire send JSON at 6 MB; large phone PNGs still land in R2.
+      if (b64.length <= AGENTMAIL_INLINE_ATTACHMENT_MAX_BYTES) {
+        attachment = { filename: safeName, contentType, content: b64 };
+      } else {
+        console.warn(
+          "[failed-tx] screenshot stored in object store only — too large for AgentMail inline attach",
+          bytes.length,
+        );
+      }
       screenshotAttached = true;
     }
 
